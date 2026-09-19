@@ -268,11 +268,11 @@ export function ChatView({ agent, messages, streamingId, onSend, onStop, onOpenA
           </button>
           <button
             type="button"
-            className={`send-btn${busy ? ' stop' : ''}`}
-            disabled={!busy && !canSend}
+            className={`send-btn${busy ? ' stop' : ''}${!busy && !canSend ? ' idle' : ''}`}
+            aria-disabled={!busy && !canSend}
             onClick={() => {
               if (busy) onStop();
-              else void submit();
+              else if (canSend) void submit();
             }}
           >
             {busy ? 'Stop' : 'Send'}

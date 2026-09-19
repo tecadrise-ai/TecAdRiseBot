@@ -74,23 +74,24 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  border: none;
+  border: 2px solid transparent;
   background: transparent;
   text-align: left;
   padding: 6px 10px;
   border-radius: 12px;
   color: inherit;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 .agent-row:hover {
   background: #e6e6e8;
 }
 .agent-row.active {
-  background: #dddde0;
+  background: #fff7ed;
+  border-color: #f59e0b;
 }
 .agent-row.active:hover {
-  background: #d4d4d7;
+  background: #ffedd5;
 }
 
 .avatar {
@@ -610,22 +611,33 @@
   font-weight: 600;
   cursor: pointer;
   opacity: 1;
+  position: relative;
+  z-index: 2;
+  transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
 }
 .send-btn.stop {
   background: #f97316;
   color: #fff;
   opacity: 1;
 }
-.send-btn:disabled {
-  background: #1a1a1a;
-  color: #fff;
-  opacity: 1;
+.send-btn.idle {
   cursor: default;
 }
-.send-btn.stop:disabled {
-  background: #f97316;
-  color: #fff;
-  opacity: 1;
+.send-btn:hover {
+  background: #52525b;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+}
+.send-btn.stop:hover {
+  background: #ea580c;
+  box-shadow: 0 2px 10px rgba(234, 88, 12, 0.35);
+}
+.send-btn:active {
+  background: #111;
+  transform: translateY(1px);
+  box-shadow: none;
+}
+.send-btn.stop:active {
+  background: #c2410c;
 }
 
 .chat-empty {

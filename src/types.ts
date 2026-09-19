@@ -6,6 +6,7 @@ export type Agent = {
   cursorAgentId: string | null;
   lastSnippet: string | null;
   instructions: string | null;
+  config: Record<string, unknown> | null;
   createdAt: number;
   updatedAt: number;
 };

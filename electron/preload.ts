@@ -8,6 +8,7 @@ export type Agent = {
   cursorAgentId: string | null;
   lastSnippet: string | null;
   instructions: string | null;
+  config: Record<string, unknown> | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -40,7 +41,13 @@ const api = {
       ipcRenderer.invoke('agents:create', name, model),
     update: (
       id: string,
-      patch: { name?: string; model?: string; color?: string; instructions?: string | null }
+      patch: {
+        name?: string;
+        model?: string;
+        color?: string;
+        instructions?: string | null;
+        config?: Record<string, unknown> | null;
+      }
     ) => ipcRenderer.invoke('agents:update', id, patch),
     delete: (id: string) => ipcRenderer.invoke('agents:delete', id),
   },
@@ -89,7 +96,23 @@ const api = {
       ipcRenderer.invoke('settings:setSystemMemory', text),
   },
   models: {
-    list: (): Promise<{ id: string; displayName: string }[]> => ipcRenderer.invoke('models:list'),
+    list: (): Promise<
+      Array<{
+        id: string;
+        displayName: string;
+        parameters?: Array<{
+          id: string;
+          displayName?: string;
+          values: Array<{ value: string; displayName?: string }>;
+        }>;
+        variants?: Array<{
+          displayName: string;
+          description?: string;
+          isDefault?: boolean;
+          params: Array<{ id: string; value: string }>;
+        }>;
+      }>
+    > => ipcRenderer.invoke('models:list'),
   },
   routines: {
     list: (): Promise<Routine[]> => ipcRenderer.invoke('routines:list'),
@@ -104,6 +127,7 @@ const api = {
   },
   app: {
     openPath: (p: string) => ipcRenderer.invoke('app:openPath', p),
+    openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   },
   on: (channel: string, listener: (...args: unknown[]) => void) => {
     const allowed = [

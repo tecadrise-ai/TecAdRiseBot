@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Agent, ChatMessage } from '../types';
 import { MarkdownBody } from './MarkdownBody';
 import { fmtTs, fmtUsage, parseMessageUsage } from '../lib/usage';
+import { formatModelLabel } from '../lib/modelOptions';
 
 export type PendingAttachment = {
   id: string;
@@ -102,7 +103,7 @@ export function ChatView({ agent, messages, streamingId, onSend, onStop, onOpenA
           </div>
           <div>
             <div className="title-name">{agent.name}</div>
-            <div className="title-sub">{agent.model}</div>
+            <div className="title-sub">{formatModelLabel(agent.model, agent.config)}</div>
           </div>
         </div>
         <button

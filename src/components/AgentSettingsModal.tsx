@@ -5,6 +5,17 @@ import { ScheduleBuilder } from './ScheduleBuilder';
 import { AGENT_BADGE_COLORS } from '../lib/agentColors';
 import { DEFAULT_SCHEDULE, describeSchedule, encodeSchedule, type ScheduleDraft } from '../lib/schedule';
 import { DEFAULT_AGENT_SOUL, resolveAgentSoul } from '../lib/soul';
+import {
+  baseModelId,
+  dropdownModels,
+  effortParam,
+  readEffort,
+  DEFAULT_LAST_MESSAGES,
+  readLastMessages,
+  readModelMode,
+  type CatalogModel,
+  type ModelMode,
+} from '../lib/modelOptions';
 
 type Props = {
   open: boolean;
@@ -18,8 +29,11 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
   const [name, setName] = useState('');
   const [color, setColor] = useState('#4C78FF');
   const [model, setModel] = useState('');
+  const [modelMode, setModelMode] = useState<ModelMode>('usual');
+  const [effort, setEffort] = useState('medium');
+  const [lastMessages, setLastMessages] = useState(DEFAULT_LAST_MESSAGES);
   const [soul, setSoul] = useState('');
-  const [models, setModels] = useState<{ id: string; displayName: string }[]>([]);
+  const [models, setModels] = useState<CatalogModel[]>([]);
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -41,7 +55,10 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
     setTab('general');
     setName(agent.name);
     setColor(agent.color);
-    setModel(agent.model);
+    setModel(baseModelId(agent.model));
+    setModelMode(readModelMode(agent.config, agent.model));
+    setEffort(readEffort(agent.config));
+    setLastMessages(readLastMessages(agent.config));
     setSoul(resolveAgentSoul(agent.instructions));
     setStatus('');
     setRName('');
@@ -60,9 +77,10 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
     try {
       await window.tecapi.agents.update(agent.id, {
         name: name.trim() || agent.name,
-        model: model.trim() || agent.model,
+        model: baseModelId(model.trim() || agent.model),
         color,
         instructions: soul.trim() ? soul : null,
+        config: { ...(agent.config || {}), modelMode, effort, lastMessages },
       });
       setStatus('Saved.');
       onSaved();
@@ -159,15 +177,66 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
               <label className="field">
                 <span>Model</span>
                 <select value={model} onChange={(e) => setModel(e.target.value)}>
-                  {models.map((m) => (
+                  {dropdownModels(models).map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.displayName || m.id}
                     </option>
                   ))}
-                  {!models.find((m) => m.id === model) && model ? (
+                  {!dropdownModels(models).find((m) => m.id === model) && model ? (
                     <option value={model}>{model}</option>
                   ) : null}
                 </select>
+              </label>
+              <div className="field">
+                <span>Mode</span>
+                <div className="seg-row">
+                  <button
+                    type="button"
+                    className={`seg${modelMode === 'usual' ? ' active' : ''}`}
+                    onClick={() => setModelMode('usual')}
+                  >
+                    Usual
+                  </button>
+                  <button
+                    type="button"
+                    className={`seg${modelMode === 'fast' ? ' active' : ''}`}
+                    onClick={() => setModelMode('fast')}
+                  >
+                    Fast
+                  </button>
+                </div>
+              </div>
+              <label className="field">
+                <span>Effort</span>
+                <select value={effort} onChange={(e) => setEffort(e.target.value)}>
+                  {effortParam(models.find((m) => m.id === model)).values.map((v) => (
+                    <option key={v.value} value={v.value}>
+                      {v.displayName || v.value}
+                    </option>
+                  ))}
+                  {!effortParam(models.find((m) => m.id === model)).values.some((v) => v.value === effort) ? (
+                    <option value={effort}>{effort}</option>
+                  ) : null}
+                </select>
+                <span className="hint">Default is usual + medium. Fast, high, and max cost more.</span>
+              </label>
+              <label className="field">
+                <span>Last messages</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={1}
+                  value={lastMessages}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (!Number.isFinite(n)) return;
+                    setLastMessages(Math.max(0, Math.min(50, Math.round(n))));
+                  }}
+                />
+                <span className="hint">
+                  Inject the last N chat lines into every turn so follow-ups like "smaller one" work. 0 turns this off. Default 5.
+                </span>
               </label>
               <label className="field soul-field">
                 <span>Soul (sticky rules)</span>

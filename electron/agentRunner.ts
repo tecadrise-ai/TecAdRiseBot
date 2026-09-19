@@ -9,6 +9,7 @@ import { restoreFlattenedMarkdown } from '../src/lib/markdown';
 import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
 import { getApiKey } from './secrets';
+import { DEFAULT_MODEL_ID, readLastMessages, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
 
 export type ChatAttachment = {
   name: string;
@@ -16,8 +17,12 @@ export type ChatAttachment = {
   dataBase64: string;
 };
 
+type GenImage = { mimeType: string; dataBase64: string };
+
 type CursorAgent = {
   agentId: string;
+  listArtifacts?: () => Promise<Array<{ path: string }>>;
+  downloadArtifact?: (p: string) => Promise<Buffer>;
   send: (
     message:
       | string
@@ -30,6 +35,7 @@ type CursorAgent = {
         usage?: TokenUsage;
       }) => void | Promise<void>;
       local?: { force?: boolean };
+      model?: { id: string; params?: Array<{ id: string; value: string }> };
     }
   ) => Promise<{
     id: string;
@@ -50,7 +56,18 @@ const handles = new Map<string, CursorAgent>();
 const activeRuns = new Map<string, { cancel: () => Promise<void>; status: string }>();
 const stopRequested = new Set<string>();
 const claimed = new Set<string>();
+let modelCatalog: CatalogModel[] = [];
 
+export function dropAgentHandle(agentId: string): void {
+  const h = handles.get(agentId);
+  if (!h) return;
+  try {
+    h.close();
+  } catch {
+    /* ignore */
+  }
+  handles.delete(agentId);
+}
 
 export function isAgentBusy(agentId: string): boolean {
   return claimed.has(agentId) || activeRuns.has(agentId);
@@ -119,6 +136,126 @@ async function loadCursorSdk(): Promise<typeof import('@cursor/sdk')> {
 
 function extractLastAssistantText(text: string): string {
   return restoreFlattenedMarkdown(String(text || ''));
+}
+
+function mimeFromPath(p: string): string {
+  const ext = path.extname(p).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  return 'image/png';
+}
+
+function takeGenerateImage(node: unknown): GenImage | null {
+  if (!node || typeof node !== 'object') return null;
+  const o = node as {
+    type?: string;
+    result?: { status?: string; value?: { filePath?: string; imageData?: string } };
+  };
+  if (o.type !== 'generateImage') return null;
+  const v = o.result?.status === 'success' ? o.result.value : undefined;
+  if (!v) return null;
+  let b64 = String(v.imageData || '').trim();
+  let mime = mimeFromPath(v.filePath || 'image.png');
+  const dataUrl = /^data:([^;]+);base64,(.+)$/s.exec(b64);
+  if (dataUrl) {
+    mime = dataUrl[1] || mime;
+    b64 = dataUrl[2] || '';
+  }
+  if (!b64 && v.filePath) {
+    try {
+      if (fs.existsSync(v.filePath)) b64 = fs.readFileSync(v.filePath).toString('base64');
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!b64) return null;
+  return { mimeType: mime, dataBase64: b64 };
+}
+
+function imagesFromUnknown(node: unknown, seen = new Set<string>(), out: GenImage[] = []): GenImage[] {
+  if (!node || typeof node !== 'object') return out;
+  if (Array.isArray(node)) {
+    for (const x of node) imagesFromUnknown(x, seen, out);
+    return out;
+  }
+  const img = takeGenerateImage(node);
+  if (img) {
+    const key = `${img.mimeType}:${img.dataBase64.length}:${img.dataBase64.slice(0, 48)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(img);
+    }
+  }
+  for (const v of Object.values(node as Record<string, unknown>)) {
+    if (v && typeof v === 'object') imagesFromUnknown(v, seen, out);
+  }
+  return out;
+}
+
+function appendImagesToMarkdown(text: string, images: GenImage[]): string {
+  let s = String(text || '').trimEnd();
+  for (const img of images) {
+    const url = `data:${img.mimeType};base64,${img.dataBase64}`;
+    if (s.includes(url)) continue;
+    s += `\n\n![generated image](${url})\n`;
+  }
+  return s.trim();
+}
+
+function saveGeneratedImages(cwd: string, images: GenImage[]): void {
+  if (!images.length) return;
+  const dir = path.join(cwd, 'generated');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    images.forEach((img, i) => {
+      const ext = img.mimeType.includes('jpeg') ? 'jpg' : (img.mimeType.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '');
+      const dest = path.join(dir, `img-${Date.now()}-${i}.${ext || 'png'}`);
+      fs.writeFileSync(dest, Buffer.from(img.dataBase64, 'base64'));
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+async function imagesFromArtifacts(h: CursorAgent, cwd: string): Promise<GenImage[]> {
+  if (typeof h.listArtifacts !== 'function' || typeof h.downloadArtifact !== 'function') return [];
+  const arts = await h.listArtifacts();
+  const out: GenImage[] = [];
+  for (const a of arts) {
+    if (!/\.(png|jpe?g|webp|gif)$/i.test(a.path)) continue;
+    try {
+      const buf = await h.downloadArtifact(a.path);
+      const b64 = Buffer.from(buf).toString('base64');
+      if (b64) out.push({ mimeType: mimeFromPath(a.path), dataBase64: b64 });
+      const destDir = path.join(cwd, 'generated');
+      fs.mkdirSync(destDir, { recursive: true });
+      const dest = path.join(destDir, path.basename(a.path));
+      fs.writeFileSync(dest, Buffer.from(buf));
+    } catch {
+      /* ignore */
+    }
+  }
+  return out;
+}
+
+function formatRecentChat(agentId: string, excludeIds: string[], limit: number): string {
+  if (limit <= 0) return '';
+  const rows = db
+    .listMessages(agentId)
+    .filter((m) => !excludeIds.includes(m.id) && String(m.content || '').trim());
+  const slice = rows.slice(-limit);
+  if (!slice.length) return '';
+  const lines = slice.map((m) => {
+    let body = String(m.content || '').replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]');
+    if (body.length > 2000) body = body.slice(0, 2000) + '...';
+    return `${m.role}: ${body}`;
+  });
+  return (
+    '[Recent chat]\nThese are the last messages in this thread, oldest first. Use them for follow-ups like "smaller one".\n\n' +
+    lines.join('\n\n') +
+    '\n[/Recent chat]'
+  );
 }
 
 function lastAssistantFromConversation(turns: unknown): string {
@@ -205,13 +342,21 @@ async function getHandle(
   }
 
   const { Agent } = await loadCursorSdk();
+  if (!modelCatalog.length) {
+    try {
+      await listModels();
+    } catch {
+      /* ignore */
+    }
+  }
   let handle: CursorAgent | null = null;
+  const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
 
   if (!forceNew && agent.cursorAgentId) {
     try {
       handle = (await Agent.resume(agent.cursorAgentId, {
         apiKey,
-        model: { id: agent.model || 'composer-2.5' },
+        model: modelSel,
         local: { cwd, enableAgentRetries: false },
       })) as unknown as CursorAgent;
     } catch (e) {
@@ -224,7 +369,7 @@ async function getHandle(
     handle = (await Agent.create({
       apiKey,
       name: agent.name,
-      model: { id: agent.model || 'composer-2.5' },
+      model: modelSel,
       local: { cwd, enableAgentRetries: false },
     })) as unknown as CursorAgent;
     db.updateAgent(agent.id, { cursorAgentId: handle.agentId });
@@ -234,27 +379,30 @@ async function getHandle(
   return handle;
 }
 
-export async function listModels(): Promise<{ id: string; displayName: string }[]> {
+export async function listModels(): Promise<CatalogModel[]> {
+  const fallback: CatalogModel[] = [
+    { id: DEFAULT_MODEL_ID, displayName: 'Composer 2.5' },
+    { id: 'auto', displayName: 'Auto' },
+  ];
   const apiKey = getApiKey();
   if (!apiKey) {
-    return [
-      { id: 'composer-2.5', displayName: 'Composer 2.5' },
-      { id: 'auto', displayName: 'Auto' },
-    ];
+    modelCatalog = fallback;
+    return fallback;
   }
   try {
     const { Cursor } = await loadCursorSdk();
     const models = await Cursor.models.list({ apiKey });
-    return models.map((m) => ({
+    modelCatalog = models.map((m) => ({
       id: m.id,
       displayName: m.displayName || m.id,
+      parameters: m.parameters,
+      variants: m.variants,
     }));
+    return modelCatalog;
   } catch (e) {
     console.error('listModels failed', e);
-    return [
-      { id: 'composer-2.5', displayName: 'Composer 2.5' },
-      { id: 'auto', displayName: 'Auto' },
-    ];
+    modelCatalog = fallback;
+    return fallback;
   }
 }
 
@@ -355,6 +503,12 @@ async function runAgentTurnInner(opts: {
       ? `${opts.userText}\n\n[Attachments]\n${fileNotes.join('\n')}\n[/Attachments]`
       : opts.userText;
 
+  const recentChat = formatRecentChat(
+    opts.agentId,
+    [userMessageId, assistantMessageId],
+    readLastMessages(agent.config)
+  );
+
 const sdkPrompt = [
     systemPrompt,
     systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
@@ -363,6 +517,7 @@ const sdkPrompt = [
     instructions
       ? '[Agent soul]' + '\n' + instructions + '\n[/Agent soul]'
       : '',
+    recentChat,
     '[User message]' + '\n' + userBody + '\n[/User message]',
   ]
     .filter(Boolean)
@@ -377,55 +532,75 @@ const sdkPrompt = [
       let turnText = '';
       let turnEnded = false;
       let published = false;
+      const genImages: GenImage[] = [];
       let notifyEnded: () => void = () => undefined;
       const endedP = new Promise<void>((resolve) => {
         notifyEnded = resolve;
       });
 
-      const publishDone = () => {
-        if (published) {
-          if (usage) {
-            db.patchMessageMeta(assistantMessageId, { usage });
-            emit('chat:stream-done', {
-              agentId: opts.agentId,
-              messageId: assistantMessageId,
-              content: assembled,
-              usage,
-            });
+      const compose = (text: string) => appendImagesToMarkdown(text.trim(), genImages);
+
+      const addImgs = (imgs: GenImage[]) => {
+        for (const img of imgs) {
+          const key = `${img.mimeType}:${img.dataBase64.length}:${img.dataBase64.slice(0, 48)}`;
+          if (genImages.some((g) => `${g.mimeType}:${g.dataBase64.length}:${g.dataBase64.slice(0, 48)}` === key)) {
+            continue;
           }
-          return;
+          genImages.push(img);
         }
+      };
+
+      const publishDone = () => {
+        assembled = extractLastAssistantText(compose(turnText || assembled));
         if (!assembled) return;
-        assembled = extractLastAssistantText(assembled);
         db.updateMessageContent(assistantMessageId, assembled);
         if (usage) db.patchMessageMeta(assistantMessageId, { usage });
-        db.updateAgent(opts.agentId, { lastSnippet: assembled.slice(0, 120) });
+        db.updateAgent(opts.agentId, {
+          lastSnippet: assembled.replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]').slice(0, 120),
+        });
         emit('chat:stream-done', {
           agentId: opts.agentId,
           messageId: assistantMessageId,
           content: assembled,
           usage,
         });
-        published = true;
-        activeRuns.delete(opts.agentId);
-        stopRequested.delete(opts.agentId);
-        claimed.delete(opts.agentId);
+        if (!published) {
+          published = true;
+          activeRuns.delete(opts.agentId);
+          stopRequested.delete(opts.agentId);
+          claimed.delete(opts.agentId);
+        }
       };
 
       const takeDelta = (delta: {
-        update?: { type?: string; text?: string; usage?: TokenUsage };
+        update?: {
+          type?: string;
+          text?: string;
+          usage?: TokenUsage;
+          toolCall?: unknown;
+        };
         type?: string;
         text?: string;
         usage?: TokenUsage;
+        toolCall?: unknown;
       }) => {
         const update = delta.update ?? delta;
         if (update.type === 'usage' && (update.usage || delta.usage)) {
           usage = addUsage(usage, update.usage || delta.usage);
         }
+        if (update.type === 'tool-call-completed') {
+          addImgs(imagesFromUnknown(update.toolCall ?? update));
+          assembled = compose(turnText);
+          emit('chat:stream-delta', {
+            agentId: opts.agentId,
+            messageId: assistantMessageId,
+            delta: '',
+            content: assembled,
+          });
+        }
         if (update.type === 'turn-ended') {
           if (update.usage) usage = addUsage(usage, update.usage);
-          if (turnText.trim()) assembled = turnText.trim();
-          turnText = '';
+          assembled = compose(turnText);
           turnEnded = true;
           emit('chat:stream-delta', {
             agentId: opts.agentId,
@@ -442,7 +617,7 @@ const sdkPrompt = [
         if (published) return;
         if (update.type === 'text-delta' && update.text) {
           turnText += update.text;
-          assembled = turnText;
+          assembled = compose(turnText);
           emit('chat:stream-delta', {
             agentId: opts.agentId,
             messageId: assistantMessageId,
@@ -458,13 +633,36 @@ const sdkPrompt = [
           : sdkPrompt,
         {
           local: { force: true },
+          model: toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog),
           onDelta: takeDelta,
         }
       );
 
+      const harvestImages = async () => {
+        try {
+          if (typeof run.conversation === 'function') {
+            const conv = await run.conversation();
+            addImgs(imagesFromUnknown(conv));
+            const fromConv = lastAssistantFromConversation(conv);
+            if (fromConv.trim()) turnText = fromConv;
+          }
+        } catch {
+          /* ignore */
+        }
+        try {
+          addImgs(await imagesFromArtifacts(h, cwd));
+        } catch {
+          /* ignore */
+        }
+        if (genImages.length) saveGeneratedImages(cwd, genImages);
+        assembled = compose(turnText || assembled);
+        if (assembled) publishDone();
+      };
+
       if (published || turnEnded) {
-        if (assembled && !published) publishDone();
-        void run.cancel().catch(() => undefined);
+        void harvestImages().finally(() => {
+          void run.cancel().catch(() => undefined);
+        });
         activeRuns.delete(opts.agentId);
         return published || !!assembled;
       }
@@ -494,13 +692,21 @@ const sdkPrompt = [
         let fromConv = '';
         try {
           if (typeof run.conversation === 'function') {
-            fromConv = lastAssistantFromConversation(await run.conversation());
+            const conv = await run.conversation();
+            addImgs(imagesFromUnknown(conv));
+            fromConv = lastAssistantFromConversation(conv);
           }
         } catch {
           /* ignore */
         }
+        try {
+          addImgs(await imagesFromArtifacts(h, cwd));
+        } catch {
+          /* ignore */
+        }
+        if (genImages.length) saveGeneratedImages(cwd, genImages);
         assembled = extractLastAssistantText(
-          fromConv || turnText || assembled || (typeof result.result === 'string' ? result.result : '')
+          compose(fromConv || turnText || assembled || (typeof result.result === 'string' ? result.result : ''))
         );
         if (result.status === 'error') {
           const msg = result.error?.message || 'Agent run failed';

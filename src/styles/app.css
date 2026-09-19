@@ -490,6 +490,13 @@
   background: #d8d8dc;
   margin: 12px 0;
 }
+.md-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 8px 0 12px;
+  border-radius: 10px;
+}
 .bubble.interbot {
   background: #eef2ff;
   color: var(--text);
@@ -762,8 +769,31 @@
 }
 .soul-field .hint,
 .field .hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #71717a;
   font-weight: 400;
-  color: var(--text-secondary);
+}
+.seg-row {
+  display: flex;
+  gap: 8px;
+}
+.seg {
+  flex: 1;
+  height: 34px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3f3f46;
+  cursor: pointer;
+}
+.seg.active {
+  border-color: #111;
+  background: #111;
+  color: #fff;
 }
 .soul-editor {
   min-height: 180px;

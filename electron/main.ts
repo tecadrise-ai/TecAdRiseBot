@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
-import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles } from './agentRunner';
+import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle } from './agentRunner';
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
+import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -19,6 +20,21 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
 
 let mainWindow: BrowserWindow | null = null;
+
+function isInternalAppUrl(url: string): boolean {
+  if (url.startsWith('file:') || url.startsWith('devtools:')) return true;
+  const dev = VITE_DEV_SERVER_URL || 'http://localhost:5173/';
+  try {
+    return new URL(url).origin === new URL(dev).origin;
+  } catch {
+    return false;
+  }
+}
+
+function openInDefaultBrowser(url: string): void {
+  if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) return;
+  void shell.openExternal(url);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -44,8 +60,18 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    openInDefaultBrowser(url);
     return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (isInternalAppUrl(url)) return;
+    event.preventDefault();
+    openInDefaultBrowser(url);
+  });
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    if (isInternalAppUrl(url)) return;
+    event.preventDefault();
+    openInDefaultBrowser(url);
   });
 
   mainWindow.webContents.on('preload-error', (_e, preloadPath, err) => {
@@ -72,14 +98,32 @@ function registerIpc() {
   ipcMain.handle('controlPlane:info', () => getHttpApiInfo() ?? { port: 8787, baseUrl: 'http://127.0.0.1:8787' });
 
   ipcMain.handle('agents:create', (_e, name: string, model?: string) => {
-    const agent = db.createAgent({ id: uuid(), name: name.trim() || 'New Agent', model });
+    const agent = db.createAgent({
+      id: uuid(),
+      name: name.trim() || 'New Agent',
+      model,
+      config: cheapDefaultConfig(),
+    });
     return agent;
   });
 
   ipcMain.handle(
     'agents:update',
-    (_e, id: string, patch: { name?: string; model?: string; color?: string; instructions?: string | null }) => {
-      return db.updateAgent(id, patch);
+    (
+      _e,
+      id: string,
+      patch: {
+        name?: string;
+        model?: string;
+        color?: string;
+        instructions?: string | null;
+        config?: Record<string, unknown> | null;
+      }
+    ) => {
+      const prev = db.getAgent(id);
+      const next = db.updateAgent(id, patch);
+      if (prev && shouldRecreateSdkAgent(prev, patch)) dropAgentHandle(id);
+      return next;
     }
   );
 
@@ -206,6 +250,10 @@ function registerIpc() {
   });
 
   ipcMain.handle('app:openPath', (_e, p: string) => shell.openPath(p));
+  ipcMain.handle('app:openExternal', (_e, url: string) => {
+    openInDefaultBrowser(String(url || ''));
+    return { ok: true };
+  });
 }
 
 app.whenReady().then(async () => {

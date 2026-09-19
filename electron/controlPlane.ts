@@ -2,7 +2,8 @@ import { app, BrowserWindow } from 'electron';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
-import { listModels as sdkListModels, runAgentTurn, isAgentBusy, cancelAgentRun } from './agentRunner';
+import { listModels as sdkListModels, runAgentTurn, isAgentBusy, cancelAgentRun, dropAgentHandle } from './agentRunner';
+import { formatModelLabel, cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 
 export const DEFAULT_API_PORT = 8787;
 export const APP_NAME = 'TecAdRiseBot';
@@ -157,7 +158,7 @@ export function createAgent(input: {
     name: (input.name || 'New Agent').trim() || 'New Agent',
     model: input.model ?? meta.selectedModel ?? 'composer-2.5',
     instructions: input.instructions ?? null,
-    config: input.config ?? null,
+    config: input.config ?? cheapDefaultConfig(),
     enabled: input.enabled ?? 1,
   });
 }
@@ -175,7 +176,10 @@ export function updateAgent(
     lastSnippet: string | null;
   }>
 ) {
-  return db.updateAgent(id, patch);
+  const prev = db.getAgent(id);
+  const next = db.updateAgent(id, patch);
+  if (prev && shouldRecreateSdkAgent(prev, patch)) dropAgentHandle(id);
+  return next;
 }
 
 export async function deleteAgent(id: string) {
@@ -438,7 +442,7 @@ export function formatRuntimeContext(agentId: string): string {
   return [
     '[This turn]',
     `Agent: ${snap.self.name} (id ${snap.self.id})`,
-    `Model: ${snap.self.model}`,
+    `Model: ${formatModelLabel(snap.self.model, snap.self.config)}`,
     `Peers: ${snap.peers.length}`,
     '[/This turn]',
   ].join('\n');

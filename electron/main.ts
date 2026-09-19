@@ -129,6 +129,8 @@ function registerIpc() {
 
   ipcMain.handle('agents:registerMcp', async (_e, id: string) => registerAgentMcp(id));
 
+  ipcMain.handle('agents:reorder', (_e, ids: string[]) => db.reorderAgents(Array.isArray(ids) ? ids : []));
+
   ipcMain.handle('agents:delete', async (_e, id: string) => {
     await cancelAgentRun(id);
     db.deleteAgent(id);

@@ -89,6 +89,19 @@ function migrateAgentsSchema(): void {
   if (!cols.has('enabled')) {
     mustDb().run(`ALTER TABLE agents ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`);
   }
+  if (!cols.has('sort_order')) {
+    mustDb().run(`ALTER TABLE agents ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
+    const stmt = mustDb().prepare(`SELECT id FROM agents ORDER BY updated_at DESC`);
+    const ids: string[] = [];
+    while (stmt.step()) {
+      const r = stmt.getAsObject() as Record<string, unknown>;
+      ids.push(String(r.id));
+    }
+    stmt.free();
+    ids.forEach((id, i) => {
+      mustDb().run(`UPDATE agents SET sort_order=? WHERE id=?`, [i, id]);
+    });
+  }
 }
 
 function parseConfig(raw: unknown): Record<string, unknown> | null {
@@ -145,6 +158,7 @@ export async function initDb(userDataPath?: string): Promise<void> {
       instructions TEXT,
       config_json TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -204,10 +218,21 @@ function lastContentSnippet(agentId: string): string | null {
   return snippet || null;
 }
 
+function nextSortOrder(): number {
+  const stmt = mustDb().prepare(`SELECT MAX(sort_order) AS m FROM agents`);
+  let m = -1;
+  if (stmt.step()) {
+    const r = stmt.getAsObject() as Record<string, unknown>;
+    if (r.m != null && Number.isFinite(Number(r.m))) m = Number(r.m);
+  }
+  stmt.free();
+  return m + 1;
+}
+
 export function listAgents(): AgentRow[] {
   const stmt = mustDb().prepare(
     `SELECT id, name, color, model, cursor_agent_id, last_snippet, instructions, config_json, enabled, created_at, updated_at
-     FROM agents ORDER BY updated_at DESC`
+     FROM agents ORDER BY sort_order ASC, created_at ASC`
   );
   const rows: AgentRow[] = [];
   while (stmt.step()) {
@@ -249,10 +274,11 @@ export function createAgent(input: {
   const instructions = input.instructions ?? DEFAULT_AGENT_SOUL;
   const configJson = input.config != null ? JSON.stringify(input.config) : null;
   const enabled = input.enabled ?? 1;
+  const sortOrder = nextSortOrder();
   mustDb().run(
-    `INSERT INTO agents (id, name, color, model, cursor_agent_id, last_snippet, instructions, config_json, enabled, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?)`,
-    [input.id, input.name, color, model, instructions, configJson, enabled, now, now]
+    `INSERT INTO agents (id, name, color, model, cursor_agent_id, last_snippet, instructions, config_json, enabled, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
+    [input.id, input.name, color, model, instructions, configJson, enabled, sortOrder, now, now]
   );
   persist();
   return getAgent(input.id)!;
@@ -299,6 +325,27 @@ export function updateAgent(
   );
   persist();
   return getAgent(id);
+}
+
+export function reorderAgents(orderedIds: string[]): AgentRow[] {
+  const current = listAgents();
+  const known = new Set(current.map((a) => a.id));
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const id of orderedIds) {
+    if (!known.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    next.push(id);
+  }
+  for (const a of current) {
+    if (!seen.has(a.id)) next.push(a.id);
+  }
+  const d = mustDb();
+  next.forEach((id, i) => {
+    d.run(`UPDATE agents SET sort_order=? WHERE id=?`, [i, id]);
+  });
+  persist();
+  return listAgents();
 }
 
 export function deleteAgent(id: string): void {

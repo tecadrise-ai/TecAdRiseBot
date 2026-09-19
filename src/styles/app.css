@@ -80,7 +80,7 @@
   padding: 6px 10px;
   border-radius: 12px;
   color: inherit;
-  cursor: pointer;
+  cursor: grab;
   transition: background 0.12s ease, border-color 0.12s ease;
 }
 .agent-row:hover {
@@ -92,6 +92,12 @@
 }
 .agent-row.active:hover {
   background: #ffedd5;
+}
+.agent-row.dragging {
+  opacity: 0.45;
+}
+.agent-row.drag-over {
+  box-shadow: inset 0 2px 0 #f59e0b;
 }
 
 .avatar {

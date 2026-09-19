@@ -50,6 +50,7 @@ const api = {
       }
     ) => ipcRenderer.invoke('agents:update', id, patch),
     delete: (id: string) => ipcRenderer.invoke('agents:delete', id),
+    reorder: (ids: string[]) => ipcRenderer.invoke('agents:reorder', ids) as Promise<Agent[]>,
     registerMcp: (id: string) =>
       ipcRenderer.invoke('agents:registerMcp', id) as Promise<{ ok: boolean; error?: string; note?: string }>,
   },

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Agent, AppSettings } from '../types';
 
 type Props = {
@@ -12,6 +12,7 @@ type Props = {
   onOpenSettings: () => void;
   onOpenAgentSettings: (id: string) => void;
   onDeleteAgent: (id: string) => void;
+  onReorder: (ids: string[]) => void;
 };
 
 function initials(name: string): string {
@@ -31,9 +32,13 @@ export function Sidebar({
   onOpenSettings,
   onOpenAgentSettings,
   onDeleteAgent,
+  onReorder,
 }: Props) {
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const skipClick = useRef(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -44,6 +49,20 @@ export function Sidebar({
         (a.lastSnippet ?? '').toLowerCase().includes(q)
     );
   }, [agents, query]);
+
+  const canDrag = query.trim().length === 0;
+
+  function moveAgent(fromId: string, toId: string) {
+    if (!canDrag || fromId === toId) return;
+    const from = agents.findIndex((a) => a.id === fromId);
+    const to = agents.findIndex((a) => a.id === toId);
+    if (from < 0 || to < 0) return;
+    const next = [...agents];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    skipClick.current = true;
+    onReorder(next.map((a) => a.id));
+  }
 
   useEffect(() => {
     if (!menu) return;
@@ -95,8 +114,44 @@ export function Sidebar({
           <button
             key={a.id}
             type="button"
-            className={`agent-row ${selectedId === a.id ? 'active' : ''}`}
-            onClick={() => onSelect(a.id)}
+            className={`agent-row ${selectedId === a.id ? 'active' : ''}${draggingId === a.id ? ' dragging' : ''}${overId === a.id && draggingId && overId !== draggingId ? ' drag-over' : ''}`}
+            draggable={canDrag}
+            onClick={() => {
+              if (skipClick.current) {
+                skipClick.current = false;
+                return;
+              }
+              onSelect(a.id);
+            }}
+            onDragStart={(e) => {
+              if (!canDrag) {
+                e.preventDefault();
+                return;
+              }
+              e.dataTransfer.setData('text/plain', a.id);
+              e.dataTransfer.effectAllowed = 'move';
+              setDraggingId(a.id);
+            }}
+            onDragOver={(e) => {
+              if (!canDrag) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (overId !== a.id) setOverId(a.id);
+            }}
+            onDragLeave={() => {
+              if (overId === a.id) setOverId(null);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const fromId = e.dataTransfer.getData('text/plain') || draggingId;
+              if (fromId) moveAgent(fromId, a.id);
+              setDraggingId(null);
+              setOverId(null);
+            }}
+            onDragEnd={() => {
+              setDraggingId(null);
+              setOverId(null);
+            }}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();

@@ -208,6 +208,15 @@ export default function App() {
             void refreshLeds();
           })();
         }}
+        onReorder={(ids) => {
+          setAgents((cur) => {
+            const byId = new Map(cur.map((a) => [a.id, a]));
+            return ids.map((id) => byId.get(id)).filter((a): a is Agent => Boolean(a));
+          });
+          void window.tecapi.agents.reorder(ids).then((list) => setAgents(list)).catch(() => {
+            void refreshAgents();
+          });
+        }}
       />
       <ChatView
         agent={selected}

@@ -139,8 +139,8 @@ export default function App() {
                 : m
             )
           );
+          setStreamingId(null);
         }
-        setStreamingId(null);
         liveRuns.current.delete(p.agentId);
         setRunningIds((prev) => {
           const next = new Set(prev);
@@ -151,7 +151,7 @@ export default function App() {
       }),
       window.tecapi.on('routines:fired', () => {
         void refreshAgents();
-        if (selectedId) void loadMessages(selectedId);
+        if (selectedId && !liveRuns.current.has(selectedId)) void loadMessages(selectedId);
       }),
     ];
     return () => offs.forEach((off) => off());

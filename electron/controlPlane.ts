@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
-import { listModels as sdkListModels, runAgentTurn, isAgentBusy } from './agentRunner';
+import { listModels as sdkListModels, runAgentTurn, isAgentBusy, cancelAgentRun } from './agentRunner';
 
 export const DEFAULT_API_PORT = 8787;
 export const APP_NAME = 'TecAdRiseBot';
@@ -178,7 +178,8 @@ export function updateAgent(
   return db.updateAgent(id, patch);
 }
 
-export function deleteAgent(id: string) {
+export async function deleteAgent(id: string) {
+  await cancelAgentRun(id);
   db.deleteAgent(id);
   return { ok: true };
 }

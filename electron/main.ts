@@ -83,7 +83,8 @@ function registerIpc() {
     }
   );
 
-  ipcMain.handle('agents:delete', (_e, id: string) => {
+  ipcMain.handle('agents:delete', async (_e, id: string) => {
+    await cancelAgentRun(id);
     db.deleteAgent(id);
     return { ok: true };
   });

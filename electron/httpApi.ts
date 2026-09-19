@@ -8,10 +8,22 @@ let boundPort = 0;
 
 type Json = unknown;
 
+const MAX_BODY_BYTES = 2 * 1024 * 1024;
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    let size = 0;
+    req.on('data', (c) => {
+      const buf = Buffer.isBuffer(c) ? c : Buffer.from(c);
+      size += buf.length;
+      if (size > MAX_BODY_BYTES) {
+        req.destroy();
+        reject(new Error('Request body too large'));
+        return;
+      }
+      chunks.push(buf);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
@@ -157,7 +169,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
           send(res, 404, { error: 'Agent not found' });
           return;
         }
-        send(res, 200, cp.deleteAgent(m.id));
+        send(res, 200, await cp.deleteAgent(m.id));
         return;
       }
     }
@@ -381,8 +393,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
     notFound(res);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === 'Request body too large') {
+      send(res, 413, { error: msg });
+      return;
+    }
     console.error('httpApi error', e);
-    send(res, 500, { error: e instanceof Error ? e.message : String(e) });
+    send(res, 500, { error: msg });
   }
 }
 

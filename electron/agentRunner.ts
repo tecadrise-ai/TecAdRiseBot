@@ -306,6 +306,7 @@ async function runAgentTurnInner(opts: {
     db.updateAgent(opts.agentId, { lastSnippet: err.slice(0, 120) });
     emit('chat:stream-error', { agentId: opts.agentId, messageId: assistantMessageId, error: err });
     emit('chat:stream-done', { agentId: opts.agentId, messageId: assistantMessageId, content: err });
+    claimed.delete(opts.agentId);
     return { userMessageId, assistantMessageId };
   }
 

@@ -1,0 +1,60 @@
+{
+  "name": "tecadrise-bot",
+  "productName": "TecAdRiseBot",
+  "version": "0.1.0",
+  "description": "Local Windows multi-agent desktop shell powered by the Cursor TypeScript SDK",
+  "main": "dist-electron/main.js",
+  "author": "TecAdRise",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "postinstall": "electron-builder install-app-deps || true"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.31",
+    "@fontsource/inter": "^5.2.5",
+    "cron-parser": "^5.1.1",
+    "dompurify": "^3.4.15",
+    "marked": "^18.0.13",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "sql.js": "^1.13.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^22.15.3",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@types/sql.js": "^1.4.11",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "electron": "^36.2.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "build": {
+    "appId": "com.tecadrise.bot",
+    "productName": "TecAdRiseBot",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "SYSTEM.md",
+      "MEMORY.md",
+      "package.json"
+    ]
+  }
+}

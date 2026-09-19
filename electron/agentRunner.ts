@@ -1,0 +1,574 @@
+import { BrowserWindow } from 'electron';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { v4 as uuid } from 'uuid';
+import * as db from './db';
+import { formatRuntimeContext } from './controlPlane';
+import { restoreFlattenedMarkdown } from '../src/lib/markdown';
+import { addUsage, type TokenUsage } from '../src/lib/usage';
+import { resolveAgentSoul } from '../src/lib/soul';
+import { getApiKey } from './secrets';
+
+export type ChatAttachment = {
+  name: string;
+  mimeType: string;
+  dataBase64: string;
+};
+
+type CursorAgent = {
+  agentId: string;
+  send: (
+    message:
+      | string
+      | { text: string; images?: { data: string; mimeType: string }[] },
+    options?: {
+      onDelta?: (args: {
+        update?: { type?: string; text?: string; usage?: TokenUsage };
+        type?: string;
+        text?: string;
+        usage?: TokenUsage;
+      }) => void | Promise<void>;
+      local?: { force?: boolean };
+    }
+  ) => Promise<{
+    id: string;
+    wait: () => Promise<{
+      status: string;
+      result?: string;
+      error?: { message?: string };
+      usage?: TokenUsage;
+    }>;
+    conversation?: () => Promise<unknown>;
+    cancel: () => Promise<void>;
+    status: string;
+  }>;
+  close: () => void;
+};
+
+const handles = new Map<string, CursorAgent>();
+const activeRuns = new Map<string, { cancel: () => Promise<void>; status: string }>();
+const stopRequested = new Set<string>();
+const claimed = new Set<string>();
+
+
+export function isAgentBusy(agentId: string): boolean {
+  return claimed.has(agentId) || activeRuns.has(agentId);
+}
+
+export function listBusyAgentIds(): string[] {
+  return Array.from(new Set([...claimed, ...activeRuns.keys()]));
+}
+const tails = new Map<string, Promise<unknown>>();
+
+function appRoot(): string {
+  return process.env.APP_ROOT || path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+}
+
+export function readSystemPrompt(): string {
+  const p = path.join(appRoot(), 'SYSTEM.md');
+  try {
+    return fs.readFileSync(p, 'utf8');
+  } catch {
+    return 'You are an agent inside TecAdRiseBot.\n';
+  }
+}
+
+export function writeSystemPrompt(text: string): { ok: true } {
+  const p = path.join(appRoot(), 'SYSTEM.md');
+  fs.writeFileSync(p, text.replace(/\r\n/g, '\n'), 'utf8');
+  return { ok: true };
+}
+
+export function readSystemMemory(): string {
+  const p = path.join(appRoot(), 'MEMORY.md');
+  try {
+    return fs.readFileSync(p, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+export function writeSystemMemory(text: string): { ok: true } {
+  const p = path.join(appRoot(), 'MEMORY.md');
+  fs.writeFileSync(p, text.replace(/\r\n/g, '\n'), 'utf8');
+  return { ok: true };
+}
+
+export function cleanupLegacyControlPlaneFiles(): void {
+  const root = db.ensureWorkspacesDir();
+  if (!fs.existsSync(root)) return;
+  for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!ent.isDirectory()) continue;
+    const leftover = path.join(root, ent.name, 'CONTROL_PLANE.md');
+    if (fs.existsSync(leftover)) fs.unlinkSync(leftover);
+  }
+}
+
+function loadSystemPrompt(): string {
+  return readSystemPrompt().trim();
+}
+
+function loadSystemMemory(): string {
+  return readSystemMemory().trim();
+}
+
+async function loadCursorSdk(): Promise<typeof import('@cursor/sdk')> {
+  return import('@cursor/sdk');
+}
+
+function extractLastAssistantText(text: string): string {
+  return restoreFlattenedMarkdown(String(text || ''));
+}
+
+function lastAssistantFromConversation(turns: unknown): string {
+  if (!Array.isArray(turns)) return '';
+  const texts: string[] = [];
+  for (const turn of turns) {
+    if (!turn || typeof turn !== 'object') continue;
+    const steps = (turn as { steps?: Array<{ type?: string; message?: { text?: string } }> }).steps;
+    if (!Array.isArray(steps)) continue;
+    for (const step of steps) {
+      if (step?.type === 'assistantMessage' && step.message?.text) {
+        texts.push(String(step.message.text));
+      }
+    }
+  }
+  if (!texts.length) return '';
+  const withBreaks = [...texts].reverse().find((x) => /\n/.test(x));
+  return extractLastAssistantText(withBreaks ?? texts[texts.length - 1]);
+}
+
+function isBusyError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: unknown }).name) : '';
+  return (
+    name === 'AgentBusyError' ||
+    /already has active run/i.test(msg) ||
+    /active run in progress/i.test(msg)
+  );
+}
+
+
+
+/** Serialize turns per local agent so we never double-send. */
+function enqueue(agentId: string, task: () => Promise<unknown>): Promise<unknown> {
+  const prev = tails.get(agentId) ?? Promise.resolve();
+  const next = prev.then(task, task);
+  tails.set(
+    agentId,
+    next.then(
+      () => undefined,
+      () => undefined
+    )
+  );
+  return next;
+}
+
+export async function cancelAgentRun(agentId: string): Promise<{ ok: true }> {
+  stopRequested.add(agentId);
+  await cancelActive(agentId);
+  return { ok: true };
+}
+
+async function cancelActive(agentId: string) {
+  const run = activeRuns.get(agentId);
+  if (!run) return;
+  try {
+    if (run.status === 'running') await run.cancel();
+  } catch (e) {
+    console.warn('cancel active run failed', e);
+  } finally {
+    activeRuns.delete(agentId);
+  }
+}
+
+async function getHandle(
+  agent: db.AgentRow,
+  apiKey: string,
+  cwd: string,
+  forceNew = false
+): Promise<CursorAgent> {
+  if (!forceNew) {
+    const existing = handles.get(agent.id);
+    if (existing) return existing;
+  } else {
+    const old = handles.get(agent.id);
+    if (old) {
+      try {
+        old.close();
+      } catch {
+        /* ignore */
+      }
+      handles.delete(agent.id);
+    }
+  }
+
+  const { Agent } = await loadCursorSdk();
+  let handle: CursorAgent | null = null;
+
+  if (!forceNew && agent.cursorAgentId) {
+    try {
+      handle = (await Agent.resume(agent.cursorAgentId, {
+        apiKey,
+        model: { id: agent.model || 'composer-2.5' },
+        local: { cwd, enableAgentRetries: false },
+      })) as unknown as CursorAgent;
+    } catch (e) {
+      console.warn('Agent.resume failed, creating new', e);
+      handle = null;
+    }
+  }
+
+  if (!handle) {
+    handle = (await Agent.create({
+      apiKey,
+      name: agent.name,
+      model: { id: agent.model || 'composer-2.5' },
+      local: { cwd, enableAgentRetries: false },
+    })) as unknown as CursorAgent;
+    db.updateAgent(agent.id, { cursorAgentId: handle.agentId });
+  }
+
+  handles.set(agent.id, handle);
+  return handle;
+}
+
+export async function listModels(): Promise<{ id: string; displayName: string }[]> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return [
+      { id: 'composer-2.5', displayName: 'Composer 2.5' },
+      { id: 'auto', displayName: 'Auto' },
+    ];
+  }
+  try {
+    const { Cursor } = await loadCursorSdk();
+    const models = await Cursor.models.list({ apiKey });
+    return models.map((m) => ({
+      id: m.id,
+      displayName: m.displayName || m.id,
+    }));
+  } catch (e) {
+    console.error('listModels failed', e);
+    return [
+      { id: 'composer-2.5', displayName: 'Composer 2.5' },
+      { id: 'auto', displayName: 'Auto' },
+    ];
+  }
+}
+
+async function runAgentTurnInner(opts: {
+  agentId: string;
+  userText: string;
+  win: BrowserWindow | null;
+  source?: 'user' | 'routine' | 'interbot';
+  attachments?: ChatAttachment[];
+}): Promise<{ userMessageId: string; assistantMessageId: string }> {
+  const agent = db.getAgent(opts.agentId);
+  if (!agent) throw new Error('Agent not found');
+
+  const userMessageId = uuid();
+  const assistantMessageId = uuid();
+
+  db.addMessage({
+    id: userMessageId,
+    agentId: opts.agentId,
+    role: opts.source === 'interbot' ? 'interbot' : 'user',
+    content: opts.userText,
+    meta: opts.source ? JSON.stringify({ source: opts.source }) : null,
+  });
+
+  db.addMessage({
+    id: assistantMessageId,
+    agentId: opts.agentId,
+    role: 'assistant',
+    content: '',
+    meta: null,
+  });
+
+  const emit = (channel: string, payload: unknown) => {
+    opts.win?.webContents.send(channel, payload);
+  };
+
+  emit('chat:message', {
+    agentId: opts.agentId,
+    message: db.listMessages(opts.agentId).find((m) => m.id === userMessageId),
+  });
+  emit('chat:stream-start', { agentId: opts.agentId, messageId: assistantMessageId });
+  claimed.add(opts.agentId);
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    const err =
+      'No Cursor API key saved. Open Local user settings, paste your CURSOR_API_KEY from Cursor Dashboard â†’ API Keys, then try again.';
+    db.updateMessageContent(assistantMessageId, err);
+    db.updateAgent(opts.agentId, { lastSnippet: err.slice(0, 120) });
+    emit('chat:stream-error', { agentId: opts.agentId, messageId: assistantMessageId, error: err });
+    emit('chat:stream-done', { agentId: opts.agentId, messageId: assistantMessageId, content: err });
+    return { userMessageId, assistantMessageId };
+  }
+
+  const cwd = db.agentWorkspacePath(opts.agentId);
+  try {
+    const readme = path.join(cwd, 'README.md');
+    if (!fs.existsSync(readme)) {
+      fs.writeFileSync(
+        readme,
+        '# ' + agent.name + '\n\nLocal TecAdRiseBot agent workspace.\n',
+        'utf8'
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const systemPrompt = loadSystemPrompt();
+  const systemMemory = loadSystemMemory();
+  const runtimeCtx = formatRuntimeContext(opts.agentId);
+  const instructions = resolveAgentSoul(agent.instructions);
+  
+  const attachments = opts.attachments ?? [];
+  const imageParts: { data: string; mimeType: string }[] = [];
+  const fileNotes: string[] = [];
+  if (attachments.length) {
+    const fs = await import('node:fs');
+    const uploads = path.join(cwd, 'uploads');
+    fs.mkdirSync(uploads, { recursive: true });
+    for (const att of attachments) {
+      const safe = att.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120) || 'file';
+      const mime = (att.mimeType || 'application/octet-stream').toLowerCase();
+      if (mime.startsWith('image/')) {
+        imageParts.push({ data: att.dataBase64, mimeType: mime });
+        fileNotes.push(`(attached image: ${att.name})`);
+      } else {
+        const destPath = path.join(uploads, `${Date.now()}_${safe}`);
+        fs.writeFileSync(destPath, Buffer.from(att.dataBase64, 'base64'));
+        fileNotes.push(`Attached file saved at: ${destPath}`);
+      }
+    }
+  }
+
+  const userBody =
+    fileNotes.length > 0
+      ? `${opts.userText}\n\n[Attachments]\n${fileNotes.join('\n')}\n[/Attachments]`
+      : opts.userText;
+
+const sdkPrompt = [
+    systemPrompt,
+    systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
+    '[Memory directory]' + '\n' + db.ensureMemoryDir() + '\nRead index.md first. Write lasting facts here. Shared by all agents.\n[/Memory directory]',
+    runtimeCtx,
+    instructions
+      ? '[Agent soul]' + '\n' + instructions + '\n[/Agent soul]'
+      : '',
+    '[User message]' + '\n' + userBody + '\n[/User message]',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  let assembled = '';
+  let usage: TokenUsage | null = null;
+  try {
+    let handle = await getHandle(agent, apiKey, cwd, false);
+
+    const sendOnce = async (h: CursorAgent) => {
+      let turnText = '';
+      let turnEnded = false;
+      let published = false;
+      let notifyEnded: () => void = () => undefined;
+      const endedP = new Promise<void>((resolve) => {
+        notifyEnded = resolve;
+      });
+
+      const publishDone = () => {
+        if (published) {
+          if (usage) {
+            db.patchMessageMeta(assistantMessageId, { usage });
+            emit('chat:stream-done', {
+              agentId: opts.agentId,
+              messageId: assistantMessageId,
+              content: assembled,
+              usage,
+            });
+          }
+          return;
+        }
+        if (!assembled) return;
+        assembled = extractLastAssistantText(assembled);
+        db.updateMessageContent(assistantMessageId, assembled);
+        if (usage) db.patchMessageMeta(assistantMessageId, { usage });
+        db.updateAgent(opts.agentId, { lastSnippet: assembled.slice(0, 120) });
+        emit('chat:stream-done', {
+          agentId: opts.agentId,
+          messageId: assistantMessageId,
+          content: assembled,
+          usage,
+        });
+        published = true;
+        activeRuns.delete(opts.agentId);
+        stopRequested.delete(opts.agentId);
+        claimed.delete(opts.agentId);
+      };
+
+      const takeDelta = (delta: {
+        update?: { type?: string; text?: string; usage?: TokenUsage };
+        type?: string;
+        text?: string;
+        usage?: TokenUsage;
+      }) => {
+        const update = delta.update ?? delta;
+        if (update.type === 'usage' && (update.usage || delta.usage)) {
+          usage = addUsage(usage, update.usage || delta.usage);
+        }
+        if (update.type === 'turn-ended') {
+          if (update.usage) usage = addUsage(usage, update.usage);
+          if (turnText.trim()) assembled = turnText.trim();
+          turnText = '';
+          turnEnded = true;
+          emit('chat:stream-delta', {
+            agentId: opts.agentId,
+            messageId: assistantMessageId,
+            delta: '',
+            content: assembled,
+          });
+          if (assembled) publishDone();
+          notifyEnded();
+          const live = activeRuns.get(opts.agentId);
+          if (live) void live.cancel().catch(() => undefined);
+          return;
+        }
+        if (published) return;
+        if (update.type === 'text-delta' && update.text) {
+          turnText += update.text;
+          assembled = turnText;
+          emit('chat:stream-delta', {
+            agentId: opts.agentId,
+            messageId: assistantMessageId,
+            delta: update.text,
+            content: assembled,
+          });
+        }
+      };
+
+      const run = await h.send(
+        imageParts.length
+          ? { text: sdkPrompt, images: imageParts }
+          : sdkPrompt,
+        {
+          local: { force: true },
+          onDelta: takeDelta,
+        }
+      );
+
+      if (published || turnEnded) {
+        if (assembled && !published) publishDone();
+        void run.cancel().catch(() => undefined);
+        activeRuns.delete(opts.agentId);
+        return published || !!assembled;
+      }
+
+      activeRuns.set(opts.agentId, run);
+      if (stopRequested.has(opts.agentId)) {
+        stopRequested.delete(opts.agentId);
+        try {
+          await run.cancel();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      try {
+        const raced = await Promise.race([
+          run.wait().then((r) => ({ kind: 'wait' as const, r })),
+          endedP.then(() => ({ kind: 'ended' as const })),
+        ]);
+        if (raced.kind === 'ended' || turnEnded || published) {
+          void run.cancel().catch(() => undefined);
+          if (assembled && !published) publishDone();
+          return published || !!assembled;
+        }
+        const result = raced.r;
+        if (result.usage) usage = addUsage(usage, result.usage);
+        let fromConv = '';
+        try {
+          if (typeof run.conversation === 'function') {
+            fromConv = lastAssistantFromConversation(await run.conversation());
+          }
+        } catch {
+          /* ignore */
+        }
+        assembled = extractLastAssistantText(
+          fromConv || turnText || assembled || (typeof result.result === 'string' ? result.result : '')
+        );
+        if (result.status === 'error') {
+          const msg = result.error?.message || 'Agent run failed';
+          if (!assembled) assembled = `Error: ${msg}`;
+        }
+      } finally {
+        activeRuns.delete(opts.agentId);
+        stopRequested.delete(opts.agentId);
+      }
+      return published || !!assembled;
+    };
+
+    try {
+      const alreadyPublished = await sendOnce(handle);
+      if (alreadyPublished) return { userMessageId, assistantMessageId };
+    } catch (e) {
+      if (assembled.trim()) return { userMessageId, assistantMessageId };
+      if (!isBusyError(e)) throw e;
+      await cancelActive(opts.agentId);
+      handle = await getHandle(agent, apiKey, cwd, true);
+      assembled = '';
+      usage = null;
+      const alreadyPublished = await sendOnce(handle);
+      if (alreadyPublished) return { userMessageId, assistantMessageId };
+    }
+
+    if (!assembled) assembled = '(No response text from agent.)';
+    assembled = extractLastAssistantText(assembled);
+
+    db.updateMessageContent(assistantMessageId, assembled);
+    if (usage) db.patchMessageMeta(assistantMessageId, { usage });
+    db.updateAgent(opts.agentId, { lastSnippet: assembled.slice(0, 120) });
+    emit('chat:stream-done', {
+      agentId: opts.agentId,
+      messageId: assistantMessageId,
+      content: assembled,
+      usage,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const friendly = `Agent error: ${msg}`;
+    db.updateMessageContent(assistantMessageId, friendly);
+    db.updateAgent(opts.agentId, { lastSnippet: friendly.slice(0, 120) });
+    emit('chat:stream-error', {
+      agentId: opts.agentId,
+      messageId: assistantMessageId,
+      error: friendly,
+    });
+    emit('chat:stream-done', {
+      agentId: opts.agentId,
+      messageId: assistantMessageId,
+      content: friendly,
+    });
+  } finally {
+    claimed.delete(opts.agentId);
+  }
+
+  return { userMessageId, assistantMessageId };
+}
+
+export async function runAgentTurn(opts: {
+  agentId: string;
+  userText: string;
+  win: BrowserWindow | null;
+  source?: 'user' | 'routine' | 'interbot';
+  attachments?: ChatAttachment[];
+}): Promise<{ userMessageId: string; assistantMessageId: string }> {
+  return enqueue(opts.agentId, () => runAgentTurnInner({ ...opts, attachments: opts.attachments ?? [] })) as Promise<{
+    userMessageId: string;
+    assistantMessageId: string;
+  }>;
+}

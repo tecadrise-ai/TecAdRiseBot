@@ -10,6 +10,7 @@ import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
 import { getApiKey } from './secrets';
 import { DEFAULT_MODEL_ID, readLastMessages, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
+import { parseMcpJson, type McpServers } from '../src/lib/mcpConfig';
 
 export type ChatAttachment = {
   name: string;
@@ -36,6 +37,7 @@ type CursorAgent = {
       }) => void | Promise<void>;
       local?: { force?: boolean };
       model?: { id: string; params?: Array<{ id: string; value: string }> };
+      mcpServers?: Record<string, unknown>;
     }
   ) => Promise<{
     id: string;
@@ -320,6 +322,12 @@ async function cancelActive(agentId: string) {
   }
 }
 
+function mcpServersForAgent(config: Record<string, unknown> | null | undefined): McpServers | undefined {
+  const parsed = parseMcpJson(JSON.stringify(config?.mcpServers ?? {}));
+  if (!parsed.ok || !Object.keys(parsed.servers).length) return undefined;
+  return parsed.servers;
+}
+
 async function getHandle(
   agent: db.AgentRow,
   apiKey: string,
@@ -351,12 +359,14 @@ async function getHandle(
   }
   let handle: CursorAgent | null = null;
   const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
+  const mcpServers = mcpServersForAgent(agent.config);
 
   if (!forceNew && agent.cursorAgentId) {
     try {
       handle = (await Agent.resume(agent.cursorAgentId, {
         apiKey,
         model: modelSel,
+        mcpServers,
         local: { cwd, enableAgentRetries: false },
       })) as unknown as CursorAgent;
     } catch (e) {
@@ -370,6 +380,7 @@ async function getHandle(
       apiKey,
       name: agent.name,
       model: modelSel,
+      mcpServers,
       local: { cwd, enableAgentRetries: false },
     })) as unknown as CursorAgent;
     db.updateAgent(agent.id, { cursorAgentId: handle.agentId });
@@ -377,6 +388,28 @@ async function getHandle(
 
   handles.set(agent.id, handle);
   return handle;
+}
+
+export async function registerAgentMcp(agentId: string): Promise<{ ok: boolean; error?: string; note?: string }> {
+  const agent = db.getAgent(agentId);
+  if (!agent) return { ok: false, error: 'Agent not found' };
+  dropAgentHandle(agentId);
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return { ok: true, note: 'Saved. MCP attaches on the next chat turn after you set an API key.' };
+  }
+  try {
+    await getHandle(agent, apiKey, db.agentWorkspacePath(agentId), false);
+    const n = Object.keys(mcpServersForAgent(agent.config) || {}).length;
+    return {
+      ok: true,
+      note: n
+        ? 'MCP registered on this agent session. Next message can use those tools.'
+        : 'Session refreshed with no MCP servers.',
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 export async function listModels(): Promise<CatalogModel[]> {
@@ -634,6 +667,7 @@ const sdkPrompt = [
         {
           local: { force: true },
           model: toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog),
+          mcpServers: mcpServersForAgent(agent.config),
           onDelta: takeDelta,
         }
       );

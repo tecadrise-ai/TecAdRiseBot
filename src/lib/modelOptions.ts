@@ -1,3 +1,5 @@
+import { mcpFingerprint } from './mcpConfig';
+
 export type ModelParam = { id: string; value: string };
 
 export type CatalogParam = {
@@ -92,6 +94,7 @@ export function shouldRecreateSdkAgent(
   const nextModel = patch.model ?? prev.model;
   if (readModelMode(patch.config, nextModel) !== readModelMode(prev.config, prev.model)) return true;
   if (readEffort(patch.config) !== readEffort(prev.config)) return true;
+  if (mcpFingerprint(patch.config) !== mcpFingerprint(prev.config)) return true;
   return false;
 }
 

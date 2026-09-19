@@ -4,6 +4,7 @@ import { ModalBackdrop } from './ModalBackdrop';
 import { ScheduleBuilder } from './ScheduleBuilder';
 import { AGENT_BADGE_COLORS } from '../lib/agentColors';
 import { DEFAULT_SCHEDULE, describeSchedule, encodeSchedule, type ScheduleDraft } from '../lib/schedule';
+import { mcpJsonFromConfig, parseMcpJson } from '../lib/mcpConfig';
 import { DEFAULT_AGENT_SOUL, resolveAgentSoul } from '../lib/soul';
 import {
   baseModelId,
@@ -25,7 +26,7 @@ type Props = {
 };
 
 export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
-  const [tab, setTab] = useState<'general' | 'routines'>('general');
+  const [tab, setTab] = useState<'general' | 'routines' | 'mcp'>('general');
   const [name, setName] = useState('');
   const [color, setColor] = useState('#4C78FF');
   const [model, setModel] = useState('');
@@ -33,6 +34,8 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
   const [effort, setEffort] = useState('medium');
   const [lastMessages, setLastMessages] = useState(DEFAULT_LAST_MESSAGES);
   const [soul, setSoul] = useState('');
+  const [mcpJson, setMcpJson] = useState('{\n}\n');
+  const [mcpBusy, setMcpBusy] = useState(false);
   const [models, setModels] = useState<CatalogModel[]>([]);
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
@@ -60,6 +63,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
     setEffort(readEffort(agent.config));
     setLastMessages(readLastMessages(agent.config));
     setSoul(resolveAgentSoul(agent.instructions));
+    setMcpJson(mcpJsonFromConfig(agent.config));
     setStatus('');
     setRName('');
     setSchedule(DEFAULT_SCHEDULE);
@@ -111,6 +115,30 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
     }
   }
 
+  async function registerMcp() {
+    if (mcpBusy) return;
+    setMcpBusy(true);
+    setStatus('');
+    const parsed = parseMcpJson(mcpJson);
+    if (!parsed.ok) {
+      setStatus(parsed.error);
+      setMcpBusy(false);
+      return;
+    }
+    try {
+      await window.tecapi.agents.update(agent.id, {
+        config: { ...(agent.config || {}), mcpServers: parsed.servers },
+      });
+      const result = await window.tecapi.agents.registerMcp(agent.id);
+      setStatus(result.ok ? result.note || 'Registered.' : result.error || 'Register failed');
+      onSaved();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMcpBusy(false);
+    }
+  }
+
   return (
     <ModalBackdrop onClose={onClose}>
       <div className="modal agent-settings-modal" onClick={(e) => e.stopPropagation()}>
@@ -137,6 +165,13 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
             onClick={() => setTab('routines')}
           >
             Routines
+          </button>
+          <button
+            type="button"
+            className={tab === 'mcp' ? 'active' : ''}
+            onClick={() => setTab('mcp')}
+          >
+            MCP
           </button>
         </div>
 
@@ -388,6 +423,25 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
             </div>
           )}
 
+          {tab === 'mcp' && (
+            <div className="mcp-panel">
+              <div className="hint" style={{ marginTop: 0 }}>
+                Per-agent MCP servers as JSON. Register saves and attaches them to this agent session. Empty {'{}'} clears MCP. Not started for every agent at app boot. Next chat turn also sends the same servers.
+              </div>
+              <label className="field">
+                <span>mcpServers</span>
+                <textarea
+                  className="mcp-editor"
+                  spellCheck={false}
+                  value={mcpJson}
+                  onChange={(e) => setMcpJson(e.target.value)}
+                  placeholder={'{\n  "name": { "command": "npx", "args": ["-y", "pkg"] }\n}\n'}
+                />
+              </label>
+              {status ? <p className="status">{status}</p> : null}
+            </div>
+          )}
+
         </div>
 
         <div className="modal-footer">
@@ -402,6 +456,16 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
               onClick={() => void saveGeneral()}
             >
               Save
+            </button>
+          )}
+          {tab === 'mcp' && (
+            <button
+              type="button"
+              className="primary"
+              disabled={mcpBusy}
+              onClick={() => void registerMcp()}
+            >
+              {mcpBusy ? 'Registering...' : 'Register'}
             </button>
           )}
         </div>

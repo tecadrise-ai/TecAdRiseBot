@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
-import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle } from './agentRunner';
+import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp } from './agentRunner';
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
 import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
@@ -126,6 +126,8 @@ function registerIpc() {
       return next;
     }
   );
+
+  ipcMain.handle('agents:registerMcp', async (_e, id: string) => registerAgentMcp(id));
 
   ipcMain.handle('agents:delete', async (_e, id: string) => {
     await cancelAgentRun(id);

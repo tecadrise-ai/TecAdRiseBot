@@ -1080,6 +1080,18 @@
   border-bottom-color: var(--accent, #4c78ff);
   font-weight: 600;
 }
+.mcp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mcp-editor {
+  min-height: 260px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
 .routines-panel {
   display: flex;
   flex-direction: column;

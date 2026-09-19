@@ -50,6 +50,8 @@ const api = {
       }
     ) => ipcRenderer.invoke('agents:update', id, patch),
     delete: (id: string) => ipcRenderer.invoke('agents:delete', id),
+    registerMcp: (id: string) =>
+      ipcRenderer.invoke('agents:registerMcp', id) as Promise<{ ok: boolean; error?: string; note?: string }>,
   },
   messages: {
     list: (agentId: string): Promise<ChatMessage[]> =>

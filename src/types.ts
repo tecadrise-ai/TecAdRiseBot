@@ -37,6 +37,7 @@ export type AppSettings = {
   accountName: string;
   userDataPath: string;
   memoryPath: string;
+  skillsPath: string;
   version: string;
   platform: string;
 };

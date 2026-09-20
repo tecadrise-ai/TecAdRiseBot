@@ -580,6 +580,7 @@ const sdkPrompt = [
     systemPrompt,
     systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
     '[Memory directory]' + '\n' + db.ensureMemoryDir() + '\nRead index.md first. Write lasting facts here. Shared by all agents.\n[/Memory directory]',
+    '[Skills]' + '\n' + db.formatSkillsCatalog() + '\n[/Skills]',
     runtimeCtx,
     instructions
       ? '[Agent soul]' + '\n' + instructions + '\n[/Agent soul]'

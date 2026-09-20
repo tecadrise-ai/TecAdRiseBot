@@ -189,6 +189,7 @@ export async function initDb(userDataPath?: string): Promise<void> {
   migrateAgentsSchema();
   persist();
   ensureMemoryDir(base);
+  ensureSkillsDir(base);
   void __dirname;
 }
 
@@ -567,7 +568,70 @@ export function ensureMemoryDir(userDataPath?: string): string {
   if (!fs.existsSync(logPath)) {
     fs.writeFileSync(logPath, '# Memory log\n\n', 'utf8');
   }
+  fs.mkdirSync(path.join(dir, 'notes'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'raw'), { recursive: true });
   return dir;
+}
+
+export function ensureSkillsDir(userDataPath?: string): string {
+  const base = userDataPath ?? app.getPath('userData');
+  const dir = path.join(base, 'skills');
+  fs.mkdirSync(dir, { recursive: true });
+  const readme = path.join(dir, 'README.md');
+  if (!fs.existsSync(readme)) {
+    fs.writeFileSync(
+      readme,
+      '# Skills\n\nOne subfolder per skill. Required file: SKILL.md\n\nExample: skills/seo/SKILL.md\n\nAll agents see a catalog of these folders every turn. When the user says to use a named skill, the agent should read that SKILL.md and follow it.\n',
+      'utf8'
+    );
+  }
+  return dir;
+}
+
+function skillBlurb(text: string): string {
+  const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (fm) {
+    const d = fm[1].match(/^description:\s*(.+)$/m);
+    if (d) return d[1].replace(/^["']|["']$/g, '').trim().slice(0, 160);
+  }
+  const line = text
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .find((s) => s && !s.startsWith('#') && s !== '---');
+  return (line || 'Skill').slice(0, 160);
+}
+
+export function formatSkillsCatalog(): string {
+  const root = ensureSkillsDir();
+  const lines: string[] = [
+    `Root: ${root}`,
+    'When the user names a skill (for example "use seo skill"), open that subfolder and read SKILL.md first, then follow it. Do not invent a skill that is not listed. If none match, say so.',
+  ];
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    entries = [];
+  }
+  const skills: string[] = [];
+  for (const ent of entries) {
+    if (!ent.isDirectory() || ent.name.startsWith('.')) continue;
+    const skillFile = path.join(root, ent.name, 'SKILL.md');
+    if (!fs.existsSync(skillFile)) continue;
+    let body = '';
+    try {
+      body = fs.readFileSync(skillFile, 'utf8');
+    } catch {
+      body = '';
+    }
+    skills.push(`- ${ent.name}: ${skillBlurb(body)} | ${skillFile}`);
+  }
+  if (!skills.length) {
+    lines.push('No skill folders yet. Add a subfolder with SKILL.md inside this root.');
+  } else {
+    lines.push(...skills);
+  }
+  return lines.join('\n');
 }
 
 export function agentWorkspacePath(agentId: string, userDataPath?: string): string {

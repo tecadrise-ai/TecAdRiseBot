@@ -462,6 +462,13 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                   <code className="path">{settings?.memoryPath || (settings?.userDataPath ? `${settings.userDataPath}\\memory` : '')}</code>
                   <span className="hint">Shared by all agents. MEMORY.md tells them how to use it. Injected every turn.</span>
                 </label>
+                <label className="field">
+                  <span>Skills directory</span>
+                  <code className="path">{settings?.skillsPath || (settings?.userDataPath ? `${settings.userDataPath}\\skills` : '')}</code>
+                  <span className="hint">
+                    Shared by all agents. One subfolder per skill, with SKILL.md inside. Catalog is injected every turn so &quot;use seo skill&quot; maps to that folder.
+                  </span>
+                </label>
                 <div className="row">
                   <button
                     type="button"
@@ -482,6 +489,16 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                     }}
                   >
                     Open memory folder
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      const p = settings?.skillsPath;
+                      if (p) void window.tecapi.app.openPath(p);
+                    }}
+                  >
+                    Open skills folder
                   </button>
                 </div>
               </section>

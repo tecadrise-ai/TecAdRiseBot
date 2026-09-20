@@ -291,6 +291,7 @@ export function getPublicSettings() {
     accountName: meta.accountName ?? 'Local user',
     userDataPath: app.getPath('userData'),
     memoryPath: db.ensureMemoryDir(),
+    skillsPath: db.ensureSkillsDir(),
     version: app.getVersion(),
     platform: process.platform,
     apiPort: listenPort,

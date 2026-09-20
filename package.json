@@ -2,11 +2,11 @@
   "name": "tecadrise-bot",
   "productName": "TecAdRiseBot",
   "version": "0.1.0",
-  "description": "Local Windows multi-agent desktop shell powered by the Cursor TypeScript SDK",
+  "description": "Open-source local multi-agent desktop shell powered by the Cursor TypeScript SDK",
   "main": "dist-electron/main.js",
   "author": "TecAdRise",
   "license": "MIT",
-  "private": true,
+  "private": false,
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -54,6 +54,7 @@
       "dist-electron/**/*",
       "SYSTEM.md",
       "MEMORY.md",
+      "defaults/**/*",
       "package.json"
     ]
   }

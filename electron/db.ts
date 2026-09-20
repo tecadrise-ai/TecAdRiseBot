@@ -200,6 +200,7 @@ export async function initDb(userDataPath?: string): Promise<void> {
   persist();
   ensureMemoryDir(base);
   ensureSkillsDir(base);
+  seedDefaultMcp();
   void __dirname;
 }
 
@@ -619,10 +620,50 @@ export function ensureMemoryDir(userDataPath?: string): string {
   return dir;
 }
 
+function bundledDefaultsDir(): string {
+  return path.join(process.env.APP_ROOT || path.join(__dirname, '..'), 'defaults');
+}
+
+function seedBundledSkills(userSkillsDir: string): void {
+  const srcRoot = path.join(bundledDefaultsDir(), 'skills');
+  if (!fs.existsSync(srcRoot)) return;
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(srcRoot, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory() || ent.name.startsWith('.')) continue;
+    const dest = path.join(userSkillsDir, ent.name);
+    if (fs.existsSync(path.join(dest, 'SKILL.md'))) continue;
+    try {
+      fs.cpSync(path.join(srcRoot, ent.name), dest, { recursive: true });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function seedDefaultMcp(): void {
+  if (getSetting('mcp_servers_json') != null) return;
+  const p = path.join(bundledDefaultsDir(), 'mcp-servers.json');
+  if (!fs.existsSync(p)) return;
+  try {
+    const raw = fs.readFileSync(p, 'utf8');
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+    setSetting('mcp_servers_json', JSON.stringify(parsed));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function ensureSkillsDir(userDataPath?: string): string {
   const base = userDataPath ?? app.getPath('userData');
   const dir = path.join(base, 'skills');
   fs.mkdirSync(dir, { recursive: true });
+  seedBundledSkills(dir);
   const readme = path.join(dir, 'README.md');
   if (!fs.existsSync(readme)) {
     fs.writeFileSync(

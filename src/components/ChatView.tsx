@@ -3,6 +3,7 @@ import type { Agent, ChatMessage } from '../types';
 import { MarkdownBody } from './MarkdownBody';
 import { fmtTs, fmtUsage, parseMessageUsage } from '../lib/usage';
 import { formatModelLabel } from '../lib/modelOptions';
+import { unpackAssistantBody } from '../lib/assistantBody';
 
 export type PendingAttachment = {
   id: string;
@@ -174,13 +175,15 @@ export function ChatView({
         {messages.map((m) => {
           if (!m.content) return null;
           const metaLine = m.role === 'assistant' ? assistantMetaLine(m) : '';
+          const parts = m.role === 'assistant' ? unpackAssistantBody(m.content) : null;
           return (
             <div key={m.id} className={`bubble-row ${m.role}`}>
               <div className={`bubble ${m.role} ${streamingId === m.id ? 'streaming' : ''}`}>
                 {m.role === 'interbot' && <div className="badge">Inter-bot</div>}
-                {m.role === 'assistant' ? (
+                {m.role === 'assistant' && parts ? (
                   <>
-                    <MarkdownBody text={m.content} />
+                    {parts.thinking ? <MarkdownBody className="md-thinking" text={parts.thinking} /> : null}
+                    {parts.answer ? <MarkdownBody text={parts.answer} /> : null}
                     {metaLine ? (
                       <div className="msg-time" title={metaLine}>
                         {metaLine}

@@ -394,6 +394,9 @@
   overflow-x: auto;
   font-weight: 400;
 }
+.md-thinking {
+  margin-bottom: 12px;
+}
 .md-body > *:first-child {
   margin-top: 0;
 }
@@ -417,6 +420,19 @@
   font-size: 13px;
   font-weight: 600;
   line-height: 1.55;
+}
+.md-body.md-thinking,
+.md-body.md-thinking p,
+.md-body.md-thinking li,
+.md-body.md-thinking td,
+.md-body.md-thinking th,
+.md-body.md-thinking a,
+.md-body.md-thinking blockquote,
+.md-body.md-thinking .md-heading,
+.md-body.md-thinking strong,
+.md-body.md-thinking b {
+  color: #8e8e93;
+  font-weight: 400;
 }
 .md-body ul,
 .md-body ol {

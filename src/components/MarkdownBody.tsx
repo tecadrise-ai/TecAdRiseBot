@@ -4,7 +4,7 @@ import { restoreFlattenedMarkdown } from '../lib/markdown';
 
 marked.setOptions({ gfm: true, breaks: true });
 
-export function MarkdownBody({ text }: { text: string }) {
+export function MarkdownBody({ text, className }: { text: string; className?: string }) {
   const clean = restoreFlattenedMarkdown(text).replace(/\n{3,}/g, '\n\n');
   const html = DOMPurify.sanitize(String(marked.parse(clean)), {
     ADD_TAGS: ['img'],
@@ -16,7 +16,7 @@ export function MarkdownBody({ text }: { text: string }) {
     .replace(/<\/h[1-6]>/gi, '</p>');
   return (
     <div
-      className="md-body"
+      className={['md-body', className].filter(Boolean).join(' ')}
       dangerouslySetInnerHTML={{ __html: html }}
       onClick={(e) => {
         const a = (e.target as HTMLElement | null)?.closest?.('a');

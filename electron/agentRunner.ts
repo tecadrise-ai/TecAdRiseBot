@@ -6,6 +6,7 @@ import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import { formatRuntimeContext } from './controlPlane';
 import { restoreFlattenedMarkdown } from '../src/lib/markdown';
+import { packAssistantBody, unpackAssistantBody } from '../src/lib/assistantBody';
 import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
 import { getApiKey } from './secrets';
@@ -257,6 +258,8 @@ function formatRecentChat(agentId: string, excludeIds: string[], limit: number):
   const lines = slice.map((m) => {
     let body = String(m.content || '').replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]');
     if (body.length > 2000) body = body.slice(0, 2000) + '...';
+    const unpacked = unpackAssistantBody(body);
+    body = unpacked.answer || unpacked.thinking || body;
     return `${m.role}: ${body}`;
   });
   return (
@@ -282,6 +285,23 @@ function lastAssistantFromConversation(turns: unknown): string {
   if (!texts.length) return '';
   const withBreaks = [...texts].reverse().find((x) => /\n/.test(x));
   return extractLastAssistantText(withBreaks ?? texts[texts.length - 1]);
+}
+
+function lastThinkingFromConversation(turns: unknown): string {
+  if (!Array.isArray(turns)) return '';
+  const texts: string[] = [];
+  for (const turn of turns) {
+    if (!turn || typeof turn !== 'object') continue;
+    const steps = (turn as { steps?: Array<{ type?: string; message?: { text?: string } }> }).steps;
+    if (!Array.isArray(steps)) continue;
+    for (const step of steps) {
+      if (step?.type === 'thinkingMessage' && step.message?.text) {
+        texts.push(String(step.message.text));
+      }
+    }
+  }
+  if (!texts.length) return '';
+  return texts[texts.length - 1].trim();
 }
 
 function isBusyError(err: unknown): boolean {
@@ -621,6 +641,7 @@ const sdkPrompt = [
 
     const sendOnce = async (h: CursorAgent) => {
       let turnText = '';
+      let thinkText = '';
       let turnEnded = false;
       let published = false;
       const genImages: GenImage[] = [];
@@ -630,6 +651,7 @@ const sdkPrompt = [
       });
 
       const compose = (text: string) => appendImagesToMarkdown(text.trim(), genImages);
+      const visible = () => packAssistantBody(thinkText, compose(turnText));
 
       const addImgs = (imgs: GenImage[]) => {
         for (const img of imgs) {
@@ -642,12 +664,15 @@ const sdkPrompt = [
       };
 
       const publishDone = () => {
-        assembled = extractLastAssistantText(compose(turnText || assembled));
-        if (!assembled) return;
+        const answer = extractLastAssistantText(compose(turnText || unpackAssistantBody(assembled).answer));
+        assembled = packAssistantBody(thinkText, answer);
+        if (!unpackAssistantBody(assembled).answer && !unpackAssistantBody(assembled).thinking) return;
         db.updateMessageContent(assistantMessageId, assembled);
         if (usage) db.patchMessageMeta(assistantMessageId, { usage });
         db.updateAgent(opts.agentId, {
-          lastSnippet: assembled.replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]').slice(0, 120),
+          lastSnippet: (unpackAssistantBody(assembled).answer || assembled)
+            .replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]')
+            .slice(0, 120),
         });
         emit('chat:stream-done', {
           agentId: opts.agentId,
@@ -681,7 +706,7 @@ const sdkPrompt = [
         }
         if (update.type === 'tool-call-completed') {
           addImgs(imagesFromUnknown(update.toolCall ?? update));
-          assembled = compose(turnText);
+          assembled = visible();
           emit('chat:stream-delta', {
             agentId: opts.agentId,
             messageId: assistantMessageId,
@@ -691,7 +716,7 @@ const sdkPrompt = [
         }
         if (update.type === 'turn-ended') {
           if (update.usage) usage = addUsage(usage, update.usage);
-          assembled = compose(turnText);
+          assembled = visible();
           turnEnded = true;
           emit('chat:stream-delta', {
             agentId: opts.agentId,
@@ -707,9 +732,19 @@ const sdkPrompt = [
         }
         if (published) return;
         if (stopRequested.has(opts.agentId)) return;
+        if (update.type === 'thinking-delta' && update.text) {
+          thinkText += update.text;
+          assembled = visible();
+          emit('chat:stream-delta', {
+            agentId: opts.agentId,
+            messageId: assistantMessageId,
+            delta: update.text,
+            content: assembled,
+          });
+        }
         if (update.type === 'text-delta' && update.text) {
           turnText += update.text;
-          assembled = compose(turnText);
+          assembled = visible();
           emit('chat:stream-delta', {
             agentId: opts.agentId,
             messageId: assistantMessageId,
@@ -749,6 +784,8 @@ const sdkPrompt = [
             addImgs(imagesFromUnknown(conv));
             const fromConv = lastAssistantFromConversation(conv);
             if (fromConv.trim()) turnText = fromConv;
+            const fromThink = lastThinkingFromConversation(conv);
+            if (fromThink) thinkText = fromThink;
           }
         } catch {
           /* ignore */
@@ -759,8 +796,7 @@ const sdkPrompt = [
           /* ignore */
         }
         if (genImages.length) saveGeneratedImages(cwd, genImages);
-        assembled = compose(turnText || assembled);
-        if (assembled) publishDone();
+        publishDone();
       };
 
       if (published || turnEnded) {
@@ -802,6 +838,8 @@ const sdkPrompt = [
             const conv = await run.conversation();
             addImgs(imagesFromUnknown(conv));
             fromConv = lastAssistantFromConversation(conv);
+            const fromThink = lastThinkingFromConversation(conv);
+            if (fromThink) thinkText = fromThink;
           }
         } catch {
           /* ignore */
@@ -812,12 +850,15 @@ const sdkPrompt = [
           /* ignore */
         }
         if (genImages.length) saveGeneratedImages(cwd, genImages);
-        assembled = extractLastAssistantText(
-          compose(fromConv || turnText || assembled || (typeof result.result === 'string' ? result.result : ''))
+        const rawAnswer = extractLastAssistantText(
+          compose(fromConv || turnText || unpackAssistantBody(assembled).answer || (typeof result.result === 'string' ? result.result : ''))
         );
+        assembled = packAssistantBody(thinkText, rawAnswer);
         if (result.status === 'error') {
           const msg = result.error?.message || 'Agent run failed';
-          if (!assembled) assembled = `Error: ${msg}`;
+          if (!unpackAssistantBody(assembled).answer && !unpackAssistantBody(assembled).thinking) {
+            assembled = `Error: ${msg}`;
+          }
         }
       } finally {
         activeRuns.delete(opts.agentId);
@@ -872,11 +913,16 @@ const sdkPrompt = [
     }
 
     if (!assembled) assembled = '(No response text from agent.)';
-    assembled = extractLastAssistantText(assembled);
+    else {
+      const u = unpackAssistantBody(extractLastAssistantText(assembled));
+      assembled = packAssistantBody(u.thinking, u.answer);
+    }
 
     db.updateMessageContent(assistantMessageId, assembled);
     if (usage) db.patchMessageMeta(assistantMessageId, { usage });
-    db.updateAgent(opts.agentId, { lastSnippet: assembled.slice(0, 120) });
+    db.updateAgent(opts.agentId, {
+      lastSnippet: (unpackAssistantBody(assembled).answer || assembled).slice(0, 120),
+    });
     emit('chat:stream-done', {
       agentId: opts.agentId,
       messageId: assistantMessageId,

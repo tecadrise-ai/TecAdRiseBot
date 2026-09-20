@@ -240,8 +240,16 @@ export default function App() {
         streamingId={streamingId}
         agentRunning={Boolean(selectedId && runningIds.has(selectedId))}
         onSend={send}
-        onStop={() => {
-          if (selectedId) void window.tecapi.chat.stop(selectedId);
+        onStop={async () => {
+          if (!selectedId) return;
+          liveRuns.current.delete(selectedId);
+          setRunningIds((prev) => {
+            const next = new Set(prev);
+            next.delete(selectedId);
+            return next;
+          });
+          setStreamingId(null);
+          await window.tecapi.chat.stop(selectedId);
         }}
         onOpenAgentSettings={() => setAgentSettingsOpen(true)}
       />

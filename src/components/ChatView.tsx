@@ -18,7 +18,7 @@ type Props = {
   streamingId: string | null;
   agentRunning?: boolean;
   onSend: (text: string, attachments: PendingAttachment[]) => Promise<void>;
-  onStop: () => void;
+  onStop: () => void | Promise<void>;
   onOpenAgentSettings: () => void;
 };
 
@@ -79,13 +79,15 @@ export function ChatView({
 
   async function submit() {
     const text = draft.trim();
-    if ((!text && pending.length === 0) || !agent || sending || streamingId) return;
+    if ((!text && pending.length === 0) || !agent || sending) return;
     const attachments = pending;
+    const mustStop = Boolean(streamingId || agentRunning);
     setDraft('');
     setPending([]);
     setSending(true);
     try {
-      await onSend(text, attachments);
+      if (mustStop) await onStop();
+      void onSend(text, attachments);
     } finally {
       setSending(false);
       taRef.current?.focus();
@@ -101,7 +103,9 @@ export function ChatView({
   }
 
   const busy = !!streamingId || agentRunning;
-  const canSend = (draft.trim().length > 0 || pending.length > 0) && !busy && !sending;
+  const hasDraft = draft.trim().length > 0 || pending.length > 0;
+  const canSend = hasDraft && !sending;
+  const showStop = busy && !hasDraft;
 
   return (
     <main className="chat">
@@ -278,7 +282,7 @@ export function ChatView({
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                if (!busy) void submit();
+                if (hasDraft && !sending) void submit();
               }
             }}
           />
@@ -295,14 +299,14 @@ export function ChatView({
           </button>
           <button
             type="button"
-            className={`send-btn${busy ? ' stop' : ''}${!busy && !canSend ? ' idle' : ''}`}
-            aria-disabled={!busy && !canSend}
+            className={`send-btn${showStop ? ' stop' : ''}${!showStop && !canSend ? ' idle' : ''}`}
+            aria-disabled={!showStop && !canSend}
             onClick={() => {
-              if (busy) onStop();
+              if (showStop) void onStop();
               else if (canSend) void submit();
             }}
           >
-            {busy ? 'Stop' : 'Send'}
+            {showStop ? 'Stop' : 'Send'}
           </button>
         </div>
       </div>

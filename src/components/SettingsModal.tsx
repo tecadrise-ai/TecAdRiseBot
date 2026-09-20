@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { AppSettings } from '../types';
 import { ModalBackdrop } from './ModalBackdrop';
+import { EMPTY_MCP_JSON } from '../lib/mcpConfig';
 import { fmtTok } from '../lib/usage';
 
-type Tab = 'general' | 'system' | 'memory' | 'computer' | 'usage' | 'updates';
+type Tab = 'general' | 'system' | 'memory' | 'mcp' | 'computer' | 'usage' | 'updates';
 
 type AgentUsageRow = {
   agentId: string;
@@ -124,6 +125,8 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
   const [systemDirty, setSystemDirty] = useState(false);
   const [systemMemory, setSystemMemory] = useState('');
   const [memoryDirty, setMemoryDirty] = useState(false);
+  const [mcpJson, setMcpJson] = useState(EMPTY_MCP_JSON);
+  const [mcpBusy, setMcpBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -151,6 +154,12 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
         .catch(() => {
           setSystemMemory('');
         });
+    }
+    const loadMcp = window.tecapi.settings.getGlobalMcp;
+    if (typeof loadMcp === 'function') {
+      void loadMcp()
+        .then((t) => setMcpJson(typeof t === 'string' && t.trim() ? t : EMPTY_MCP_JSON))
+        .catch(() => setMcpJson(EMPTY_MCP_JSON));
     }
   }, [open, settings]);
 
@@ -215,6 +224,20 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
     }
   }
 
+  async function registerGlobalMcp() {
+    if (mcpBusy) return;
+    setMcpBusy(true);
+    setStatus('');
+    try {
+      const result = await window.tecapi.settings.registerGlobalMcp(mcpJson);
+      setStatus(result.ok ? result.note || 'Registered.' : result.error || 'Register failed');
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMcpBusy(false);
+    }
+  }
+
   return (
     <ModalBackdrop onClose={onClose}>
       <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
@@ -226,6 +249,7 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                 ['general', 'General'],
                 ['system', 'System prompt'],
                 ['memory', 'System memory'],
+                ['mcp', 'MCP'],
                 ['computer', 'Computer'],
                 ['usage', 'Usage & Billing'],
                 ['updates', 'Updates'],
@@ -379,6 +403,39 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                   {memoryDirty && <span className="hint">Unsaved changes</span>}
                 </div>
                 {status && <p className="status">{status}</p>}
+              </section>
+            )}
+
+            {tab === 'mcp' && (
+              <section>
+                <h2>Common MCP</h2>
+                <p className="hint">
+                  Shared servers for every agent. Merged with that agent&apos;s MCP JSON on each turn.
+                  Same name: agent JSON wins. Empty agent {'{}'} still gets these. Register saves and
+                  drops idle sessions so the next message attaches. Does not start MCP for every agent
+                  now. Use an agent&apos;s Register only for extra servers on that agent.
+                </p>
+                <label className="field">
+                  <span>mcpServers</span>
+                  <textarea
+                    className="mcp-editor"
+                    spellCheck={false}
+                    value={mcpJson}
+                    onChange={(e) => setMcpJson(e.target.value)}
+                    placeholder={'{\n  "name": { "command": "npx", "args": ["-y", "pkg"] }\n}\n'}
+                  />
+                </label>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={mcpBusy}
+                    onClick={() => void registerGlobalMcp()}
+                  >
+                    {mcpBusy ? 'Registering...' : 'Register'}
+                  </button>
+                </div>
+                {status ? <p className="status">{status}</p> : null}
               </section>
             )}
 

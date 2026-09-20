@@ -325,7 +325,7 @@
   width: fit-content;
   padding: 14px 18px;
   border-radius: 20px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.55;
   font-family: var(--font);
@@ -339,7 +339,7 @@
   border-radius: 18px;
   border-bottom-right-radius: 6px;
   white-space: pre-wrap;
-  font-size: 14px;
+  font-size: 13px;
 }
 .bubble.assistant {
   background: #ececee;
@@ -381,7 +381,7 @@
 .md-body h6,
 .md-body .md-heading {
   font-family: var(--font);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.55;
   letter-spacing: 0;
 }
@@ -410,7 +410,7 @@
 .md-body strong,
 .md-body b,
 .md-body th {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.55;
 }
@@ -427,7 +427,7 @@
 }
 .md-body code {
   font-family: ui-monospace, Consolas, "Segoe UI Mono", monospace;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.55;
   color: #b42318;
@@ -447,19 +447,19 @@
   background: none;
   color: #5b4b8a;
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.55;
   border-radius: 0;
 }
 .md-body a {
   color: #1d4ed8;
-  font-size: 14px;
+  font-size: 13px;
 }
 .md-body table {
   border-collapse: separate;
   border-spacing: 0;
   margin: 8px 0 12px;
-  font-size: 14px;
+  font-size: 13px;
   width: 100%;
   background: #fff;
   border-radius: 10px;
@@ -473,7 +473,7 @@
   padding: 8px 12px;
   text-align: left;
   vertical-align: top;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.55;
 }
 .md-body th {

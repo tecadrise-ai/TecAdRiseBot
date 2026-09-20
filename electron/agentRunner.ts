@@ -10,7 +10,7 @@ import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
 import { getApiKey } from './secrets';
 import { DEFAULT_MODEL_ID, readLastMessages, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
-import { parseMcpJson, type McpServers } from '../src/lib/mcpConfig';
+import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
 
 export type ChatAttachment = {
   name: string;
@@ -69,6 +69,10 @@ export function dropAgentHandle(agentId: string): void {
     /* ignore */
   }
   handles.delete(agentId);
+}
+
+export function dropAllAgentHandles(): void {
+  for (const id of Array.from(handles.keys())) dropAgentHandle(id);
 }
 
 export function isAgentBusy(agentId: string): boolean {
@@ -322,10 +326,19 @@ async function cancelActive(agentId: string) {
   }
 }
 
+const GLOBAL_MCP_SETTING = 'mcp_servers_json';
+
+function loadGlobalMcpServers(): McpServers {
+  const parsed = parseMcpJson(db.getSetting(GLOBAL_MCP_SETTING) || '{}');
+  return parsed.ok ? parsed.servers : {};
+}
+
 function mcpServersForAgent(config: Record<string, unknown> | null | undefined): McpServers | undefined {
-  const parsed = parseMcpJson(JSON.stringify(config?.mcpServers ?? {}));
-  if (!parsed.ok || !Object.keys(parsed.servers).length) return undefined;
-  return parsed.servers;
+  const agentParsed = parseMcpJson(JSON.stringify(config?.mcpServers ?? {}));
+  const agentServers = agentParsed.ok ? agentParsed.servers : {};
+  const merged = mergeMcpServers(loadGlobalMcpServers(), agentServers);
+  if (!Object.keys(merged).length) return undefined;
+  return merged;
 }
 
 async function getHandle(
@@ -404,12 +417,33 @@ export async function registerAgentMcp(agentId: string): Promise<{ ok: boolean; 
     return {
       ok: true,
       note: n
-        ? 'MCP registered on this agent session. Next message can use those tools.'
+        ? 'MCP registered on this agent session (global + this agent). Next message can use those tools.'
         : 'Session refreshed with no MCP servers.',
     };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+export function readGlobalMcpJson(): string {
+  return mcpJsonFromServers(loadGlobalMcpServers());
+}
+
+export async function registerGlobalMcp(raw: string): Promise<{ ok: boolean; error?: string; note?: string }> {
+  const parsed = parseMcpJson(raw);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  db.setSetting(GLOBAL_MCP_SETTING, JSON.stringify(parsed.servers));
+  dropAllAgentHandles();
+  const n = Object.keys(parsed.servers).length;
+  const busy = listBusyAgentIds().length;
+  return {
+    ok: true,
+    note: n
+      ? `Saved ${n} global MCP server${n === 1 ? '' : 's'}. Idle sessions will attach on the next message. ${
+          busy ? 'Busy agents pick this up after their current turn. ' : ''
+        }Agent Register is only for extra servers on one agent.`
+      : 'Cleared global MCP. Idle sessions drop it on the next message.',
+  };
 }
 
 export async function listModels(): Promise<CatalogModel[]> {

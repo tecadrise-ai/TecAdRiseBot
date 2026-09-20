@@ -426,7 +426,9 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
           {tab === 'mcp' && (
             <div className="mcp-panel">
               <div className="hint" style={{ marginTop: 0 }}>
-                Per-agent MCP servers as JSON. Register saves and attaches them to this agent session. Empty {'{}'} clears MCP. Not started for every agent at app boot. Next chat turn also sends the same servers.
+                Extra MCP for this agent only. Merged on top of Local user → MCP. Same name wins here.
+                Empty {'{}'} still keeps globals. Register attaches this mix on this session. Next chat
+                turn also sends the merged list.
               </div>
               <label className="field">
                 <span>mcpServers</span>

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
-import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp } from './agentRunner';
+import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp, readGlobalMcpJson, registerGlobalMcp } from './agentRunner';
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
 import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
@@ -219,6 +219,8 @@ function registerIpc() {
   ipcMain.handle('settings:setSystemPrompt', (_e, text: string) => writeSystemPrompt(String(text ?? '')));
   ipcMain.handle('settings:getSystemMemory', () => readSystemMemory());
   ipcMain.handle('settings:setSystemMemory', (_e, text: string) => writeSystemMemory(String(text ?? '')));
+  ipcMain.handle('settings:getGlobalMcp', () => readGlobalMcpJson());
+  ipcMain.handle('settings:registerGlobalMcp', (_e, raw: string) => registerGlobalMcp(String(raw ?? '')));
 
   ipcMain.handle('models:list', async () => listModels());
 

@@ -12,12 +12,19 @@ export type McpServers = Record<string, McpServerEntry>;
 
 export const EMPTY_MCP_JSON = '{\n}\n';
 
+export function mcpJsonFromServers(servers: McpServers | null | undefined): string {
+  if (!servers || !Object.keys(servers).length) return EMPTY_MCP_JSON;
+  return JSON.stringify(servers, null, 2) + '\n';
+}
+
 export function mcpJsonFromConfig(config: Record<string, unknown> | null | undefined): string {
   const raw = config?.mcpServers;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Object.keys(raw as object).length) {
-    return EMPTY_MCP_JSON;
-  }
-  return JSON.stringify(raw, null, 2) + '\n';
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return EMPTY_MCP_JSON;
+  return mcpJsonFromServers(raw as McpServers);
+}
+
+export function mergeMcpServers(globalServers: McpServers, agentServers: McpServers): McpServers {
+  return { ...globalServers, ...agentServers };
 }
 
 export function mcpFingerprint(config: Record<string, unknown> | null | undefined): string {

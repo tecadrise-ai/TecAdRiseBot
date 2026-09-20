@@ -97,6 +97,13 @@ const api = {
     getSystemMemory: (): Promise<string> => ipcRenderer.invoke('settings:getSystemMemory'),
     setSystemMemory: (text: string): Promise<{ ok: true }> =>
       ipcRenderer.invoke('settings:setSystemMemory', text),
+    getGlobalMcp: (): Promise<string> => ipcRenderer.invoke('settings:getGlobalMcp'),
+    registerGlobalMcp: (json: string) =>
+      ipcRenderer.invoke('settings:registerGlobalMcp', json) as Promise<{
+        ok: boolean;
+        error?: string;
+        note?: string;
+      }>,
   },
   models: {
     list: (): Promise<

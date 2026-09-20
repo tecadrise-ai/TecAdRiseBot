@@ -228,7 +228,7 @@ function registerIpc() {
   ipcMain.handle('routines:list', () => db.listRoutines());
   ipcMain.handle(
     'routines:create',
-    (_e, input: { agentId: string; name: string; cron: string; prompt: string }) => {
+    (_e, input: { agentId: string; name: string; cron: string; prompt: string; forceTodos?: number }) => {
       return db.createRoutine({ id: uuid(), ...input });
     }
   );
@@ -237,7 +237,7 @@ function registerIpc() {
     (
       _e,
       id: string,
-      patch: Partial<{ name: string; cron: string; prompt: string; enabled: number }>
+      patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; forceTodos: number }>
     ) => db.updateRoutine(id, patch)
   );
   ipcMain.handle('routines:delete', (_e, id: string) => {
@@ -250,7 +250,7 @@ function registerIpc() {
     db.updateRoutine(id, { lastRunAt: Date.now() });
     return runAgentTurn({
       agentId: r.agentId,
-      userText: `[Scheduled routine: ${r.name}]\n\n${r.prompt}`,
+      userText: db.formatRoutineUserText(r),
       win: mainWindow,
       source: 'routine',
     });

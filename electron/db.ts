@@ -48,6 +48,7 @@ export type RoutineRow = {
   cron: string;
   prompt: string;
   enabled: number;
+  forceTodos: number;
   lastRunAt: number | null;
   createdAt: number;
 };
@@ -101,6 +102,13 @@ function migrateAgentsSchema(): void {
     ids.forEach((id, i) => {
       mustDb().run(`UPDATE agents SET sort_order=? WHERE id=?`, [i, id]);
     });
+  }
+}
+
+function migrateRoutinesSchema(): void {
+  const cols = tableColumns('routines');
+  if (!cols.has('force_todos')) {
+    mustDb().run(`ALTER TABLE routines ADD COLUMN force_todos INTEGER NOT NULL DEFAULT 0`);
   }
 }
 
@@ -178,7 +186,8 @@ export async function initDb(userDataPath?: string): Promise<void> {
       prompt TEXT NOT NULL,
       enabled INTEGER NOT NULL DEFAULT 1,
       last_run_at INTEGER,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      force_todos INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -187,6 +196,7 @@ export async function initDb(userDataPath?: string): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_messages_agent ON messages(agent_id, created_at);
   `);
   migrateAgentsSchema();
+  migrateRoutinesSchema();
   persist();
   ensureMemoryDir(base);
   ensureSkillsDir(base);
@@ -455,8 +465,18 @@ export function patchMessageMeta(id: string, patch: Record<string, unknown>): vo
   persist();
 }
 
+export function formatRoutineUserText(r: { name: string; prompt: string; forceTodos?: number }): string {
+  const body = `[Scheduled routine: ${r.name}]\n\n${r.prompt}`;
+  if (!r.forceTodos) return body;
+  return (
+    body +
+    '\n\n# Mode: FORCE updateTodos\n' +
+    'You MUST call the updateTodos tool with these routine steps as a checklist, then execute them in order, one step at a time. Do not skip updateTodos. If a step fails, stop and explain.\n'
+  );
+}
+
 export function listRoutines(agentId?: string): RoutineRow[] {
-  let sql = `SELECT id, agent_id, name, cron, prompt, enabled, last_run_at, created_at FROM routines`;
+  let sql = `SELECT id, agent_id, name, cron, prompt, enabled, force_todos, last_run_at, created_at FROM routines`;
   if (agentId) sql += ` WHERE agent_id=$aid`;
   sql += ` ORDER BY created_at DESC`;
   const stmt = mustDb().prepare(sql);
@@ -471,6 +491,7 @@ export function listRoutines(agentId?: string): RoutineRow[] {
       cron: String(r.cron),
       prompt: String(r.prompt),
       enabled: Number(r.enabled),
+      forceTodos: r.force_todos == null ? 0 : Number(r.force_todos),
       lastRunAt: r.last_run_at != null ? Number(r.last_run_at) : null,
       createdAt: Number(r.created_at),
     });
@@ -490,13 +511,15 @@ export function createRoutine(input: {
   cron: string;
   prompt: string;
   enabled?: number;
+  forceTodos?: number;
 }): RoutineRow {
   const now = Date.now();
   const enabled = input.enabled ?? 1;
+  const forceTodos = input.forceTodos ? 1 : 0;
   mustDb().run(
-    `INSERT INTO routines (id, agent_id, name, cron, prompt, enabled, last_run_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
-    [input.id, input.agentId, input.name, input.cron, input.prompt, enabled, now]
+    `INSERT INTO routines (id, agent_id, name, cron, prompt, enabled, force_todos, last_run_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+    [input.id, input.agentId, input.name, input.cron, input.prompt, enabled, forceTodos, now]
   );
   persist();
   return getRoutine(input.id)!;
@@ -504,17 +527,25 @@ export function createRoutine(input: {
 
 export function updateRoutine(
   id: string,
-  patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; lastRunAt: number | null }>
+  patch: Partial<{
+    name: string;
+    cron: string;
+    prompt: string;
+    enabled: number;
+    forceTodos: number;
+    lastRunAt: number | null;
+  }>
 ): RoutineRow | null {
   const existing = getRoutine(id);
   if (!existing) return null;
   mustDb().run(
-    `UPDATE routines SET name=?, cron=?, prompt=?, enabled=?, last_run_at=? WHERE id=?`,
+    `UPDATE routines SET name=?, cron=?, prompt=?, enabled=?, force_todos=?, last_run_at=? WHERE id=?`,
     [
       patch.name ?? existing.name,
       patch.cron ?? existing.cron,
       patch.prompt ?? existing.prompt,
       patch.enabled ?? existing.enabled,
+      patch.forceTodos !== undefined ? (patch.forceTodos ? 1 : 0) : existing.forceTodos,
       patch.lastRunAt !== undefined ? patch.lastRunAt : existing.lastRunAt,
       id,
     ]

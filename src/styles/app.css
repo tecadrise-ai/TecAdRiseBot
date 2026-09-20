@@ -8,10 +8,13 @@
 .sidebar {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
+  height: 100%;
+  min-height: 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .sidebar-top {
@@ -62,6 +65,7 @@
 
 .agent-list {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 6px 8px 12px;
   display: flex;
@@ -1134,6 +1138,22 @@
 .routine-form-actions {
   display: flex;
   justify-content: flex-end;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  margin: 4px 0 14px;
+}
+.check-row input {
+  width: 15px;
+  height: 15px;
+}
+.routine-todos-check {
+  margin-top: 8px;
 }
 .routine-list-header {
   font-weight: 600;

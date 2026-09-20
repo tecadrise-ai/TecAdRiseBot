@@ -200,7 +200,6 @@ export function Sidebar({
       ) : null}
 
       <div className="sidebar-footer">
-        <div className="marketplace-stub">Marketplace</div>
         <button type="button" className="account-row" onClick={onOpenSettings}>
           <div className="avatar small" style={{ background: '#4C78FF' }}>
             {(settings?.accountName || 'U').slice(0, 1).toUpperCase()}

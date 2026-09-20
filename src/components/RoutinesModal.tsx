@@ -14,6 +14,7 @@ export function RoutinesModal({ open, agents, selectedAgentId, onClose }: Props)
   const [name, setName] = useState('Hourly check-in');
   const [cron, setCron] = useState('0 * * * *');
   const [prompt, setPrompt] = useState('Give a one-paragraph status update for this workspace.');
+  const [forceTodos, setForceTodos] = useState(false);
   const [agentId, setAgentId] = useState(selectedAgentId ?? '');
   const [error, setError] = useState('');
 
@@ -38,6 +39,7 @@ export function RoutinesModal({ open, agents, selectedAgentId, onClose }: Props)
         name: name.trim() || 'Routine',
         cron: cron.trim(),
         prompt: prompt.trim(),
+        forceTodos: forceTodos ? 1 : 0,
       });
       await refresh();
     } catch (e) {
@@ -76,6 +78,14 @@ export function RoutinesModal({ open, agents, selectedAgentId, onClose }: Props)
           <label className="field">
             <span>Prompt</span>
             <textarea rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={forceTodos}
+              onChange={(e) => setForceTodos(e.target.checked)}
+            />
+            <span>Force updateTodos</span>
           </label>
           {error && <p className="status error">{error}</p>}
           <button type="button" className="primary" onClick={() => void create()}>

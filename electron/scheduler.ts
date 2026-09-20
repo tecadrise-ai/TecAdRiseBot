@@ -70,7 +70,7 @@ function onceAt(stored: string): number | null {
 
 async function fire(r: db.RoutineRow, now: number): Promise<void> {
   db.updateRoutine(r.id, { lastRunAt: now });
-  const prompt = `[Scheduled routine: ${r.name}]\n\n${r.prompt}`;
+  const prompt = db.formatRoutineUserText(r);
   await runAgentTurn({
     agentId: r.agentId,
     userText: prompt,

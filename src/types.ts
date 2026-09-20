@@ -27,6 +27,7 @@ export type Routine = {
   cron: string;
   prompt: string;
   enabled: number;
+  forceTodos: number;
   lastRunAt: number | null;
   createdAt: number;
 };

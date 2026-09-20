@@ -293,6 +293,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
           cron: body.cron,
           prompt: body.prompt,
           enabled: typeof body.enabled === 'number' ? body.enabled : undefined,
+          forceTodos:
+            typeof body.forceTodos === 'number' ? body.forceTodos : body.forceTodos === true ? 1 : undefined,
         });
         send(res, 201, { routine });
       } catch (e) {
@@ -310,6 +312,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         if (typeof body.cron === 'string') patch.cron = body.cron;
         if (typeof body.prompt === 'string') patch.prompt = body.prompt;
         if (typeof body.enabled === 'number') patch.enabled = body.enabled;
+        if (typeof body.forceTodos === 'number') patch.forceTodos = body.forceTodos;
+        else if (body.forceTodos === true) patch.forceTodos = 1;
+        else if (body.forceTodos === false) patch.forceTodos = 0;
         const routine = cp.updateRoutine(m.id, patch);
         if (!routine) {
           send(res, 404, { error: 'Routine not found' });

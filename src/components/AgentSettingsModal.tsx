@@ -3,7 +3,7 @@ import type { Agent, Routine } from '../types';
 import { ModalBackdrop } from './ModalBackdrop';
 import { ScheduleBuilder } from './ScheduleBuilder';
 import { AGENT_BADGE_COLORS } from '../lib/agentColors';
-import { DEFAULT_SCHEDULE, describeSchedule, encodeSchedule, type ScheduleDraft } from '../lib/schedule';
+import { DEFAULT_SCHEDULE, decodeSchedule, describeSchedule, encodeSchedule, type ScheduleDraft } from '../lib/schedule';
 import { mcpJsonFromConfig, parseMcpJson } from '../lib/mcpConfig';
 import { DEFAULT_AGENT_SOUL, resolveAgentSoul } from '../lib/soul';
 import {
@@ -44,8 +44,28 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
   const [rName, setRName] = useState('');
   const [schedule, setSchedule] = useState<ScheduleDraft>(DEFAULT_SCHEDULE);
   const [rPrompt, setRPrompt] = useState('');
+  const [rForceTodos, setRForceTodos] = useState(false);
   const [creating, setCreating] = useState(false);
   const [composing, setComposing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  function resetRoutineForm() {
+    setRName('');
+    setSchedule(DEFAULT_SCHEDULE);
+    setRPrompt('');
+    setRForceTodos(false);
+    setComposing(false);
+    setEditingId(null);
+  }
+
+  function startEdit(r: Routine) {
+    setEditingId(r.id);
+    setRName(r.name);
+    setSchedule(decodeSchedule(r.cron));
+    setRPrompt(r.prompt);
+    setRForceTodos(Boolean(r.forceTodos));
+    setComposing(true);
+  }
 
   async function refreshRoutines() {
     if (!agent) return;
@@ -68,7 +88,9 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
     setRName('');
     setSchedule(DEFAULT_SCHEDULE);
     setRPrompt('');
+    setRForceTodos(false);
     setComposing(false);
+    setEditingId(null);
     void window.tecapi.models.list().then(setModels).catch(() => setModels([]));
     void refreshRoutines();
   }, [open, agent?.id]);
@@ -95,19 +117,25 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
     }
   }
 
-  async function createRoutine() {
+  async function saveRoutine() {
     if (!rPrompt.trim() || creating) return;
     setCreating(true);
     try {
-      await window.tecapi.routines.create({
-        agentId: agent.id,
+      const payload = {
         name: rName.trim() || 'Routine',
         cron: encodeSchedule(schedule),
         prompt: rPrompt.trim(),
-      });
-      setRName('');
-      setRPrompt('');
-      setComposing(false);
+        forceTodos: rForceTodos ? 1 : 0,
+      };
+      if (editingId) {
+        await window.tecapi.routines.update(editingId, payload);
+      } else {
+        await window.tecapi.routines.create({
+          agentId: agent.id,
+          ...payload,
+        });
+      }
+      resetRoutineForm();
       await refreshRoutines();
       onSaved();
     } finally {
@@ -300,7 +328,10 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
                   <button
                     type="button"
                     className="primary add-routine-btn"
-                    onClick={() => setComposing(true)}
+                    onClick={() => {
+                      resetRoutineForm();
+                      setComposing(true);
+                    }}
                   >
                     + Add routine
                   </button>
@@ -309,7 +340,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
 
               {composing && (
                 <div className="routine-form">
-                  <div className="routine-form-title">New routine</div>
+                  <div className="routine-form-title">{editingId ? 'Edit routine' : 'New routine'}</div>
                   <div className="routine-form-grid">
                     <label className="field">
                       <span>Name</span>
@@ -324,12 +355,20 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
                       <ScheduleBuilder value={schedule} onChange={setSchedule} />
                     </div>
                   </div>
+                  <label className="check-row">
+                    <input
+                      type="checkbox"
+                      checked={rForceTodos}
+                      onChange={(e) => setRForceTodos(e.target.checked)}
+                    />
+                    <span>Force updateTodos</span>
+                  </label>
                   <label className="field">
                     <span>Prompt</span>
                     <textarea
                       value={rPrompt}
                       onChange={(e) => setRPrompt(e.target.value)}
-                      rows={3}
+                      rows={10}
                       placeholder="What should this agent do when the routine fires?"
                     />
                   </label>
@@ -337,11 +376,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
                     <button
                       type="button"
                       className="text-btn"
-                      onClick={() => {
-                        setComposing(false);
-                        setRName('');
-                        setRPrompt('');
-                      }}
+                      onClick={() => resetRoutineForm()}
                     >
                       Cancel
                     </button>
@@ -349,9 +384,9 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
                       type="button"
                       className="primary"
                       disabled={!rPrompt.trim() || creating}
-                      onClick={() => void createRoutine()}
+                      onClick={() => void saveRoutine()}
                     >
-                      {creating ? 'Saving…' : 'Save routine'}
+                      {creating ? 'Saving...' : editingId ? 'Save changes' : 'Save routine'}
                     </button>
                   </div>
                 </div>
@@ -365,11 +400,19 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
                         <div className="routine-name">
                           {r.name}
                           {!r.enabled ? <span className="routine-paused-tag">Paused</span> : null}
+                          {r.forceTodos ? <span className="routine-paused-tag">updateTodos</span> : null}
                         </div>
                         <div className="muted">{describeSchedule(r.cron)}</div>
                         <div className="routine-prompt-preview">{r.prompt}</div>
                       </div>
                       <div className="routine-actions">
+                        <button
+                          type="button"
+                          className="text-btn"
+                          onClick={() => startEdit(r)}
+                        >
+                          Edit
+                        </button>
                         <button
                           type="button"
                           className="text-btn"
@@ -412,7 +455,10 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
                       <button
                         type="button"
                         className="primary add-routine-btn"
-                        onClick={() => setComposing(true)}
+                        onClick={() => {
+                          resetRoutineForm();
+                          setComposing(true);
+                        }}
                       >
                         + Add routine
                       </button>

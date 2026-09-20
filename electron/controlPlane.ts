@@ -234,6 +234,7 @@ export function createRoutine(input: {
   cron: string;
   prompt: string;
   enabled?: number;
+  forceTodos?: number;
 }) {
   if (!db.getAgent(input.agentId)) throw new Error('Agent not found');
   return db.createRoutine({
@@ -243,12 +244,13 @@ export function createRoutine(input: {
     cron: input.cron,
     prompt: input.prompt,
     enabled: input.enabled,
+    forceTodos: input.forceTodos,
   });
 }
 
 export function updateRoutine(
   id: string,
-  patch: Partial<{ name: string; cron: string; prompt: string; enabled: number }>
+  patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; forceTodos: number }>
 ) {
   return db.updateRoutine(id, patch);
 }
@@ -262,7 +264,7 @@ export async function runRoutineNow(id: string) {
   const r = db.getRoutine(id);
   if (!r) throw new Error('Routine not found');
   db.updateRoutine(id, { lastRunAt: Date.now() });
-  return sendChat(r.agentId, `[Scheduled routine: ${r.name}]\n\n${r.prompt}`, {
+  return sendChat(r.agentId, db.formatRoutineUserText(r), {
     source: 'routine',
   });
 }
@@ -425,6 +427,7 @@ export function snapshotForAgent(agentId: string): AgentSnapshot {
       cron: r.cron,
       prompt: r.prompt,
       enabled: r.enabled,
+      forceTodos: r.forceTodos,
       lastRunAt: r.lastRunAt,
     })),
     curlExamples: {

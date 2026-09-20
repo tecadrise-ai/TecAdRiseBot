@@ -29,6 +29,7 @@ export type Routine = {
   cron: string;
   prompt: string;
   enabled: number;
+  forceTodos: number;
   lastRunAt: number | null;
   createdAt: number;
 };
@@ -126,11 +127,11 @@ const api = {
   },
   routines: {
     list: (): Promise<Routine[]> => ipcRenderer.invoke('routines:list'),
-    create: (input: { agentId: string; name: string; cron: string; prompt: string }) =>
+    create: (input: { agentId: string; name: string; cron: string; prompt: string; forceTodos?: number }) =>
       ipcRenderer.invoke('routines:create', input),
     update: (
       id: string,
-      patch: Partial<{ name: string; cron: string; prompt: string; enabled: number }>
+      patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; forceTodos: number }>
     ) => ipcRenderer.invoke('routines:update', id, patch),
     delete: (id: string) => ipcRenderer.invoke('routines:delete', id),
     runNow: (id: string) => ipcRenderer.invoke('routines:runNow', id),

@@ -2,7 +2,7 @@
   "name": "tecadrise-bot",
   "productName": "TecAdRiseBot",
   "version": "0.1.0",
-  "description": "Open-source local multi-agent desktop shell powered by the Cursor TypeScript SDK",
+  "description": "TecAdRiseBot - a free open-source alternative to Grok Bot.",
   "main": "dist-electron/main.js",
   "author": "TecAdRise",
   "license": "MIT",

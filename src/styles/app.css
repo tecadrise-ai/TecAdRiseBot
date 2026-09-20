@@ -1012,6 +1012,12 @@
   background: var(--bg-hover);
   color: var(--text);
 }
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
 .header-gear {
   margin-left: auto;
 }

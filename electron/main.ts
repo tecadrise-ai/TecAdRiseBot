@@ -137,6 +137,12 @@ function registerIpc() {
     return { ok: true };
   });
 
+  ipcMain.handle('agents:openWorkspace', async (_e, id: string) => {
+    const p = db.agentWorkspacePath(String(id || ''));
+    const err = await shell.openPath(p);
+    return { ok: !err, error: err || undefined };
+  });
+
   ipcMain.handle('messages:list', (_e, agentId: string) => db.listMessages(agentId));
   ipcMain.handle('messages:clear', async (_e, agentId: string) => {
     await cancelAgentRun(agentId);

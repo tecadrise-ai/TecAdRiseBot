@@ -16,6 +16,7 @@ type Props = {
   agent: Agent | null;
   messages: ChatMessage[];
   streamingId: string | null;
+  agentRunning?: boolean;
   onSend: (text: string, attachments: PendingAttachment[]) => Promise<void>;
   onStop: () => void;
   onOpenAgentSettings: () => void;
@@ -49,7 +50,15 @@ function fileToPending(file: File): Promise<PendingAttachment> {
   });
 }
 
-export function ChatView({ agent, messages, streamingId, onSend, onStop, onOpenAgentSettings }: Props) {
+export function ChatView({
+  agent,
+  messages,
+  streamingId,
+  agentRunning = false,
+  onSend,
+  onStop,
+  onOpenAgentSettings,
+}: Props) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
@@ -91,7 +100,7 @@ export function ChatView({ agent, messages, streamingId, onSend, onStop, onOpenA
     );
   }
 
-  const busy = !!streamingId;
+  const busy = !!streamingId || agentRunning;
   const canSend = (draft.trim().length > 0 || pending.length > 0) && !busy && !sending;
 
   return (

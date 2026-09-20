@@ -72,8 +72,24 @@ export default function App() {
 
   useEffect(() => {
     if (selectedId) void loadMessages(selectedId);
-    else setMessages([]);
+    else {
+      setMessages([]);
+      setStreamingId(null);
+    }
   }, [selectedId, loadMessages]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (!runningIds.has(selectedId)) {
+      setStreamingId(null);
+      return;
+    }
+    setStreamingId((cur) => {
+      if (cur && messages.some((m) => m.id === cur && m.agentId === selectedId)) return cur;
+      const lastAsst = [...messages].filter((m) => m.role === 'assistant' && m.agentId === selectedId).pop();
+      return lastAsst?.id ?? `__run__${selectedId}`;
+    });
+  }, [selectedId, runningIds, messages]);
 
   useEffect(() => {
     const offs = [
@@ -222,6 +238,7 @@ export default function App() {
         agent={selected}
         messages={messages}
         streamingId={streamingId}
+        agentRunning={Boolean(selectedId && runningIds.has(selectedId))}
         onSend={send}
         onStop={() => {
           if (selectedId) void window.tecapi.chat.stop(selectedId);
@@ -235,7 +252,6 @@ export default function App() {
         onSaved={() => {
           void refreshAgents();
           void refreshLeds();
-          setStreamingId(null);
           if (selectedId) void loadMessages(selectedId);
         }}
       />

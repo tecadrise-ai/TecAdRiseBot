@@ -729,9 +729,8 @@ const sdkPrompt = [
       };
 
       if (published || turnEnded) {
-        void harvestImages().finally(() => {
-          void run.cancel().catch(() => undefined);
-        });
+        await harvestImages();
+        void run.cancel().catch(() => undefined);
         activeRuns.delete(opts.agentId);
         return published || !!assembled;
       }

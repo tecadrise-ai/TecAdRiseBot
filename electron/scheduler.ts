@@ -1,10 +1,11 @@
 import { BrowserWindow } from 'electron';
 import { CronExpressionParser } from 'cron-parser';
 import * as db from './db';
-import { runAgentTurn } from './agentRunner';
+import { isAgentBusy, runAgentTurn } from './agentRunner';
 
 let timer: NodeJS.Timeout | null = null;
 let winRef: BrowserWindow | null = null;
+let ticking = false;
 
 export function startScheduler(getWin: () => BrowserWindow | null): void {
   winRef = getWin();
@@ -69,6 +70,7 @@ function onceAt(stored: string): number | null {
 }
 
 async function fire(r: db.RoutineRow, now: number): Promise<void> {
+  if (isAgentBusy(r.agentId)) return;
   db.updateRoutine(r.id, { lastRunAt: now });
   const prompt = db.formatRoutineUserText(r);
   await runAgentTurn({
@@ -81,6 +83,16 @@ async function fire(r: db.RoutineRow, now: number): Promise<void> {
 }
 
 async function tick(): Promise<void> {
+  if (ticking) return;
+  ticking = true;
+  try {
+    await tickInner();
+  } finally {
+    ticking = false;
+  }
+}
+
+async function tickInner(): Promise<void> {
   const now = Date.now();
   const routines = db.listRoutines().filter((r) => Number(r.enabled) !== 0);
   for (const r of routines) {
@@ -92,9 +104,11 @@ async function tick(): Promise<void> {
         if (!last) {
           if (interval.loop) {
             await fire(r, now);
-          } else if (now - (r.createdAt || now) >= interval.ms) {
-            await fire(r, now);
+          } else {
+            db.updateRoutine(r.id, { lastRunAt: now });
           }
+        } else if (now - last >= interval.ms * 2) {
+          db.updateRoutine(r.id, { lastRunAt: now });
         } else if (now - last >= interval.ms) {
           await fire(r, now);
         }

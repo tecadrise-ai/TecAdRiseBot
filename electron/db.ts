@@ -544,15 +544,24 @@ export function updateRoutine(
 ): RoutineRow | null {
   const existing = getRoutine(id);
   if (!existing) return null;
+  const cron = patch.cron ?? existing.cron;
+  const scheduleChanged =
+    patch.cron !== undefined && String(patch.cron).trim() !== String(existing.cron || '').trim();
+  const lastRunAt =
+    patch.lastRunAt !== undefined
+      ? patch.lastRunAt
+      : scheduleChanged
+        ? Date.now()
+        : existing.lastRunAt;
   mustDb().run(
     `UPDATE routines SET name=?, cron=?, prompt=?, enabled=?, force_todos=?, last_run_at=? WHERE id=?`,
     [
       patch.name ?? existing.name,
-      patch.cron ?? existing.cron,
+      cron,
       patch.prompt ?? existing.prompt,
       patch.enabled ?? existing.enabled,
       patch.forceTodos !== undefined ? (patch.forceTodos ? 1 : 0) : existing.forceTodos,
-      patch.lastRunAt !== undefined ? patch.lastRunAt : existing.lastRunAt,
+      lastRunAt,
       id,
     ]
   );

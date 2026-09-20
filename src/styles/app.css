@@ -679,6 +679,11 @@
   height: min(640px, calc(100vh - 64px));
 }
 
+.powered-by a {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
 .small-modal,
 .medium-modal {
   padding: 22px 24px 18px;
@@ -851,6 +856,9 @@
 }
 .primary:disabled {
   opacity: 0.45;
+}
+.danger-btn {
+  background: #c0392b;
 }
 .secondary {
   background: #fff;

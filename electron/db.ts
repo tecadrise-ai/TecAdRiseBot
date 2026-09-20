@@ -366,6 +366,12 @@ export function deleteAgent(id: string): void {
   persist();
 }
 
+export function clearAgentMessages(id: string): void {
+  mustDb().run(`DELETE FROM messages WHERE agent_id=?`, [id]);
+  mustDb().run(`UPDATE agents SET last_snippet=NULL, updated_at=? WHERE id=?`, [Date.now(), id]);
+  persist();
+}
+
 export function listMessages(
   agentId: string,
   opts?: { limit?: number; before?: number }

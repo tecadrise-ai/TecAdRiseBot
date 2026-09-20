@@ -511,6 +511,18 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                 <h2>Updates</h2>
                 <p className="lede">Version {settings?.version ?? '0.1.0'} (MVP).</p>
                 <p className="hint">Auto-update is not wired yet. Pull the latest project and rebuild.</p>
+                <p className="hint powered-by">
+                  Powered by:{' '}
+                  <a
+                    href="https://tecadrise.ai"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void window.tecapi.app.openExternal('https://tecadrise.ai');
+                    }}
+                  >
+                    https://tecadrise.ai
+                  </a>
+                </p>
               </section>
             )}
           </div>

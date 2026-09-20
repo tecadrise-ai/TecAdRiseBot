@@ -235,6 +235,8 @@ export default function App() {
         onSaved={() => {
           void refreshAgents();
           void refreshLeds();
+          setStreamingId(null);
+          if (selectedId) void loadMessages(selectedId);
         }}
       />
       <SettingsModal

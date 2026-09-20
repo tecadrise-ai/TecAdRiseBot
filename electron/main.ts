@@ -138,6 +138,12 @@ function registerIpc() {
   });
 
   ipcMain.handle('messages:list', (_e, agentId: string) => db.listMessages(agentId));
+  ipcMain.handle('messages:clear', async (_e, agentId: string) => {
+    await cancelAgentRun(agentId);
+    db.clearAgentMessages(agentId);
+    dropAgentHandle(agentId);
+    return { ok: true };
+  });
   ipcMain.handle('usage:byAgent', () => db.listAgentUsage());
 
   ipcMain.handle(

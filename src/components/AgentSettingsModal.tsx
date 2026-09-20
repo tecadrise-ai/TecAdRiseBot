@@ -26,7 +26,7 @@ type Props = {
 };
 
 export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
-  const [tab, setTab] = useState<'general' | 'routines' | 'mcp'>('general');
+  const [tab, setTab] = useState<'general' | 'routines' | 'mcp' | 'session'>('general');
   const [name, setName] = useState('');
   const [color, setColor] = useState('#4C78FF');
   const [model, setModel] = useState('');
@@ -36,6 +36,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
   const [soul, setSoul] = useState('');
   const [mcpJson, setMcpJson] = useState('{\n}\n');
   const [mcpBusy, setMcpBusy] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [models, setModels] = useState<CatalogModel[]>([]);
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
@@ -114,6 +115,25 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
       setStatus(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function clearSession() {
+    if (clearing) return;
+    const ok = window.confirm(
+      `Clear chat history for ${agent.name}? This cannot be undone.`
+    );
+    if (!ok) return;
+    setClearing(true);
+    setStatus('');
+    try {
+      await window.tecapi.messages.clear(agent.id);
+      setStatus('Session cleared.');
+      onSaved();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -200,6 +220,13 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
             onClick={() => setTab('mcp')}
           >
             MCP
+          </button>
+          <button
+            type="button"
+            className={tab === 'session' ? 'active' : ''}
+            onClick={() => setTab('session')}
+          >
+            Session
           </button>
         </div>
 
@@ -469,6 +496,16 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
             </div>
           )}
 
+          {tab === 'session' && (
+            <div className="session-panel">
+              <p className="hint" style={{ marginTop: 0 }}>
+                Clear the current session to wipe this agent&apos;s chat history. The next message
+                starts a fresh SDK session. Soul, MCP, and routines stay as they are.
+              </p>
+              {status ? <p className="status">{status}</p> : null}
+            </div>
+          )}
+
           {tab === 'mcp' && (
             <div className="mcp-panel">
               <div className="hint" style={{ marginTop: 0 }}>
@@ -514,6 +551,16 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
               onClick={() => void registerMcp()}
             >
               {mcpBusy ? 'Registering...' : 'Register'}
+            </button>
+          )}
+          {tab === 'session' && (
+            <button
+              type="button"
+              className="primary danger-btn"
+              disabled={clearing}
+              onClick={() => void clearSession()}
+            >
+              {clearing ? 'Clearing...' : 'Clear current session'}
             </button>
           )}
         </div>

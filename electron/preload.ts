@@ -58,6 +58,7 @@ const api = {
   messages: {
     list: (agentId: string): Promise<ChatMessage[]> =>
       ipcRenderer.invoke('messages:list', agentId),
+    clear: (agentId: string) => ipcRenderer.invoke('messages:clear', agentId) as Promise<{ ok: true }>,
   },
   usage: {
     byAgent: (): Promise<

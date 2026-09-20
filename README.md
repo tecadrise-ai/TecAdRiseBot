@@ -1,6 +1,6 @@
 # TecAdRiseBot - a free open-source alternative to Grok Bot based on Cursor SDK.
 
-Local desktop multi-agent chat (Electron + React + TypeScript + Cursor SDK). Agents run on your PC through the [Cursor TypeScript SDK](https://cursor.com/docs/sdk/typescript). MIT licensed. Not an official Grok or xAI product.
+Local desktop multi-agent chat (Electron + React + TypeScript + Cursor SDK). Agents run on your PC through the [Cursor TypeScript SDK](https://cursor.com/docs/sdk/typescript). MIT licensed. Not a clone and Not an official Grok or xAI product.
 
 [tecadrise.ai](https://tecadrise.ai)
 

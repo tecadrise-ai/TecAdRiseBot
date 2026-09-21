@@ -43,7 +43,11 @@ export default function App() {
       window.tecapi.agents.busy(),
       window.tecapi.routines.list(),
     ]);
-    setRunningIds(new Set([...busy, ...liveRuns.current]));
+    const busySet = new Set(busy);
+    for (const id of [...liveRuns.current]) {
+      if (!busySet.has(id)) liveRuns.current.delete(id);
+    }
+    setRunningIds(busySet);
     setScheduledIds(
       new Set(routines.filter((r) => Number(r.enabled) !== 0).map((r) => r.agentId))
     );

@@ -652,6 +652,16 @@ const sdkPrompt = [
 
       const compose = (text: string) => appendImagesToMarkdown(text.trim(), genImages);
       const visible = () => packAssistantBody(thinkText, compose(turnText));
+      let lastPersist = 0;
+      const persistVisible = () => {
+        assembled = visible();
+        const now = Date.now();
+        if (assembled && now - lastPersist >= 1000) {
+          lastPersist = now;
+          db.updateMessageContent(assistantMessageId, assembled);
+        }
+        return assembled;
+      };
 
       const addImgs = (imgs: GenImage[]) => {
         for (const img of imgs) {
@@ -666,26 +676,17 @@ const sdkPrompt = [
       const publishDone = () => {
         const answer = extractLastAssistantText(compose(turnText || unpackAssistantBody(assembled).answer));
         assembled = packAssistantBody(thinkText, answer);
-        if (!unpackAssistantBody(assembled).answer && !unpackAssistantBody(assembled).thinking) return;
+        const packed = unpackAssistantBody(assembled);
+        if (!packed.answer && !packed.thinking) return;
+        lastPersist = Date.now();
         db.updateMessageContent(assistantMessageId, assembled);
         if (usage) db.patchMessageMeta(assistantMessageId, { usage });
         db.updateAgent(opts.agentId, {
-          lastSnippet: (unpackAssistantBody(assembled).answer || assembled)
+          lastSnippet: (packed.answer || assembled)
             .replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]')
             .slice(0, 120),
         });
-        emit('chat:stream-done', {
-          agentId: opts.agentId,
-          messageId: assistantMessageId,
-          content: assembled,
-          usage,
-        });
-        if (!published) {
-          published = true;
-          activeRuns.delete(opts.agentId);
-          stopRequested.delete(opts.agentId);
-          claimed.delete(opts.agentId);
-        }
+        published = true;
       };
 
       const takeDelta = (delta: {
@@ -706,7 +707,7 @@ const sdkPrompt = [
         }
         if (update.type === 'tool-call-completed') {
           addImgs(imagesFromUnknown(update.toolCall ?? update));
-          assembled = visible();
+          persistVisible();
           emit('chat:stream-delta', {
             agentId: opts.agentId,
             messageId: assistantMessageId,
@@ -716,7 +717,7 @@ const sdkPrompt = [
         }
         if (update.type === 'turn-ended') {
           if (update.usage) usage = addUsage(usage, update.usage);
-          assembled = visible();
+          persistVisible();
           turnEnded = true;
           emit('chat:stream-delta', {
             agentId: opts.agentId,
@@ -734,7 +735,7 @@ const sdkPrompt = [
         if (stopRequested.has(opts.agentId)) return;
         if (update.type === 'thinking-delta' && update.text) {
           thinkText += update.text;
-          assembled = visible();
+          persistVisible();
           emit('chat:stream-delta', {
             agentId: opts.agentId,
             messageId: assistantMessageId,
@@ -744,7 +745,7 @@ const sdkPrompt = [
         }
         if (update.type === 'text-delta' && update.text) {
           turnText += update.text;
-          assembled = visible();
+          persistVisible();
           emit('chat:stream-delta', {
             agentId: opts.agentId,
             messageId: assistantMessageId,
@@ -783,9 +784,9 @@ const sdkPrompt = [
             const conv = await run.conversation();
             addImgs(imagesFromUnknown(conv));
             const fromConv = lastAssistantFromConversation(conv);
-            if (fromConv.trim()) turnText = fromConv;
+            if (fromConv.trim() && fromConv.trim().length >= turnText.trim().length) turnText = fromConv;
             const fromThink = lastThinkingFromConversation(conv);
-            if (fromThink) thinkText = fromThink;
+            if (fromThink && fromThink.length >= thinkText.length) thinkText = fromThink;
           }
         } catch {
           /* ignore */
@@ -803,7 +804,7 @@ const sdkPrompt = [
         await harvestImages();
         void run.cancel().catch(() => undefined);
         activeRuns.delete(opts.agentId);
-        return published || !!assembled;
+        return published;
       }
 
       const stopP = new Promise<void>((resolve) => {
@@ -828,7 +829,7 @@ const sdkPrompt = [
         if (raced.kind === 'ended' || turnEnded || published) {
           void run.cancel().catch(() => undefined);
           if (assembled && !published) publishDone();
-          return published || !!assembled;
+          return published;
         }
         const result = raced.r;
         if (result.usage) usage = addUsage(usage, result.usage);
@@ -839,7 +840,7 @@ const sdkPrompt = [
             addImgs(imagesFromUnknown(conv));
             fromConv = lastAssistantFromConversation(conv);
             const fromThink = lastThinkingFromConversation(conv);
-            if (fromThink) thinkText = fromThink;
+            if (fromThink && fromThink.length >= thinkText.length) thinkText = fromThink;
           }
         } catch {
           /* ignore */
@@ -851,7 +852,11 @@ const sdkPrompt = [
         }
         if (genImages.length) saveGeneratedImages(cwd, genImages);
         const rawAnswer = extractLastAssistantText(
-          compose(fromConv || turnText || unpackAssistantBody(assembled).answer || (typeof result.result === 'string' ? result.result : ''))
+          compose(
+            (fromConv.trim().length >= turnText.trim().length ? fromConv : turnText) ||
+              unpackAssistantBody(assembled).answer ||
+              (typeof result.result === 'string' ? result.result : '')
+          )
         );
         assembled = packAssistantBody(thinkText, rawAnswer);
         if (result.status === 'error') {
@@ -860,11 +865,12 @@ const sdkPrompt = [
             assembled = `Error: ${msg}`;
           }
         }
+        if (assembled && !published) publishDone();
       } finally {
         activeRuns.delete(opts.agentId);
         stopWaiters.delete(opts.agentId);
       }
-      return published || !!assembled;
+      return published;
     };
 
     try {
@@ -874,61 +880,45 @@ const sdkPrompt = [
         const text = String(cur?.content || assembled || '').trim() || 'Stopped.';
         db.updateMessageContent(assistantMessageId, text);
         db.updateAgent(opts.agentId, { lastSnippet: text.slice(0, 120) });
-        emit('chat:stream-done', {
-          agentId: opts.agentId,
-          messageId: assistantMessageId,
-          content: text,
+      } else if (!alreadyPublished) {
+        if (!assembled) assembled = '(No response text from agent.)';
+        else {
+          const u = unpackAssistantBody(extractLastAssistantText(assembled));
+          assembled = packAssistantBody(u.thinking, u.answer);
+        }
+        db.updateMessageContent(assistantMessageId, assembled);
+        if (usage) db.patchMessageMeta(assistantMessageId, { usage });
+        db.updateAgent(opts.agentId, {
+          lastSnippet: (unpackAssistantBody(assembled).answer || assembled).slice(0, 120),
         });
-        return { userMessageId, assistantMessageId };
       }
-      if (alreadyPublished) return { userMessageId, assistantMessageId };
     } catch (e) {
       if (stopRequested.has(opts.agentId)) {
         const cur = db.getMessage(assistantMessageId);
         const text = String(cur?.content || assembled || '').trim() || 'Stopped.';
         db.updateMessageContent(assistantMessageId, text);
-        emit('chat:stream-done', {
-          agentId: opts.agentId,
-          messageId: assistantMessageId,
-          content: text,
-        });
-        return { userMessageId, assistantMessageId };
+      } else if (assembled.trim()) {
+        db.updateMessageContent(assistantMessageId, assembled);
+      } else if (!isBusyError(e)) {
+        throw e;
+      } else {
+        await cancelActive(opts.agentId);
+        handle = await getHandle(agent, apiKey, cwd, true);
+        assembled = '';
+        usage = null;
+        const alreadyPublished = await sendOnce(handle);
+        if (!alreadyPublished) {
+          if (!assembled) assembled = '(No response text from agent.)';
+          db.updateMessageContent(assistantMessageId, assembled);
+        }
       }
-      if (assembled.trim()) return { userMessageId, assistantMessageId };
-      if (!isBusyError(e)) throw e;
-      await cancelActive(opts.agentId);
-      handle = await getHandle(agent, apiKey, cwd, true);
-      assembled = '';
-      usage = null;
-      const alreadyPublished = await sendOnce(handle);
-      if (alreadyPublished) return { userMessageId, assistantMessageId };
     }
 
     if (stopRequested.has(opts.agentId)) {
       const cur = db.getMessage(assistantMessageId);
       const text = String(cur?.content || assembled || '').trim() || 'Stopped.';
       db.updateMessageContent(assistantMessageId, text);
-      emit('chat:stream-done', { agentId: opts.agentId, messageId: assistantMessageId, content: text });
-      return { userMessageId, assistantMessageId };
     }
-
-    if (!assembled) assembled = '(No response text from agent.)';
-    else {
-      const u = unpackAssistantBody(extractLastAssistantText(assembled));
-      assembled = packAssistantBody(u.thinking, u.answer);
-    }
-
-    db.updateMessageContent(assistantMessageId, assembled);
-    if (usage) db.patchMessageMeta(assistantMessageId, { usage });
-    db.updateAgent(opts.agentId, {
-      lastSnippet: (unpackAssistantBody(assembled).answer || assembled).slice(0, 120),
-    });
-    emit('chat:stream-done', {
-      agentId: opts.agentId,
-      messageId: assistantMessageId,
-      content: assembled,
-      usage,
-    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const friendly = `Agent error: ${msg}`;
@@ -939,16 +929,25 @@ const sdkPrompt = [
       messageId: assistantMessageId,
       error: friendly,
     });
-    emit('chat:stream-done', {
-      agentId: opts.agentId,
-      messageId: assistantMessageId,
-      content: friendly,
-    });
+    assembled = friendly;
   } finally {
     claimed.delete(opts.agentId);
+    activeRuns.delete(opts.agentId);
     liveTurns.delete(opts.agentId);
     stopRequested.delete(opts.agentId);
     stopWaiters.delete(opts.agentId);
+    const cur = db.getMessage(assistantMessageId);
+    const text =
+      String(assembled || cur?.content || '').trim() || '(No response text from agent.)';
+    if (text && text !== String(cur?.content || '').trim()) {
+      db.updateMessageContent(assistantMessageId, text);
+    }
+    emit('chat:stream-done', {
+      agentId: opts.agentId,
+      messageId: assistantMessageId,
+      content: text,
+      usage,
+    });
   }
 
   return { userMessageId, assistantMessageId };

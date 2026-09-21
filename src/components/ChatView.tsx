@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { Agent, ChatMessage } from '../types';
 import { MarkdownBody } from './MarkdownBody';
 import { fmtTs, fmtUsage, parseMessageUsage } from '../lib/usage';
@@ -51,37 +51,40 @@ function fileToPending(file: File): Promise<PendingAttachment> {
   });
 }
 
-export function ChatView({
-  agent,
-  messages,
-  streamingId,
-  agentRunning = false,
-  onSend,
-  onStop,
-  onOpenAgentSettings,
-}: Props) {
+function fitComposer(el: HTMLTextAreaElement): void {
+  el.style.height = 'auto';
+  const cs = getComputedStyle(el);
+  const lh = Number.parseFloat(cs.lineHeight) || 20;
+  const pad =
+    (Number.parseFloat(cs.paddingTop) || 0) + (Number.parseFloat(cs.paddingBottom) || 0);
+  const max = lh * 6 + pad;
+  const next = Math.min(el.scrollHeight, max);
+  el.style.height = `${next}px`;
+}
+
+type ComposerProps = {
+  agentId: string;
+  agentName: string;
+  busy: boolean;
+  onSend: (text: string, attachments: PendingAttachment[]) => Promise<void>;
+  onStop: () => void | Promise<void>;
+};
+
+const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onStop }: ComposerProps) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingId, pending]);
-
-  useEffect(() => {
+    setDraft('');
+    setPending([]);
     const el = taRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    const cs = getComputedStyle(el);
-    const lh = Number.parseFloat(cs.lineHeight) || 20;
-    const pad =
-      (Number.parseFloat(cs.paddingTop) || 0) + (Number.parseFloat(cs.paddingBottom) || 0);
-    const max = lh * 6 + pad;
-    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
-  }, [draft]);
+    if (el) {
+      el.style.height = 'auto';
+    }
+  }, [agentId]);
 
   async function addFiles(files: FileList | File[]) {
     const list = Array.from(files);
@@ -90,13 +93,19 @@ export function ChatView({
     setPending((prev) => [...prev, ...next]);
   }
 
+  const hasDraft = draft.trim().length > 0 || pending.length > 0;
+  const canSend = hasDraft && !sending;
+  const showStop = busy && !hasDraft;
+
   async function submit() {
     const text = draft.trim();
-    if ((!text && pending.length === 0) || !agent || sending) return;
+    if ((!text && pending.length === 0) || sending) return;
     const attachments = pending;
-    const mustStop = Boolean(streamingId || agentRunning);
+    const mustStop = busy;
     setDraft('');
     setPending([]);
+    const el = taRef.current;
+    if (el) el.style.height = 'auto';
     setSending(true);
     try {
       if (mustStop) await onStop();
@@ -107,6 +116,127 @@ export function ChatView({
     }
   }
 
+  return (
+    <div className="composer-wrap">
+      {pending.length > 0 && (
+        <div className="attach-chips" aria-label="Pending attachments">
+          {pending.map((p) => (
+            <div key={p.id} className="attach-chip">
+              {p.previewUrl ? (
+                <img src={p.previewUrl} alt={p.name} className="attach-thumb" />
+              ) : (
+                <span className="attach-file-icon">F</span>
+              )}
+              <span className="attach-name" title={p.name}>
+                {p.name}
+              </span>
+              <button
+                type="button"
+                className="attach-remove"
+                title="Remove"
+                aria-label={`Remove ${p.name}`}
+                onClick={() => setPending((prev) => prev.filter((x) => x.id !== p.id))}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="composer">
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            if (e.target.files) void addFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          className="composer-icon"
+          title="Attach file"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+        >
+          +
+        </button>
+        <textarea
+          ref={taRef}
+          className="composer-input"
+          placeholder={`Message ${agentName}`}
+          value={draft}
+          rows={1}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            fitComposer(e.target);
+          }}
+          onPaste={(e) => {
+            const items = e.clipboardData?.items;
+            if (!items?.length) return;
+            const files: File[] = [];
+            for (const item of Array.from(items)) {
+              if (item.kind === 'file') {
+                const f = item.getAsFile();
+                if (f) files.push(f);
+              }
+            }
+            if (files.length) {
+              e.preventDefault();
+              void addFiles(files);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (hasDraft && !sending) void submit();
+            }
+          }}
+        />
+        <button type="button" className="composer-icon" title="Voice (stub)" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.8" />
+            <path
+              d="M5 11a7 7 0 0 0 14 0M12 18v3"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={`send-btn${showStop ? ' stop' : ''}${!showStop && !canSend ? ' idle' : ''}`}
+          aria-disabled={!showStop && !canSend}
+          onClick={() => {
+            if (showStop) void onStop();
+            else if (canSend) void submit();
+          }}
+        >
+          {showStop ? 'Stop' : 'Send'}
+        </button>
+      </div>
+    </div>
+  );
+});
+
+export function ChatView({
+  agent,
+  messages,
+  streamingId,
+  agentRunning = false,
+  onSend,
+  onStop,
+  onOpenAgentSettings,
+}: Props) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+  }, [messages, streamingId]);
+
   if (!agent) {
     return (
       <main className="chat">
@@ -116,9 +246,6 @@ export function ChatView({
   }
 
   const busy = !!streamingId || agentRunning;
-  const hasDraft = draft.trim().length > 0 || pending.length > 0;
-  const canSend = hasDraft && !sending;
-  const showStop = busy && !hasDraft;
 
   return (
     <main className="chat">
@@ -226,105 +353,7 @@ export function ChatView({
         <div ref={bottomRef} />
       </div>
 
-      <div className="composer-wrap">
-        {pending.length > 0 && (
-          <div className="attach-chips" aria-label="Pending attachments">
-            {pending.map((p) => (
-              <div key={p.id} className="attach-chip">
-                {p.previewUrl ? (
-                  <img src={p.previewUrl} alt={p.name} className="attach-thumb" />
-                ) : (
-                  <span className="attach-file-icon">F</span>
-                )}
-                <span className="attach-name" title={p.name}>
-                  {p.name}
-                </span>
-                <button
-                  type="button"
-                  className="attach-remove"
-                  title="Remove"
-                  aria-label={`Remove ${p.name}`}
-                  onClick={() => setPending((prev) => prev.filter((x) => x.id !== p.id))}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="composer">
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => {
-              if (e.target.files) void addFiles(e.target.files);
-              e.target.value = '';
-            }}
-          />
-          <button
-            type="button"
-            className="composer-icon"
-            title="Attach file"
-            disabled={busy}
-            onClick={() => fileRef.current?.click()}
-          >
-            +
-          </button>
-          <textarea
-            ref={taRef}
-            className="composer-input"
-            placeholder={`Message ${agent.name}`}
-            value={draft}
-            rows={1}
-            onChange={(e) => setDraft(e.target.value)}
-            onPaste={(e) => {
-              const items = e.clipboardData?.items;
-              if (!items?.length) return;
-              const files: File[] = [];
-              for (const item of Array.from(items)) {
-                if (item.kind === 'file') {
-                  const f = item.getAsFile();
-                  if (f) files.push(f);
-                }
-              }
-              if (files.length) {
-                e.preventDefault();
-                void addFiles(files);
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (hasDraft && !sending) void submit();
-              }
-            }}
-          />
-          <button type="button" className="composer-icon" title="Voice (stub)" disabled>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.8" />
-              <path
-                d="M5 11a7 7 0 0 0 14 0M12 18v3"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className={`send-btn${showStop ? ' stop' : ''}${!showStop && !canSend ? ' idle' : ''}`}
-            aria-disabled={!showStop && !canSend}
-            onClick={() => {
-              if (showStop) void onStop();
-              else if (canSend) void submit();
-            }}
-          >
-            {showStop ? 'Stop' : 'Send'}
-          </button>
-        </div>
-      </div>
+      <Composer agentId={agent.id} agentName={agent.name} busy={busy} onSend={onSend} onStop={onStop} />
     </main>
   );
 }

@@ -1,10 +1,17 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { memo } from 'react';
 import { restoreFlattenedMarkdown } from '../lib/markdown';
 
 marked.setOptions({ gfm: true, breaks: true });
 
-export function MarkdownBody({ text, className }: { text: string; className?: string }) {
+export const MarkdownBody = memo(function MarkdownBody({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
   const clean = restoreFlattenedMarkdown(text).replace(/\n{3,}/g, '\n\n');
   const html = DOMPurify.sanitize(String(marked.parse(clean)), {
     ADD_TAGS: ['img'],
@@ -28,4 +35,4 @@ export function MarkdownBody({ text, className }: { text: string; className?: st
       }}
     />
   );
-}
+});

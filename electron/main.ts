@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, shell, Menu } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -9,10 +9,11 @@ import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemP
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
 import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
-import { APP_USER_MODEL_ID } from './notify';
+import { APP_USER_MODEL_ID, APP_DISPLAY_NAME, appIconPath, ensureWindowsToastIdentity } from './notify';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+app.setName(APP_DISPLAY_NAME);
 if (process.platform === 'win32') {
   app.setAppUserModelId(APP_USER_MODEL_ID);
 }
@@ -41,15 +42,25 @@ function openInDefaultBrowser(url: string): void {
   void shell.openExternal(url);
 }
 
+function loadAppIcon() {
+  const iconPath = appIconPath();
+  if (!iconPath) return { iconPath: '', image: nativeImage.createEmpty() };
+  const image = nativeImage.createFromPath(iconPath);
+  return { iconPath, image };
+}
+
 function createWindow() {
+  const { iconPath, image } = loadAppIcon();
+  const hasIcon = Boolean(iconPath) && !image.isEmpty();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
     minWidth: 960,
     minHeight: 640,
-    title: 'TecAdRiseBot',
+    title: APP_DISPLAY_NAME,
     backgroundColor: '#f7f7f8',
     show: false,
+    ...(hasIcon ? { icon: image } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -57,6 +68,17 @@ function createWindow() {
       sandbox: false,
     },
   });
+  if (hasIcon) {
+    mainWindow.setIcon(image);
+    if (process.platform === 'win32') {
+      mainWindow.setAppDetails({
+        appId: APP_USER_MODEL_ID,
+        appIconPath: iconPath,
+        appIconIndex: 0,
+        relaunchDisplayName: APP_DISPLAY_NAME,
+      });
+    }
+  }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.maximize();
@@ -89,7 +111,8 @@ function createWindow() {
     console.log('[renderer]', message);
   });
   const devUrl = VITE_DEV_SERVER_URL || 'http://localhost:5173/';
-  if (!app.isPackaged) {
+  const useDevUi = Boolean(process.defaultApp) || Boolean(VITE_DEV_SERVER_URL);
+  if (useDevUi) {
     mainWindow.loadURL(devUrl);
   } else {
     mainWindow.loadFile(path.join(RENDERER_DIST, 'index.html'));
@@ -305,6 +328,7 @@ app.whenReady().then(async () => {
   }
   await db.initDb();
   cleanupLegacyControlPlaneFiles();
+  ensureWindowsToastIdentity();
   // Seed a default agent if empty
   if (db.listAgents().length === 0) {
     db.createAgent({ id: uuid(), name: 'Assistant' });

@@ -21,6 +21,12 @@ function mergeMeta(meta: string | null, usage: unknown): string {
   return JSON.stringify({ ...cur, usage });
 }
 
+function sameIdSet(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
+}
+
 export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -47,10 +53,9 @@ export default function App() {
     for (const id of [...liveRuns.current]) {
       if (!busySet.has(id)) liveRuns.current.delete(id);
     }
-    setRunningIds(busySet);
-    setScheduledIds(
-      new Set(routines.filter((r) => Number(r.enabled) !== 0).map((r) => r.agentId))
-    );
+    setRunningIds((prev) => (sameIdSet(prev, busySet) ? prev : busySet));
+    const scheduled = new Set(routines.filter((r) => Number(r.enabled) !== 0).map((r) => r.agentId));
+    setScheduledIds((prev) => (sameIdSet(prev, scheduled) ? prev : scheduled));
   }, []);
 
   const refreshAgents = useCallback(async () => {
@@ -189,14 +194,32 @@ export default function App() {
     setSelectedId(a.id);
   }
 
-  async function send(text: string, attachments: Array<{ name: string; mimeType: string; dataBase64: string }> = []) {
+  const send = useCallback(async (
+    text: string,
+    attachments: Array<{ name: string; mimeType: string; dataBase64: string }> = []
+  ) => {
     if (!selectedId) return;
     await window.tecapi.chat.send(
       selectedId,
       text,
       attachments.map(({ name, mimeType, dataBase64 }) => ({ name, mimeType, dataBase64 }))
     );
-  }
+  }, [selectedId]);
+
+  const stop = useCallback(async () => {
+    if (!selectedId) return;
+    liveRuns.current.delete(selectedId);
+    setRunningIds((prev) => {
+      if (!prev.has(selectedId)) return prev;
+      const next = new Set(prev);
+      next.delete(selectedId);
+      return next;
+    });
+    setStreamingId(null);
+    await window.tecapi.chat.stop(selectedId);
+  }, [selectedId]);
+
+  const openAgentSettings = useCallback(() => setAgentSettingsOpen(true), []);
 
   return (
     <div className="app-shell">
@@ -244,18 +267,8 @@ export default function App() {
         streamingId={streamingId}
         agentRunning={Boolean(selectedId && runningIds.has(selectedId))}
         onSend={send}
-        onStop={async () => {
-          if (!selectedId) return;
-          liveRuns.current.delete(selectedId);
-          setRunningIds((prev) => {
-            const next = new Set(prev);
-            next.delete(selectedId);
-            return next;
-          });
-          setStreamingId(null);
-          await window.tecapi.chat.stop(selectedId);
-        }}
-        onOpenAgentSettings={() => setAgentSettingsOpen(true)}
+        onStop={stop}
+        onOpenAgentSettings={openAgentSettings}
       />
       <AgentSettingsModal
         open={agentSettingsOpen}

@@ -592,7 +592,7 @@
 }
 .composer {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 8px;
   background: var(--bg);
   border: 1px solid var(--border-strong);
@@ -606,9 +606,14 @@
   outline: none;
   resize: none;
   background: transparent;
-  max-height: 160px;
+  min-height: 20px;
+  max-height: calc(1.55em * 6 + 12px);
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 6px 4px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 1.55;
+  font-family: var(--font);
 }
 .composer-icon {
   width: 32px;

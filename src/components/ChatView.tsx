@@ -71,6 +71,18 @@ export function ChatView({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingId, pending]);
 
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const cs = getComputedStyle(el);
+    const lh = Number.parseFloat(cs.lineHeight) || 20;
+    const pad =
+      (Number.parseFloat(cs.paddingTop) || 0) + (Number.parseFloat(cs.paddingBottom) || 0);
+    const max = lh * 6 + pad;
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
+  }, [draft]);
+
   async function addFiles(files: FileList | File[]) {
     const list = Array.from(files);
     if (!list.length) return;

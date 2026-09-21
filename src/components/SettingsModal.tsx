@@ -522,6 +522,16 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                   >
                     https://tecadrise.ai
                   </a>
+                  , we do web development, coding and AI automations, need help? Contact us:{' '}
+                  <a
+                    href="mailto:info@tecadrise.ai"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void window.tecapi.app.openExternal('mailto:info@tecadrise.ai');
+                    }}
+                  >
+                    info@tecadrise.ai
+                  </a>
                 </p>
               </section>
             )}

@@ -72,8 +72,23 @@ export function effortParam(model: CatalogModel | undefined): CatalogParam {
 export const DEFAULT_LAST_MESSAGES = 5;
 export const MAX_LAST_MESSAGES = 50;
 
-export function cheapDefaultConfig(): { modelMode: ModelMode; effort: string; lastMessages: number } {
-  return { modelMode: DEFAULT_MODE, effort: DEFAULT_EFFORT, lastMessages: DEFAULT_LAST_MESSAGES };
+export function cheapDefaultConfig(): {
+  modelMode: ModelMode;
+  effort: string;
+  lastMessages: number;
+  toastEnabled: boolean;
+} {
+  return {
+    modelMode: DEFAULT_MODE,
+    effort: DEFAULT_EFFORT,
+    lastMessages: DEFAULT_LAST_MESSAGES,
+    toastEnabled: true,
+  };
+}
+
+export function readToastEnabled(config: Record<string, unknown> | null | undefined): boolean {
+  if (!config || !Object.prototype.hasOwnProperty.call(config, 'toastEnabled')) return true;
+  return config.toastEnabled !== false;
 }
 
 export function readLastMessages(config: Record<string, unknown> | null | undefined): number {

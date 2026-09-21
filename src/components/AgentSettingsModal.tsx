@@ -14,6 +14,7 @@ import {
   DEFAULT_LAST_MESSAGES,
   readLastMessages,
   readModelMode,
+  readToastEnabled,
   type CatalogModel,
   type ModelMode,
 } from '../lib/modelOptions';
@@ -29,6 +30,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
   const [tab, setTab] = useState<'general' | 'routines' | 'mcp' | 'session'>('general');
   const [name, setName] = useState('');
   const [color, setColor] = useState('#4C78FF');
+  const [toastEnabled, setToastEnabled] = useState(true);
   const [model, setModel] = useState('');
   const [modelMode, setModelMode] = useState<ModelMode>('usual');
   const [effort, setEffort] = useState('medium');
@@ -79,6 +81,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
     setTab('general');
     setName(agent.name);
     setColor(agent.color);
+    setToastEnabled(readToastEnabled(agent.config));
     setModel(baseModelId(agent.model));
     setModelMode(readModelMode(agent.config, agent.model));
     setEffort(readEffort(agent.config));
@@ -107,7 +110,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
         model: baseModelId(model.trim() || agent.model),
         color,
         instructions: soul.trim() ? soul : null,
-        config: { ...(agent.config || {}), modelMode, effort, lastMessages },
+        config: { ...(agent.config || {}), modelMode, effort, lastMessages, toastEnabled },
       });
       setStatus('Saved.');
       onSaved();
@@ -262,6 +265,14 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
                       />
                     </label>
                   </div>
+                  <label className="toast-toggle" title="Windows toast when a manual chat finishes and this window is in the background. Routines never toast.">
+                    <input
+                      type="checkbox"
+                      checked={toastEnabled}
+                      onChange={(e) => setToastEnabled(e.target.checked)}
+                    />
+                    Desktop toast
+                  </label>
                 </div>
               </div>
               <label className="field">

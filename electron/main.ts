@@ -9,8 +9,13 @@ import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemP
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
 import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
+import { APP_USER_MODEL_ID } from './notify';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId(APP_USER_MODEL_ID);
+}
 
 // Safer on varied Windows GPUs / VMs
 app.disableHardwareAcceleration();

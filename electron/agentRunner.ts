@@ -10,7 +10,8 @@ import { packAssistantBody, unpackAssistantBody } from '../src/lib/assistantBody
 import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
 import { getApiKey } from './secrets';
-import { DEFAULT_MODEL_ID, readLastMessages, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
+import { DEFAULT_MODEL_ID, readLastMessages, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
+import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
 
 export type ChatAttachment = {
@@ -947,6 +948,13 @@ const sdkPrompt = [
       messageId: assistantMessageId,
       content: text,
       usage,
+    });
+    maybeNotifyChatDone({
+      source: opts.source,
+      toastEnabled: readToastEnabled(agent.config),
+      agentName: agent.name,
+      content: text,
+      win: opts.win,
     });
   }
 

@@ -330,7 +330,7 @@ export function ChatView({
                     ) : null}
                   </>
                 ) : (
-                  <div className="bubble-text">{m.content}</div>
+                  <MarkdownBody className="md-user" text={m.content} />
                 )}
               </div>
             </div>

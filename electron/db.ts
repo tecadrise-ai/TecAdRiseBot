@@ -211,6 +211,7 @@ function mustDb(): Database {
 
 function previewSnippet(text: string): string {
   return String(text || '')
+    .replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);

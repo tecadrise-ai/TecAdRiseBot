@@ -270,6 +270,22 @@ function formatRecentChat(agentId: string, excludeIds: string[], limit: number):
   );
 }
 
+function userVisibleContent(text: string, attachments: ChatAttachment[]): string {
+  const parts: string[] = [];
+  const t = String(text || '').trim();
+  if (t) parts.push(t);
+  for (const att of attachments) {
+    const mime = (att.mimeType || 'application/octet-stream').toLowerCase();
+    const name = att.name || 'file';
+    if (mime.startsWith('image/') && att.dataBase64) {
+      parts.push(`![${name}](data:${mime};base64,${att.dataBase64})`);
+    } else if (name) {
+      parts.push(`Attached: ${name}`);
+    }
+  }
+  return parts.join('\n\n');
+}
+
 function lastAssistantFromConversation(turns: unknown): string {
   if (!Array.isArray(turns)) return '';
   const texts: string[] = [];
@@ -305,13 +321,32 @@ function lastThinkingFromConversation(turns: unknown): string {
   return texts[texts.length - 1].trim();
 }
 
+function errorText(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) return String((err as { message?: unknown }).message || err);
+  return String(err || '');
+}
+
+function isHttp2CalmError(err: unknown): boolean {
+  return /NGHTTP2_ENHANCE_YOUR_CALM|ENHANCE_YOUR_CALM/i.test(errorText(err));
+}
+
+function friendlyAgentError(err: unknown): string {
+  if (isHttp2CalmError(err)) {
+    return 'Cursor API closed this stream (HTTP/2 ENHANCE_YOUR_CALM). Too many agent calls at once. Stop other running agents, wait a few seconds, then send again.';
+  }
+  const msg = errorText(err).trim();
+  return msg || 'Agent run failed';
+}
+
 function isBusyError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = errorText(err);
   const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: unknown }).name) : '';
   return (
     name === 'AgentBusyError' ||
     /already has active run/i.test(msg) ||
-    /active run in progress/i.test(msg)
+    /active run in progress/i.test(msg) ||
+    isHttp2CalmError(err)
   );
 }
 
@@ -532,7 +567,7 @@ async function runAgentTurnInner(opts: {
     id: userMessageId,
     agentId: opts.agentId,
     role: opts.source === 'interbot' ? 'interbot' : 'user',
-    content: opts.userText,
+    content: userVisibleContent(opts.userText, opts.attachments ?? []),
     meta: opts.source ? JSON.stringify({ source: opts.source }) : null,
   });
 
@@ -862,8 +897,11 @@ const sdkPrompt = [
         assembled = packAssistantBody(thinkText, rawAnswer);
         if (result.status === 'error') {
           const msg = result.error?.message || 'Agent run failed';
+          if (isHttp2CalmError(msg) && !unpackAssistantBody(assembled).answer) {
+            throw new Error(msg);
+          }
           if (!unpackAssistantBody(assembled).answer && !unpackAssistantBody(assembled).thinking) {
-            assembled = `Error: ${msg}`;
+            assembled = `Error: ${friendlyAgentError(msg)}`;
           }
         }
         if (assembled && !published) publishDone();
@@ -898,11 +936,14 @@ const sdkPrompt = [
         const cur = db.getMessage(assistantMessageId);
         const text = String(cur?.content || assembled || '').trim() || 'Stopped.';
         db.updateMessageContent(assistantMessageId, text);
-      } else if (assembled.trim()) {
+      } else if (assembled.trim() && !isHttp2CalmError(e)) {
         db.updateMessageContent(assistantMessageId, assembled);
       } else if (!isBusyError(e)) {
         throw e;
       } else {
+        if (isHttp2CalmError(e)) {
+          await new Promise((r) => setTimeout(r, 2000));
+        }
         await cancelActive(opts.agentId);
         handle = await getHandle(agent, apiKey, cwd, true);
         assembled = '';
@@ -921,8 +962,7 @@ const sdkPrompt = [
       db.updateMessageContent(assistantMessageId, text);
     }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const friendly = `Agent error: ${msg}`;
+    const friendly = `Agent error: ${friendlyAgentError(e)}`;
     db.updateMessageContent(assistantMessageId, friendly);
     db.updateAgent(opts.agentId, { lastSnippet: friendly.slice(0, 120) });
     emit('chat:stream-error', {

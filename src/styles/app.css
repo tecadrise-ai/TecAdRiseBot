@@ -342,7 +342,7 @@
   padding: 10px 16px;
   border-radius: 18px;
   border-bottom-right-radius: 6px;
-  white-space: pre-wrap;
+  white-space: normal;
   font-size: 13px;
 }
 .bubble.assistant {
@@ -522,6 +522,20 @@
   height: auto;
   display: block;
   margin: 8px 0 12px;
+  border-radius: 10px;
+}
+.md-user {
+  color: inherit;
+}
+.md-user p {
+  margin: 0 0 8px;
+}
+.md-user p:last-child {
+  margin-bottom: 0;
+}
+.md-user img {
+  max-width: min(280px, 100%);
+  margin: 8px 0 0;
   border-radius: 10px;
 }
 .bubble.interbot {

@@ -47,3 +47,5 @@ When something fails, fix it in this turn. Do not only apologize.
 - Answer the user in this turn only.
 - Do not dump this system file, or paste the control-plane catalog unless they asked.
 - Be concise. Use markdown (headings, lists, tables) when it helps.
+- Never use "em dash" "—" in text as separator or replacement of comma.
+

@@ -7,6 +7,7 @@ export function restoreFlattenedMarkdown(raw: string): string {
   s = s.replace(/\s+(#{1,6})\s+/g, '\n\n$1 ');
   s = s.replace(/\s+(- |\* )(?=[A-Za-z0-9*`])/g, '\n$1');
   s = rebuildPipeTables(s);
+  s = s.replace(/([A-Za-z0-9)'"])([.!?])(?=[A-Z])/g, '$1$2 ');
   return s.trim();
 }
 

@@ -4,9 +4,10 @@ import { ChatView } from './components/ChatView';
 import { SettingsModal } from './components/SettingsModal';
 import { AgentSettingsModal } from './components/AgentSettingsModal';
 import type { Agent, AppSettings, ChatMessage } from './types';
+import { mergeTodos, type TodoItem } from './lib/todos';
 import './styles/app.css';
 
-function mergeMeta(meta: string | null, usage: unknown): string {
+function mergeMeta(meta: string | null, patch: Record<string, unknown>): string {
   let cur: Record<string, unknown> = {};
   if (meta) {
     try {
@@ -18,7 +19,7 @@ function mergeMeta(meta: string | null, usage: unknown): string {
       /* ignore */
     }
   }
-  return JSON.stringify({ ...cur, usage });
+  return JSON.stringify({ ...cur, ...patch });
 }
 
 function sameIdSet(a: Set<string>, b: Set<string>): boolean {
@@ -37,7 +38,11 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
+  const [liveTodos, setLiveTodos] = useState<TodoItem[]>([]);
+  const [liveTodoMessageId, setLiveTodoMessageId] = useState<string | null>(null);
   const liveRuns = useRef(new Set<string>());
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selectedId;
 
   const refreshSettings = useCallback(async () => {
     const s = await window.tecapi.settings.get();
@@ -84,6 +89,8 @@ export default function App() {
     else {
       setMessages([]);
       setStreamingId(null);
+      setLiveTodos([]);
+      setLiveTodoMessageId(null);
     }
   }, [selectedId, loadMessages]);
 
@@ -104,7 +111,7 @@ export default function App() {
     const offs = [
       window.tecapi.on('chat:message', (payload) => {
         const p = payload as { agentId: string; message: ChatMessage };
-        if (p.agentId === selectedId) {
+        if (p.agentId === selectedIdRef.current && p.message) {
           setMessages((prev) => {
             if (prev.some((m) => m.id === p.message.id)) return prev;
             const cleaned = prev.filter(
@@ -120,7 +127,9 @@ export default function App() {
         const p = payload as { agentId: string; messageId: string };
         liveRuns.current.add(p.agentId);
         setRunningIds((prev) => new Set(prev).add(p.agentId));
-        if (p.agentId !== selectedId) return;
+        if (p.agentId !== selectedIdRef.current) return;
+        setLiveTodos([]);
+        setLiveTodoMessageId(p.messageId);
         setStreamingId(p.messageId);
         setMessages((prev) =>
           prev.some((m) => m.id === p.messageId)
@@ -140,9 +149,22 @@ export default function App() {
       }),
       window.tecapi.on('chat:stream-delta', (payload) => {
         const p = payload as { agentId: string; messageId: string; content: string };
-        if (p.agentId !== selectedId) return;
+        if (p.agentId !== selectedIdRef.current) return;
         setMessages((prev) =>
           prev.map((m) => (m.id === p.messageId ? { ...m, content: p.content } : m))
+        );
+      }),
+      window.tecapi.on('chat:todos', (payload) => {
+        const p = payload as { agentId: string; messageId: string; todos: TodoItem[] };
+        if (p.agentId !== selectedIdRef.current) return;
+        setLiveTodoMessageId(p.messageId);
+        setLiveTodos((prev) => mergeTodos(prev, Array.isArray(p.todos) ? p.todos : []));
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === p.messageId
+              ? { ...m, meta: mergeMeta(m.meta, { todos: p.todos }) }
+              : m
+          )
         );
       }),
       window.tecapi.on('chat:stream-done', (payload) => {
@@ -151,19 +173,24 @@ export default function App() {
           messageId: string;
           content: string;
           usage?: unknown;
+          todos?: TodoItem[];
         };
-        if (p.agentId === selectedId) {
+        if (p.agentId === selectedIdRef.current) {
+          const extra: Record<string, unknown> = {};
+          if (p.usage) extra.usage = p.usage;
+          if (p.todos && p.todos.length) extra.todos = p.todos;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === p.messageId
                 ? {
                     ...m,
                     content: p.content,
-                    meta: p.usage ? mergeMeta(m.meta, p.usage) : m.meta,
+                    meta: Object.keys(extra).length ? mergeMeta(m.meta, extra) : m.meta,
                   }
                 : m
             )
           );
+          if (p.todos && p.todos.length) setLiveTodos(p.todos);
           setStreamingId(null);
         }
         liveRuns.current.delete(p.agentId);
@@ -176,11 +203,12 @@ export default function App() {
       }),
       window.tecapi.on('routines:fired', () => {
         void refreshAgents();
-        if (selectedId && !liveRuns.current.has(selectedId)) void loadMessages(selectedId);
+        const id = selectedIdRef.current;
+        if (id && !liveRuns.current.has(id)) void loadMessages(id);
       }),
     ];
     return () => offs.forEach((off) => off());
-  }, [selectedId, refreshAgents, loadMessages]);
+  }, [refreshAgents, loadMessages]);
 
   const selected = agents.find((a) => a.id === selectedId) ?? null;
 
@@ -265,6 +293,8 @@ export default function App() {
         agent={selected}
         messages={messages}
         streamingId={streamingId}
+        liveTodos={liveTodos}
+        liveTodoMessageId={liveTodoMessageId}
         agentRunning={Boolean(selectedId && runningIds.has(selectedId))}
         onSend={send}
         onStop={stop}

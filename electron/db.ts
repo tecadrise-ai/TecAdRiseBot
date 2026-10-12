@@ -53,10 +53,27 @@ export type RoutineRow = {
   createdAt: number;
 };
 
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistDirty = false;
+
 function persist() {
-  if (!db || !dbPath) return;
-  const data = db.export();
-  fs.writeFileSync(dbPath, Buffer.from(data));
+  persistDirty = true;
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    flushPersist();
+  }, 1500);
+}
+
+export function flushPersist(): void {
+  if (!db || !dbPath || !persistDirty) return;
+  persistDirty = false;
+  try {
+    const data = db.export();
+    fs.writeFileSync(dbPath, Buffer.from(data));
+  } catch (e) {
+    console.error('[TecAdRiseBot] persist failed', e);
+  }
 }
 
 function wasmDir(): string {
@@ -478,8 +495,9 @@ export function formatRoutineUserText(r: { name: string; prompt: string; forceTo
   if (!r.forceTodos) return body;
   return (
     body +
-    '\n\n# Mode: FORCE updateTodos\n' +
-    'You MUST call the updateTodos tool with these routine steps as a checklist, then execute them in order, one step at a time. Do not skip updateTodos. If a step fails, stop and explain.\n'
+    '\n\n# Mode: TRIGGER\n' +
+    'Turn the tasks below into a todo list using your todo tool, then execute them in order, one step at a time. ' +
+    'Report progress and the final result clearly. If a step fails, stop and explain.\n'
   );
 }
 

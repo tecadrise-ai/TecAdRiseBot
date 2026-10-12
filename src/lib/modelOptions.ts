@@ -120,25 +120,33 @@ export function toSdkModel(
 ): { id: string; params?: ModelParam[] } {
   const mode = readModelMode(config, modelId);
   const effort = readEffort(config);
-  let id = baseModelId(modelId);
+  const id = baseModelId(modelId);
   const item = (catalog || []).find((m) => m.id === id || m.id === modelId);
   const params: ModelParam[] = [];
 
-  if (mode === 'fast') {
-    const fastVar = (item?.variants || []).find((v) => /fast/i.test(v.displayName));
-    if (fastVar?.params?.length) params.push(...fastVar.params);
-    else id = `${id}-fast`;
-  } else {
-    const pick =
-      (item?.variants || []).find((v) => v.isDefault && !/fast/i.test(v.displayName)) ||
-      (item?.variants || []).find((v) => !/fast/i.test(v.displayName));
-    if (pick?.params?.length) params.push(...pick.params);
+  const fastDef = (item?.parameters || []).find(
+    (p) => p.id === 'fast' || /^fast$/i.test(String(p.displayName || ''))
+  );
+  const variantHasFast = (item?.variants || []).some((v) =>
+    (v.params || []).some((p) => p.id === 'fast')
+  );
+  if (fastDef || variantHasFast || !item) {
+    params.push({ id: fastDef?.id || 'fast', value: mode === 'fast' ? 'true' : 'false' });
+  } else if (mode === 'fast') {
+    return { id: `${id}-fast`, params };
   }
 
   const ep = effortParam(item);
-  const idx = params.findIndex((p) => p.id === ep.id);
-  if (idx >= 0) params[idx] = { id: ep.id, value: effort };
-  else params.push({ id: ep.id, value: effort });
+  const hasEffort =
+    (item?.parameters || []).some((p) => p.id === ep.id) ||
+    (item?.variants || []).some((v) => (v.params || []).some((p) => p.id === ep.id));
+  if (hasEffort || !item) {
+    const allowed = new Set((ep.values || []).map((v) => v.value));
+    let value = effort;
+    if (allowed.size && !allowed.has(value) && value === 'max' && allowed.has('xhigh')) value = 'xhigh';
+    if (allowed.size && !allowed.has(value) && value === 'xhigh' && allowed.has('max')) value = 'max';
+    params.push({ id: ep.id, value });
+  }
 
   return { id, params };
 }

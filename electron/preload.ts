@@ -150,6 +150,7 @@ const api = {
       'chat:stream-delta',
       'chat:stream-done',
       'chat:stream-error',
+      'chat:todos',
       'routines:fired',
     ];
     if (!allowed.includes(channel)) return () => undefined;

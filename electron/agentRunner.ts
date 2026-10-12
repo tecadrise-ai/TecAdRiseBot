@@ -13,6 +13,23 @@ import { getApiKey } from './secrets';
 import { DEFAULT_MODEL_ID, readLastMessages, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
+import { mergeTodos, parseNumberedTasks, todosFromDelta, type TodoItem } from '../src/lib/todos';
+
+function broadcastUi(channel: string, payload: unknown, preferred?: BrowserWindow | null): void {
+  const seen = new Set<number>();
+  const send = (w: BrowserWindow | null | undefined) => {
+    if (!w || w.isDestroyed()) return;
+    if (seen.has(w.id)) return;
+    seen.add(w.id);
+    try {
+      w.webContents.send(channel, payload);
+    } catch {
+      /* ignore */
+    }
+  };
+  send(preferred);
+  for (const w of BrowserWindow.getAllWindows()) send(w);
+}
 
 export type ChatAttachment = {
   name: string;
@@ -50,6 +67,7 @@ type CursorAgent = {
       usage?: TokenUsage;
     }>;
     conversation?: () => Promise<unknown>;
+    stream?: () => AsyncIterable<unknown>;
     cancel: () => Promise<void>;
     status: string;
   }>;
@@ -410,12 +428,26 @@ function loadGlobalMcpServers(): McpServers {
   return parsed.ok ? parsed.servers : {};
 }
 
-function mcpServersForAgent(config: Record<string, unknown> | null | undefined): McpServers | undefined {
+function mcpServersForAgent(config: Record<string, unknown> | null | undefined, cwd: string): McpServers | undefined {
   const agentParsed = parseMcpJson(JSON.stringify(config?.mcpServers ?? {}));
   const agentServers = agentParsed.ok ? agentParsed.servers : {};
   const merged = mergeMcpServers(loadGlobalMcpServers(), agentServers);
   if (!Object.keys(merged).length) return undefined;
-  return merged;
+  const pinned: McpServers = {};
+  for (const [name, server] of Object.entries(merged)) {
+    const stdio = Boolean(server.command) && !server.url && server.type !== 'http' && server.type !== 'sse';
+    pinned[name] = stdio ? { ...server, cwd: server.cwd || cwd } : server;
+  }
+  return pinned;
+}
+
+function localAgentOpts(cwd: string) {
+  return {
+    cwd,
+    dirs: [cwd],
+    enableAgentRetries: false,
+    settingSources: [] as Array<'project' | 'user' | 'team' | 'mdm' | 'plugins' | 'all'>,
+  };
 }
 
 async function getHandle(
@@ -449,7 +481,8 @@ async function getHandle(
   }
   let handle: CursorAgent | null = null;
   const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
-  const mcpServers = mcpServersForAgent(agent.config);
+  const mcpServers = mcpServersForAgent(agent.config, cwd);
+  const local = localAgentOpts(cwd);
 
   if (!forceNew && agent.cursorAgentId) {
     try {
@@ -457,7 +490,7 @@ async function getHandle(
         apiKey,
         model: modelSel,
         mcpServers,
-        local: { cwd, enableAgentRetries: false },
+        local,
       })) as unknown as CursorAgent;
     } catch (e) {
       console.warn('Agent.resume failed, creating new', e);
@@ -471,7 +504,7 @@ async function getHandle(
       name: agent.name,
       model: modelSel,
       mcpServers,
-      local: { cwd, enableAgentRetries: false },
+      local,
     })) as unknown as CursorAgent;
     db.updateAgent(agent.id, { cursorAgentId: handle.agentId });
   }
@@ -490,7 +523,7 @@ export async function registerAgentMcp(agentId: string): Promise<{ ok: boolean; 
   }
   try {
     await getHandle(agent, apiKey, db.agentWorkspacePath(agentId), false);
-    const n = Object.keys(mcpServersForAgent(agent.config) || {}).length;
+    const n = Object.keys(mcpServersForAgent(agent.config, db.agentWorkspacePath(agentId)) || {}).length;
     return {
       ok: true,
       note: n
@@ -580,7 +613,7 @@ async function runAgentTurnInner(opts: {
   });
 
   const emit = (channel: string, payload: unknown) => {
-    opts.win?.webContents.send(channel, payload);
+    broadcastUi(channel, payload, opts.win);
   };
 
   emit('chat:message', {
@@ -657,6 +690,10 @@ async function runAgentTurnInner(opts: {
 
 const sdkPrompt = [
     systemPrompt,
+    '[Checklist tool]\n' +
+      'If you need a task list, call the todo tool already in this turn (TodoWrite or updateTodos). ' +
+      'Pass { todos: [{ id, content, status }] }. Do not grep the app source. Do not use GetDynamicTools or HTTP for todos.\n' +
+      '[/Checklist tool]',
     systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
     '[Memory directory]' + '\n' + db.ensureMemoryDir() + '\nRead index.md first. Write lasting facts here. Shared by all agents.\n[/Memory directory]',
     '[Skills]' + '\n' + db.formatSkillsCatalog() + '\n[/Skills]',
@@ -672,6 +709,7 @@ const sdkPrompt = [
 
   let assembled = '';
   let usage: TokenUsage | null = null;
+  let todos: TodoItem[] = [];
   try {
     let handle = await getHandle(agent, apiKey, cwd, false);
 
@@ -698,6 +736,20 @@ const sdkPrompt = [
         }
         return assembled;
       };
+
+      const applyTodos = (incoming: TodoItem[]) => {
+        if (!incoming.length) return;
+        todos = mergeTodos(todos, incoming);
+        console.log('[TecAdRiseBot] todos', todos.map((t) => t.status + ':' + t.content).join(' | '));
+        db.patchMessageMeta(assistantMessageId, { todos });
+        emit('chat:todos', {
+          agentId: opts.agentId,
+          messageId: assistantMessageId,
+          todos,
+        });
+      };
+      const seeded = parseNumberedTasks(opts.userText);
+      if (seeded.length >= 2) applyTodos(seeded);
 
       const addImgs = (imgs: GenImage[]) => {
         for (const img of imgs) {
@@ -741,6 +793,8 @@ const sdkPrompt = [
         if (update.type === 'usage' && (update.usage || delta.usage)) {
           usage = addUsage(usage, update.usage || delta.usage);
         }
+        const incomingTodos = todosFromDelta(update) || todosFromDelta(delta);
+        if (incomingTodos && incomingTodos.length) applyTodos(incomingTodos);
         if (update.type === 'tool-call-completed') {
           addImgs(imagesFromUnknown(update.toolCall ?? update));
           persistVisible();
@@ -791,19 +845,33 @@ const sdkPrompt = [
         }
       };
 
+      const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
+      console.log('[TecAdRiseBot] sdk model', JSON.stringify(modelSel));
       const run = await h.send(
         imageParts.length
           ? { text: sdkPrompt, images: imageParts }
           : sdkPrompt,
         {
-          local: { force: true },
-          model: toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog),
-          mcpServers: mcpServersForAgent(agent.config),
+          local: { ...localAgentOpts(cwd), force: true },
+          model: modelSel,
+          mcpServers: mcpServersForAgent(agent.config, cwd),
           onDelta: takeDelta,
         }
       );
 
       activeRuns.set(opts.agentId, run);
+      if (typeof run.stream === 'function') {
+        void (async () => {
+          try {
+            for await (const ev of run.stream!()) {
+              const incoming = todosFromDelta(ev);
+              if (incoming && incoming.length) applyTodos(incoming);
+            }
+          } catch {
+            /* stream closed */
+          }
+        })();
+      }
       if (stopRequested.has(opts.agentId)) {
         try {
           await run.cancel();
@@ -819,6 +887,8 @@ const sdkPrompt = [
           if (typeof run.conversation === 'function') {
             const conv = await run.conversation();
             addImgs(imagesFromUnknown(conv));
+            const convTodos = todosFromDelta(conv);
+            if (convTodos && convTodos.length) applyTodos(convTodos);
             const fromConv = lastAssistantFromConversation(conv);
             if (fromConv.trim() && fromConv.trim().length >= turnText.trim().length) turnText = fromConv;
             const fromThink = lastThinkingFromConversation(conv);
@@ -874,6 +944,8 @@ const sdkPrompt = [
           if (typeof run.conversation === 'function') {
             const conv = await run.conversation();
             addImgs(imagesFromUnknown(conv));
+            const convTodos = todosFromDelta(conv);
+            if (convTodos && convTodos.length) applyTodos(convTodos);
             fromConv = lastAssistantFromConversation(conv);
             const fromThink = lastThinkingFromConversation(conv);
             if (fromThink && fromThink.length >= thinkText.length) thinkText = fromThink;
@@ -988,6 +1060,7 @@ const sdkPrompt = [
       messageId: assistantMessageId,
       content: text,
       usage,
+      todos,
     });
     maybeNotifyChatDone({
       source: opts.source,

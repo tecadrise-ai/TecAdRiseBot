@@ -8,6 +8,7 @@ import * as secrets from './secrets';
 import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp, readGlobalMcpJson, registerGlobalMcp } from './agentRunner';
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
+import { configureControlPlane } from './controlPlane';
 import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 import { APP_USER_MODEL_ID, APP_DISPLAY_NAME, appIconPath, ensureWindowsToastIdentity } from './notify';
 
@@ -26,6 +27,31 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
 
 let mainWindow: BrowserWindow | null = null;
+let quitting = false;
+let restartingWindow = false;
+
+function crashLog(kind: string, detail: unknown): void {
+  const line = `[${new Date().toISOString()}] ${kind} ${
+    detail instanceof Error ? detail.stack || detail.message : JSON.stringify(detail)
+  }\n`;
+  console.error('[TecAdRiseBot]', kind, detail);
+  try {
+    const dir = app.isReady()
+      ? app.getPath('userData')
+      : path.join(process.env.APPDATA || '', 'TecAdRiseBot');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, 'crash.log'), line);
+  } catch {
+    /* ignore */
+  }
+}
+
+process.on('uncaughtException', (err) => {
+  crashLog('uncaughtException', err);
+});
+process.on('unhandledRejection', (reason) => {
+  crashLog('unhandledRejection', reason);
+});
 
 function isInternalAppUrl(url: string): boolean {
   if (url.startsWith('file:') || url.startsWith('devtools:')) return true;
@@ -335,6 +361,7 @@ app.whenReady().then(async () => {
   }
   registerIpc();
   createWindow();
+  configureControlPlane({ getWindow: () => mainWindow });
   try {
     const info = await startHttpApi(8787);
     console.log('[TecAdRiseBot] Control plane', info);
@@ -343,17 +370,48 @@ app.whenReady().then(async () => {
   }
   startScheduler(() => mainWindow);
 
+  app.on('render-process-gone', (_e, _wc, details) => {
+    crashLog('render-process-gone', details);
+    if (quitting) return;
+    restartingWindow = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.destroy();
+      } catch {
+        /* ignore */
+      }
+    }
+    mainWindow = null;
+    setTimeout(() => {
+      restartingWindow = false;
+      if (!quitting && BrowserWindow.getAllWindows().length === 0) createWindow();
+    }, 300);
+  });
+  app.on('child-process-gone', (_e, details) => {
+    crashLog('child-process-gone', details);
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
+  if (restartingWindow) return;
   stopScheduler();
   if (process.platform !== 'darwin') app.quit();
 });
 
-
-
-
-app.on('before-quit', () => { try { void stopHttpApi(); } catch { /* ignore */ } });
+app.on('before-quit', () => {
+  quitting = true;
+  try {
+    db.flushPersist();
+  } catch {
+    /* ignore */
+  }
+  try {
+    void stopHttpApi();
+  } catch {
+    /* ignore */
+  }
+});

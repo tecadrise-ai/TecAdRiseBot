@@ -4,6 +4,7 @@ import { MarkdownBody } from './MarkdownBody';
 import { fmtTs, fmtUsage, parseMessageUsage } from '../lib/usage';
 import { formatModelLabel } from '../lib/modelOptions';
 import { unpackAssistantBody } from '../lib/assistantBody';
+import { parseMessageTodos, type TodoItem, type TodoStatus } from '../lib/todos';
 
 export type PendingAttachment = {
   id: string;
@@ -17,11 +18,47 @@ type Props = {
   agent: Agent | null;
   messages: ChatMessage[];
   streamingId: string | null;
+  liveTodos?: TodoItem[];
+  liveTodoMessageId?: string | null;
   agentRunning?: boolean;
   onSend: (text: string, attachments: PendingAttachment[]) => Promise<void>;
   onStop: () => void | Promise<void>;
   onOpenAgentSettings: () => void;
 };
+
+const TODO_MARK: Record<TodoStatus, string> = {
+  pending: '[ ]',
+  inProgress: '[~]',
+  completed: '[x]',
+  cancelled: '[-]',
+};
+
+function TodoList({ todos }: { todos: TodoItem[] }) {
+  if (!todos.length) return null;
+  return (
+    <div className="todo-box">
+      <div className="todo-head">Task list</div>
+      <div className="todo-list">
+        {todos.map((t) => {
+          const st =
+            t.status === 'completed'
+              ? 'done'
+              : t.status === 'inProgress'
+                ? 'doing'
+                : t.status === 'cancelled'
+                  ? 'cancelled'
+                  : 'todo';
+          return (
+            <div key={t.id} className={`todo-row ${st}`}>
+              <span className="tk">{TODO_MARK[t.status] || '[ ]'}</span>
+              <span className="tx">{t.content}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function assistantMetaLine(m: ChatMessage): string {
   const bits: string[] = [];
@@ -226,6 +263,8 @@ export function ChatView({
   agent,
   messages,
   streamingId,
+  liveTodos = [],
+  liveTodoMessageId = null,
   agentRunning = false,
   onSend,
   onStop,
@@ -312,17 +351,20 @@ export function ChatView({
           </div>
         )}
         {messages.map((m) => {
-          if (!m.content) return null;
+          const todos =
+            m.id === liveTodoMessageId && liveTodos.length ? liveTodos : parseMessageTodos(m.meta);
+          if (!m.content && !todos.length) return null;
           const metaLine = m.role === 'assistant' ? assistantMetaLine(m) : '';
-          const parts = m.role === 'assistant' ? unpackAssistantBody(m.content) : null;
+          const parts = m.role === 'assistant' ? unpackAssistantBody(m.content || '') : null;
           return (
             <div key={m.id} className={`bubble-row ${m.role}`}>
               <div className={`bubble ${m.role} ${streamingId === m.id ? 'streaming' : ''}`}>
                 {m.role === 'interbot' && <div className="badge">Inter-bot</div>}
-                {m.role === 'assistant' && parts ? (
+                {m.role === 'assistant' ? (
                   <>
-                    {parts.thinking ? <MarkdownBody className="md-thinking" text={parts.thinking} /> : null}
-                    {parts.answer ? <MarkdownBody text={parts.answer} /> : null}
+                    <TodoList todos={todos} />
+                    {parts?.thinking ? <MarkdownBody className="md-thinking" text={parts.thinking} /> : null}
+                    {parts?.answer ? <MarkdownBody text={parts.answer} /> : null}
                     {metaLine ? (
                       <div className="msg-time" title={metaLine}>
                         {metaLine}
@@ -336,7 +378,14 @@ export function ChatView({
             </div>
           );
         })}
-        {streamingId && !messages.some((m) => m.id === streamingId && m.content) ? (
+        {streamingId &&
+        !messages.some(
+          (m) =>
+            m.id === streamingId &&
+            (m.content ||
+              (m.id === liveTodoMessageId && liveTodos.length) ||
+              parseMessageTodos(m.meta).length)
+        ) ? (
           <div className="bubble-row assistant thinking-row" aria-live="polite">
             <div className="bubble assistant streaming">
               <div className="bubble-text">

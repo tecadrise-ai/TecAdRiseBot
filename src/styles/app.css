@@ -397,6 +397,12 @@
 .md-thinking {
   margin-bottom: 12px;
 }
+.md-thinking-raw {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #8e8e93;
+  font-weight: 400;
+}
 .md-body > *:first-child {
   margin-top: 0;
 }

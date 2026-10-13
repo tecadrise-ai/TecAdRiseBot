@@ -362,7 +362,13 @@ export function ChatView({
                 {m.role === 'interbot' && <div className="badge">Inter-bot</div>}
                 {m.role === 'assistant' ? (
                   <>
-                    {parts?.thinking ? <MarkdownBody className="md-thinking" text={parts.thinking} /> : null}
+                    {parts?.thinking ? (
+                      streamingId === m.id ? (
+                        <div className="md-thinking md-thinking-raw">{parts.thinking}</div>
+                      ) : (
+                        <MarkdownBody className="md-thinking" text={parts.thinking} />
+                      )
+                    ) : null}
                     <TodoList todos={todos} />
                     {parts?.answer ? <MarkdownBody text={parts.answer} /> : null}
                     {metaLine ? (

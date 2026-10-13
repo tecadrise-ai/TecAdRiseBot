@@ -4,12 +4,16 @@ export const THINK_OPEN = '<!--tec-think-->';
 export const THINK_CLOSE = '<!--tec-think-end-->';
 
 export function packAssistantBody(thinking: string, answer: string): string {
-  const split = peelThinkingFromAnswer(thinking, answer);
-  const t = split.thinking.trim();
-  const a = split.answer.trim();
+  const t = thinking.trim();
+  const a = answer.trim();
   if (!t) return a;
   if (!a) return `${THINK_OPEN}\n${t}\n${THINK_CLOSE}`;
   return `${THINK_OPEN}\n${t}\n${THINK_CLOSE}\n\n${a}`;
+}
+
+export function finalizeAssistantBody(thinking: string, answer: string): string {
+  const split = peelThinkingFromAnswer(thinking, answer);
+  return packAssistantBody(split.thinking, split.answer);
 }
 
 function isAnswerStart(block: string): boolean {
@@ -96,10 +100,10 @@ export function unpackAssistantBody(raw: string): { thinking: string; answer: st
   const open = s.indexOf(THINK_OPEN);
   const close = s.indexOf(THINK_CLOSE);
   if (open >= 0 && close > open) {
-    return peelThinkingFromAnswer(
-      s.slice(open + THINK_OPEN.length, close),
-      s.slice(0, open) + s.slice(close + THINK_CLOSE.length)
-    );
+    return {
+      thinking: s.slice(open + THINK_OPEN.length, close).trim(),
+      answer: (s.slice(0, open) + s.slice(close + THINK_CLOSE.length)).trim(),
+    };
   }
   return splitThinkingHeuristic(s);
 }

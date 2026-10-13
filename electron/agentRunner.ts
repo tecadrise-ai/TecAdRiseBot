@@ -6,7 +6,7 @@ import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import { formatRuntimeContext } from './controlPlane';
 import { restoreFlattenedMarkdown } from '../src/lib/markdown';
-import { packAssistantBody, unpackAssistantBody } from '../src/lib/assistantBody';
+import { finalizeAssistantBody, packAssistantBody, unpackAssistantBody } from '../src/lib/assistantBody';
 import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
 import { getApiKey } from './secrets';
@@ -727,6 +727,8 @@ const sdkPrompt = [
       const compose = (text: string) => appendImagesToMarkdown(text.trim(), genImages);
       const visible = () => packAssistantBody(thinkText, compose(turnText));
       let lastPersist = 0;
+      let lastDeltaEmit = 0;
+      let deltaEmitTimer: ReturnType<typeof setTimeout> | null = null;
       const persistVisible = () => {
         assembled = visible();
         const now = Date.now();
@@ -735,6 +737,32 @@ const sdkPrompt = [
           db.updateMessageContent(assistantMessageId, assembled);
         }
         return assembled;
+      };
+      const emitDelta = (immediate: boolean) => {
+        persistVisible();
+        const fire = () => {
+          deltaEmitTimer = null;
+          lastDeltaEmit = Date.now();
+          emit('chat:stream-delta', {
+            agentId: opts.agentId,
+            messageId: assistantMessageId,
+            content: assembled,
+          });
+        };
+        if (immediate) {
+          if (deltaEmitTimer) {
+            clearTimeout(deltaEmitTimer);
+            deltaEmitTimer = null;
+          }
+          fire();
+          return;
+        }
+        const wait = 50 - (Date.now() - lastDeltaEmit);
+        if (wait <= 0) {
+          fire();
+          return;
+        }
+        if (!deltaEmitTimer) deltaEmitTimer = setTimeout(fire, wait);
       };
 
       const applyTodos = (incoming: TodoItem[]) => {
@@ -763,7 +791,7 @@ const sdkPrompt = [
 
       const publishDone = () => {
         const answer = extractLastAssistantText(compose(turnText || unpackAssistantBody(assembled).answer));
-        assembled = packAssistantBody(thinkText, answer);
+        assembled = finalizeAssistantBody(thinkText, answer);
         const packed = unpackAssistantBody(assembled);
         if (!packed.answer && !packed.thinking) return;
         lastPersist = Date.now();
@@ -825,23 +853,11 @@ const sdkPrompt = [
         if (stopRequested.has(opts.agentId)) return;
         if (update.type === 'thinking-delta' && update.text) {
           thinkText += update.text;
-          persistVisible();
-          emit('chat:stream-delta', {
-            agentId: opts.agentId,
-            messageId: assistantMessageId,
-            delta: update.text,
-            content: assembled,
-          });
+          emitDelta(false);
         }
         if (update.type === 'text-delta' && update.text) {
           turnText += update.text;
-          persistVisible();
-          emit('chat:stream-delta', {
-            agentId: opts.agentId,
-            messageId: assistantMessageId,
-            delta: update.text,
-            content: assembled,
-          });
+          emitDelta(true);
         }
       };
 
@@ -966,7 +982,7 @@ const sdkPrompt = [
               (typeof result.result === 'string' ? result.result : '')
           )
         );
-        assembled = packAssistantBody(thinkText, rawAnswer);
+        assembled = finalizeAssistantBody(thinkText, rawAnswer);
         if (result.status === 'error') {
           const msg = result.error?.message || 'Agent run failed';
           if (isHttp2CalmError(msg) && !unpackAssistantBody(assembled).answer) {

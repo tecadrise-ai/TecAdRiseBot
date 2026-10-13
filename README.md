@@ -122,7 +122,7 @@ curl -X PATCH http://127.0.0.1:8787/api/agents/<AGENT_ID> `
 
 - `contextIsolation: true`, `nodeIntegration: false`, preload only (`window.tecapi`)
 - API key never written to SQLite
-- Control plane binds localhost only
+- Control plane binds `127.0.0.1` only, no auth. Do not expose port `8787` outside this PC.
 
 ## License
 

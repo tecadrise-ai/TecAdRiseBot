@@ -126,4 +126,4 @@ curl -X PATCH http://127.0.0.1:8787/api/agents/<AGENT_ID> `
 
 ## License
 
-MIT. [tecadrise.ai](https://tecadrise.ai)
+MIT. See [LICENSE](LICENSE). [tecadrise.ai](https://tecadrise.ai)

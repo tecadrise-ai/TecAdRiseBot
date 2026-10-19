@@ -74,6 +74,7 @@ export function getCatalog() {
       body: '{ text }',
     },
     { method: 'GET', path: '/api/agents/:id/status', summary: 'busy | idle run status' },
+    { method: 'POST', path: '/api/agents/:id/stop', summary: 'Cancel the in-flight turn' },
     { method: 'GET', path: '/api/agents/:id/snapshot', summary: 'Self-awareness blob for prompts' },
     {
       method: 'POST',
@@ -179,6 +180,7 @@ export function updateAgent(
   const prev = db.getAgent(id);
   const next = db.updateAgent(id, patch);
   if (prev && shouldRecreateSdkAgent(prev, patch)) dropAgentHandle(id);
+  if (prev && patch.cursorAgentId === null && prev.cursorAgentId) dropAgentHandle(id);
   return next;
 }
 
@@ -222,6 +224,12 @@ export function getRunStatus(agentId: string) {
     busy: isAgentBusy(agentId),
     status: isAgentBusy(agentId) ? ('busy' as const) : ('idle' as const),
   };
+}
+
+export async function stopAgent(agentId: string) {
+  if (!db.getAgent(agentId)) throw new Error('Agent not found');
+  await cancelAgentRun(agentId);
+  return getRunStatus(agentId);
 }
 
 export function listRoutines(agentId?: string) {

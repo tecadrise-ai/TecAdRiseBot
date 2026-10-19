@@ -14,6 +14,7 @@ import {
   DEFAULT_LAST_MESSAGES,
   readLastMessages,
   readModelMode,
+  readResumeSession,
   readToastEnabled,
   type CatalogModel,
   type ModelMode,
@@ -24,13 +25,15 @@ type Props = {
   agent: Agent | null;
   onClose: () => void;
   onSaved: () => void;
+  onSessionCleared?: (agentId: string) => void;
 };
 
-export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
+export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCleared }: Props) {
   const [tab, setTab] = useState<'general' | 'routines' | 'mcp' | 'session'>('general');
   const [name, setName] = useState('');
   const [color, setColor] = useState('#4C78FF');
   const [toastEnabled, setToastEnabled] = useState(true);
+  const [resumeSession, setResumeSession] = useState(true);
   const [model, setModel] = useState('');
   const [modelMode, setModelMode] = useState<ModelMode>('usual');
   const [effort, setEffort] = useState('medium');
@@ -39,6 +42,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
   const [mcpJson, setMcpJson] = useState('{\n}\n');
   const [mcpBusy, setMcpBusy] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [models, setModels] = useState<CatalogModel[]>([]);
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
@@ -82,6 +86,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
     setName(agent.name);
     setColor(agent.color);
     setToastEnabled(readToastEnabled(agent.config));
+    setResumeSession(readResumeSession(agent.config));
     setModel(baseModelId(agent.model));
     setModelMode(readModelMode(agent.config, agent.model));
     setEffort(readEffort(agent.config));
@@ -89,6 +94,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
     setSoul(resolveAgentSoul(agent.instructions));
     setMcpJson(mcpJsonFromConfig(agent.config));
     setStatus('');
+    setConfirmClear(false);
     setRName('');
     setSchedule(DEFAULT_SCHEDULE);
     setRPrompt('');
@@ -110,7 +116,23 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
         model: baseModelId(model.trim() || agent.model),
         color,
         instructions: soul.trim() ? soul : null,
-        config: { ...(agent.config || {}), modelMode, effort, lastMessages, toastEnabled },
+        config: { ...(agent.config || {}), modelMode, effort, lastMessages, toastEnabled, resumeSession },
+      });
+      setStatus('Saved.');
+      onSaved();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveSession() {
+    setSaving(true);
+    setStatus('');
+    try {
+      await window.tecapi.agents.update(agent.id, {
+        config: { ...(agent.config || {}), modelMode, effort, lastMessages, toastEnabled, resumeSession },
       });
       setStatus('Saved.');
       onSaved();
@@ -123,16 +145,19 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
 
   async function clearSession() {
     if (clearing) return;
-    const ok = window.confirm(
-      `Clear chat history for ${agent.name}? This cannot be undone.`
-    );
-    if (!ok) return;
+    if (!confirmClear) {
+      setConfirmClear(true);
+      setStatus('Click Clear again to wipe this chat. Cannot be undone.');
+      return;
+    }
     setClearing(true);
     setStatus('');
     try {
       await window.tecapi.messages.clear(agent.id);
-      setStatus('Session cleared.');
+      setConfirmClear(false);
       onSaved();
+      onSessionCleared?.(agent.id);
+      onClose();
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
     } finally {
@@ -513,6 +538,14 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
                 Clear the current session to wipe this agent&apos;s chat history. The next message
                 starts a fresh SDK session. Soul, MCP, and routines stay as they are.
               </p>
+              <label className="toast-toggle" title="After an app restart, reconnect the same Cursor SDK thread. Turn off if a blocked thread keeps failing.">
+                <input
+                  type="checkbox"
+                  checked={resumeSession}
+                  onChange={(e) => setResumeSession(e.target.checked)}
+                />
+                Resume SDK session
+              </label>
               {status ? <p className="status">{status}</p> : null}
             </div>
           )}
@@ -565,14 +598,24 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved }: Props) {
             </button>
           )}
           {tab === 'session' && (
-            <button
-              type="button"
-              className="primary danger-btn"
-              disabled={clearing}
-              onClick={() => void clearSession()}
-            >
-              {clearing ? 'Clearing...' : 'Clear current session'}
-            </button>
+            <>
+              <button
+                type="button"
+                className="primary"
+                disabled={saving}
+                onClick={() => void saveSession()}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="primary danger-btn"
+                disabled={clearing}
+                onClick={() => void clearSession()}
+              >
+                {clearing ? 'Clearing...' : 'Clear current session'}
+              </button>
+            </>
           )}
         </div>
       </div>

@@ -238,6 +238,18 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     }
 
     {
+      const m = match(method, path, 'POST', '/api/agents/:id/stop');
+      if (m) {
+        try {
+          send(res, 200, await cp.stopAgent(m.id));
+        } catch (e) {
+          send(res, 404, { error: e instanceof Error ? e.message : String(e) });
+        }
+        return;
+      }
+    }
+
+    {
       const m = match(method, path, 'GET', '/api/agents/:id/snapshot');
       if (m) {
         try {

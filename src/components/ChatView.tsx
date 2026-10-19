@@ -155,6 +155,11 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
     }
   }, [agentId]);
 
+  useEffect(() => {
+    if (busy) return;
+    taRef.current?.focus();
+  }, [busy, agentId]);
+
   async function addFiles(files: FileList | File[]) {
     const list = Array.from(files);
     if (!list.length) return;

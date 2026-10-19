@@ -10,7 +10,7 @@ import { finalizeAssistantBody, packAssistantBody, unpackAssistantBody } from '.
 import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
 import { getApiKey } from './secrets';
-import { DEFAULT_MODEL_ID, readLastMessages, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
+import { DEFAULT_MODEL_ID, readLastMessages, readResumeSession, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
 import { mergeTodos, parseNumberedTasks, todosFromDelta, type TodoItem } from '../src/lib/todos';
@@ -267,23 +267,92 @@ async function imagesFromArtifacts(h: CursorAgent, cwd: string): Promise<GenImag
   return out;
 }
 
-function formatRecentChat(agentId: string, excludeIds: string[], limit: number): string {
+function isFailedAssistantBubble(content: string): boolean {
+  const t = String(content || '').trim();
+  return /^Error:/i.test(t) || /^Agent error:/i.test(t);
+}
+
+function lastAssistantIsFail(agentId: string): boolean {
+  const rows = db.listMessages(agentId);
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].role !== 'assistant') continue;
+    const t = String(rows[i].content || '').trim();
+    if (!t) continue;
+    return isFailedAssistantBubble(t);
+  }
+  return false;
+}
+
+const PROMPT_INLINE_MAX = 2500;
+
+function offloadLongText(cwd: string, filename: string, body: string): string {
+  const dest = path.join(cwd, filename);
+  try {
+    fs.writeFileSync(dest, body, 'utf8');
+  } catch {
+    return body.length > PROMPT_INLINE_MAX ? body.slice(0, PROMPT_INLINE_MAX) + '...' : body;
+  }
+  const start = body.slice(0, 280).replace(/\s+/g, ' ').trim();
+  return (
+    `Full text (${body.length} chars) is in workspace file ${dest}. ` +
+    `Read that file if this turn needs it. Do not paste it back verbatim.\nStart: ${start}`
+  );
+}
+
+function recentChatBody(role: string, raw: string): string {
+  let body = String(raw || '').replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]');
+  if (role === 'assistant') {
+    const unpacked = unpackAssistantBody(body);
+    body = unpacked.answer.trim() || body;
+  }
+  return body;
+}
+
+function alreadyCovered(hay: string, needle: string): boolean {
+  const n = needle.trim();
+  if (n.length < 240) return false;
+  const probe = n.slice(0, Math.min(500, n.length));
+  return hay.includes(probe);
+}
+
+function formatRecentChat(
+  agentId: string,
+  excludeIds: string[],
+  limit: number,
+  currentUserText: string,
+  cwd: string
+): string {
   if (limit <= 0) return '';
   const rows = db
     .listMessages(agentId)
     .filter((m) => !excludeIds.includes(m.id) && String(m.content || '').trim());
-  const slice = rows.slice(-limit);
-  if (!slice.length) return '';
-  const lines = slice.map((m) => {
-    let body = String(m.content || '').replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]');
-    if (body.length > 2000) body = body.slice(0, 2000) + '...';
-    const unpacked = unpackAssistantBody(body);
-    body = unpacked.answer || unpacked.thinking || body;
-    return `${m.role}: ${body}`;
-  });
+  const current = String(currentUserText || '');
+  const seen = new Set<string>();
+  const useful: { role: string; body: string }[] = [];
+  let wroteAnswer = false;
+  for (let i = rows.length - 1; i >= 0 && useful.length < limit; i--) {
+    const m = rows[i];
+    if (m.role === 'assistant' && isFailedAssistantBubble(m.content)) continue;
+    if (m.role === 'user' && String(m.content || '').trim().length > PROMPT_INLINE_MAX) continue;
+    let body = recentChatBody(m.role, m.content);
+    if (!body.trim()) continue;
+    if (alreadyCovered(current, body)) continue;
+    const key = `${m.role}:${body.slice(0, 400)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (m.role === 'assistant' && body.length > PROMPT_INLINE_MAX) {
+      body = wroteAnswer
+        ? `Previous long answer omitted (${body.length} chars).`
+        : offloadLongText(cwd, 'last_answer.md', body);
+      wroteAnswer = true;
+    }
+    useful.push({ role: m.role, body });
+  }
+  useful.reverse();
+  if (!useful.length) return '';
   return (
     '[Recent chat]\nThese are the last messages in this thread, oldest first. Use them for follow-ups like "smaller one".\n\n' +
-    lines.join('\n\n') +
+    useful.map((m) => `${m.role}: ${m.body}`).join('\n\n') +
     '\n[/Recent chat]'
   );
 }
@@ -349,6 +418,14 @@ function isHttp2CalmError(err: unknown): boolean {
   return /NGHTTP2_ENHANCE_YOUR_CALM|ENHANCE_YOUR_CALM/i.test(errorText(err));
 }
 
+function isCursorStoreError(err: unknown): boolean {
+  return /unable to open database file/i.test(errorText(err));
+}
+
+function isAnthropicPolicyError(err: unknown): boolean {
+  return /blocked under Anthropic's Usage Policy|Request blocked by Anthropic/i.test(errorText(err));
+}
+
 function friendlyAgentError(err: unknown): string {
   if (isHttp2CalmError(err)) {
     return 'Cursor API closed this stream (HTTP/2 ENHANCE_YOUR_CALM). Too many agent calls at once. Stop other running agents, wait a few seconds, then send again.';
@@ -385,7 +462,8 @@ function enqueue(agentId: string, task: () => Promise<unknown>): Promise<unknown
 }
 
 export async function cancelAgentRun(agentId: string): Promise<{ ok: true }> {
-  stopRequested.add(agentId);
+  const hadRun = claimed.has(agentId) || activeRuns.has(agentId) || liveTurns.has(agentId);
+  if (hadRun) stopRequested.add(agentId);
   const wake = stopWaiters.get(agentId);
   if (wake) wake();
   await cancelActive(agentId);
@@ -405,6 +483,8 @@ export async function cancelAgentRun(agentId: string): Promise<{ ok: true }> {
       content: text,
     });
   }
+  liveTurns.delete(agentId);
+  if (!hadRun) stopRequested.delete(agentId);
   dropAgentHandle(agentId);
   return { ok: true };
 }
@@ -484,7 +564,7 @@ async function getHandle(
   const mcpServers = mcpServersForAgent(agent.config, cwd);
   const local = localAgentOpts(cwd);
 
-  if (!forceNew && agent.cursorAgentId) {
+  if (!forceNew && readResumeSession(agent.config) && agent.cursorAgentId) {
     try {
       handle = (await Agent.resume(agent.cursorAgentId, {
         apiKey,
@@ -677,16 +757,24 @@ async function runAgentTurnInner(opts: {
     }
   }
 
-  const userBody =
+  let userBody =
     fileNotes.length > 0
       ? `${opts.userText}\n\n[Attachments]\n${fileNotes.join('\n')}\n[/Attachments]`
       : opts.userText;
+  if (userBody.trim().length > PROMPT_INLINE_MAX) {
+    userBody = offloadLongText(cwd, 'last_user.md', userBody);
+  }
 
-  const recentChat = formatRecentChat(
-    opts.agentId,
-    [userMessageId, assistantMessageId],
-    readLastMessages(agent.config)
-  );
+  const poisoned = lastAssistantIsFail(opts.agentId);
+  const recentChat = poisoned
+    ? ''
+    : formatRecentChat(
+        opts.agentId,
+        [userMessageId, assistantMessageId],
+        readLastMessages(agent.config),
+        userBody,
+        cwd
+      );
 
 const sdkPrompt = [
     systemPrompt,
@@ -711,7 +799,7 @@ const sdkPrompt = [
   let usage: TokenUsage | null = null;
   let todos: TodoItem[] = [];
   try {
-    let handle = await getHandle(agent, apiKey, cwd, false);
+    let handle = await getHandle(agent, apiKey, cwd, poisoned);
 
     const sendOnce = async (h: CursorAgent) => {
       let turnText = '';
@@ -985,6 +1073,10 @@ const sdkPrompt = [
         assembled = finalizeAssistantBody(thinkText, rawAnswer);
         if (result.status === 'error') {
           const msg = result.error?.message || 'Agent run failed';
+          if (isCursorStoreError(msg) || isAnthropicPolicyError(msg)) {
+            dropAgentHandle(opts.agentId);
+            db.updateAgent(opts.agentId, { cursorAgentId: null });
+          }
           if (isHttp2CalmError(msg) && !unpackAssistantBody(assembled).answer) {
             throw new Error(msg);
           }

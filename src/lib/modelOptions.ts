@@ -77,18 +77,25 @@ export function cheapDefaultConfig(): {
   effort: string;
   lastMessages: number;
   toastEnabled: boolean;
+  resumeSession: boolean;
 } {
   return {
     modelMode: DEFAULT_MODE,
     effort: DEFAULT_EFFORT,
     lastMessages: DEFAULT_LAST_MESSAGES,
     toastEnabled: true,
+    resumeSession: true,
   };
 }
 
 export function readToastEnabled(config: Record<string, unknown> | null | undefined): boolean {
   if (!config || !Object.prototype.hasOwnProperty.call(config, 'toastEnabled')) return true;
   return config.toastEnabled !== false;
+}
+
+export function readResumeSession(config: Record<string, unknown> | null | undefined): boolean {
+  if (!config || !Object.prototype.hasOwnProperty.call(config, 'resumeSession')) return true;
+  return config.resumeSession !== false;
 }
 
 export function readLastMessages(config: Record<string, unknown> | null | undefined): number {

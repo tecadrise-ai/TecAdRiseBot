@@ -309,6 +309,16 @@ export default function App() {
           void refreshLeds();
           if (selectedId) void loadMessages(selectedId);
         }}
+        onSessionCleared={(agentId) => {
+          liveRuns.current.delete(agentId);
+          setRunningIds((prev) => {
+            if (!prev.has(agentId)) return prev;
+            const next = new Set(prev);
+            next.delete(agentId);
+            return next;
+          });
+          if (selectedIdRef.current === agentId) setStreamingId(null);
+        }}
       />
       <SettingsModal
         open={settingsOpen}

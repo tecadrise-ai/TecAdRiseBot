@@ -42,6 +42,8 @@ export default function App() {
   const [liveTodoMessageId, setLiveTodoMessageId] = useState<string | null>(null);
   const liveRuns = useRef(new Set<string>());
   const selectedIdRef = useRef<string | null>(null);
+  const messagesCache = useRef(new Map<string, ChatMessage[]>());
+  const loadGen = useRef(0);
   selectedIdRef.current = selectedId;
 
   const refreshSettings = useCallback(async () => {
@@ -71,7 +73,10 @@ export default function App() {
   }, [refreshLeds]);
 
   const loadMessages = useCallback(async (agentId: string) => {
+    const gen = ++loadGen.current;
     const list = await window.tecapi.messages.list(agentId);
+    if (gen !== loadGen.current || selectedIdRef.current !== agentId) return;
+    messagesCache.current.set(agentId, list);
     setMessages(list);
   }, []);
 
@@ -85,13 +90,17 @@ export default function App() {
   }, [refreshAgents, refreshSettings, refreshLeds]);
 
   useEffect(() => {
-    if (selectedId) void loadMessages(selectedId);
-    else {
+    if (!selectedId) {
       setMessages([]);
       setStreamingId(null);
       setLiveTodos([]);
       setLiveTodoMessageId(null);
+      return;
     }
+    setMessages(messagesCache.current.get(selectedId) ?? []);
+    setLiveTodos([]);
+    setLiveTodoMessageId(null);
+    void loadMessages(selectedId);
   }, [selectedId, loadMessages]);
 
   useEffect(() => {
@@ -290,6 +299,7 @@ export default function App() {
         }}
       />
       <ChatView
+        key={selected?.id ?? 'none'}
         agent={selected}
         messages={messages}
         streamingId={streamingId}
@@ -310,6 +320,7 @@ export default function App() {
           if (selectedId) void loadMessages(selectedId);
         }}
         onSessionCleared={(agentId) => {
+          messagesCache.current.delete(agentId);
           liveRuns.current.delete(agentId);
           setRunningIds((prev) => {
             if (!prev.has(agentId)) return prev;

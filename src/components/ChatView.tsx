@@ -387,7 +387,7 @@ export function ChatView({
             </p>
           </div>
         )}
-        {messages.map((m) => {
+        {messages.filter((m) => !m.agentId || m.agentId === agent.id).map((m) => {
           const todos =
             m.id === liveTodoMessageId && liveTodos.length ? liveTodos : parseMessageTodos(m.meta);
           if (!m.content && !todos.length) return null;

@@ -33,6 +33,38 @@ const TODO_MARK: Record<TodoStatus, string> = {
   cancelled: '[-]',
 };
 
+function ThinkingSection({
+  text,
+  streaming,
+  collapse,
+}: {
+  text: string;
+  streaming: boolean;
+  collapse: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  if (streaming) {
+    return <div className="md-thinking md-thinking-raw">{text}</div>;
+  }
+  if (!collapse) {
+    return <MarkdownBody className="md-thinking" text={text} />;
+  }
+  return (
+    <div className="think-fold">
+      <button
+        type="button"
+        className="think-fold-btn"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="think-fold-chevron" aria-hidden="true" />
+        Thinking
+      </button>
+      {open ? <MarkdownBody className="md-thinking" text={text} /> : null}
+    </div>
+  );
+}
+
 function TodoList({ todos }: { todos: TodoItem[] }) {
   if (!todos.length) return null;
   return (
@@ -363,11 +395,11 @@ export function ChatView({
                 {m.role === 'assistant' ? (
                   <>
                     {parts?.thinking ? (
-                      streamingId === m.id ? (
-                        <div className="md-thinking md-thinking-raw">{parts.thinking}</div>
-                      ) : (
-                        <MarkdownBody className="md-thinking" text={parts.thinking} />
-                      )
+                      <ThinkingSection
+                        text={parts.thinking}
+                        streaming={streamingId === m.id}
+                        collapse={streamingId !== m.id && !!parts.answer}
+                      />
                     ) : null}
                     <TodoList todos={todos} />
                     {parts?.answer ? <MarkdownBody text={parts.answer} /> : null}

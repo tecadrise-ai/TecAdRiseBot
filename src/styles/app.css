@@ -403,6 +403,38 @@
   color: #8e8e93;
   font-weight: 400;
 }
+.think-fold {
+  margin-bottom: 8px;
+}
+.think-fold-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0 0 4px;
+  cursor: pointer;
+  color: #8e8e93;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.think-fold-btn:hover {
+  color: #6b6b70;
+}
+.think-fold-chevron {
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent currentColor;
+}
+.think-fold-btn[aria-expanded='true'] .think-fold-chevron {
+  transform: rotate(90deg);
+}
 .md-body > *:first-child {
   margin-top: 0;
 }

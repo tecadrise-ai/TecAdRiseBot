@@ -743,14 +743,19 @@ export function formatSkillsCatalog(): string {
   return lines.join('\n');
 }
 
-const SHORT_WS_ROOT = 'C:\\TecAdRise\\tb';
-
-export function agentWorkspacePath(agentId: string, userDataPath?: string): string {
+export function agentWorkspaceDataPath(agentId: string, userDataPath?: string): string {
   const dir = path.join(ensureWorkspacesDir(userDataPath), agentId);
   fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+export function agentWorkspacePath(agentId: string, userDataPath?: string): string {
+  const dir = agentWorkspaceDataPath(agentId, userDataPath);
+  const base = userDataPath ?? app.getPath('userData');
+  const shortRoot = path.join(base, 'w');
   try {
-    fs.mkdirSync(SHORT_WS_ROOT, { recursive: true });
-    const short = path.join(SHORT_WS_ROOT, agentId);
+    fs.mkdirSync(shortRoot, { recursive: true });
+    const short = path.join(shortRoot, agentId);
     if (!fs.existsSync(short)) {
       fs.symlinkSync(dir, short, 'junction');
     }

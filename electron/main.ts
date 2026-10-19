@@ -192,7 +192,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('agents:openWorkspace', async (_e, id: string) => {
-    const p = db.agentWorkspacePath(String(id || ''));
+    const p = db.agentWorkspaceDataPath(String(id || ''));
     const err = await shell.openPath(p);
     return { ok: !err, error: err || undefined };
   });

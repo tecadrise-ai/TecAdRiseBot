@@ -73,13 +73,17 @@ async function fire(r: db.RoutineRow, now: number): Promise<void> {
   if (isAgentBusy(r.agentId)) return;
   db.updateRoutine(r.id, { lastRunAt: now });
   const prompt = db.formatRoutineUserText(r);
-  await runAgentTurn({
+  // Do not await the whole turn: one slow routine must not block every other routine.
+  void runAgentTurn({
     agentId: r.agentId,
     userText: prompt,
     win: winRef,
     source: 'routine',
-  });
-  winRef?.webContents.send('routines:fired', { routineId: r.id, at: now });
+  })
+    .catch((e) => console.error('routine turn failed', r.id, e))
+    .finally(() => {
+      winRef?.webContents.send('routines:fired', { routineId: r.id, at: now });
+    });
 }
 
 async function tick(): Promise<void> {

@@ -26,7 +26,7 @@ function parseOne(raw: unknown, index: number): TodoItem | null {
   const o = raw as Record<string, unknown>;
   const content = String(o.content || o.text || o.title || o.task || '').trim();
   if (!content) return null;
-  const id = o.id != null && String(o.id).trim() ? String(o.id) : String(index + 1);
+  const id = o.id != null && String(o.id).trim() ? String(o.id) : '';
   return { id, content, status: normalizeTodoStatus(o.status) };
 }
 
@@ -54,36 +54,56 @@ export function parseTodoList(raw: unknown): TodoItem[] | null {
   return null;
 }
 
-function statusRank(s: TodoStatus): number {
-  if (s === 'completed') return 3;
-  if (s === 'inProgress') return 2;
-  if (s === 'cancelled') return 0;
-  return 1;
-}
-
 function contentKey(text: string): string {
-  return text.trim().toLowerCase();
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/^\d+[.)]\s*/, '');
 }
 
-export function mergeTodos(prev: TodoItem[], incoming: TodoItem[]): TodoItem[] {
-  const byContent = new Map<string, TodoItem>();
-  const order: string[] = [];
-  const add = (t: TodoItem) => {
-    const content = String(t.content || '').trim();
-    if (!content) return;
-    const key = contentKey(content);
-    const cur = byContent.get(key);
-    if (!cur) {
-      byContent.set(key, { ...t, content });
-      order.push(key);
-      return;
-    }
-    const status = statusRank(t.status) >= statusRank(cur.status) ? t.status : cur.status;
-    byContent.set(key, { ...cur, status, content: cur.content });
-  };
-  for (const t of prev) add(t);
-  for (const t of incoming) add(t);
-  return order.map((k) => byContent.get(k)!);
+function resolveIds(prev: TodoItem[], incoming: TodoItem[]): TodoItem[] {
+  const used = new Set(prev.map((t) => t.id));
+  const byKey = new Map(prev.map((t) => [contentKey(t.content), t.id]));
+  let n = 0;
+  return incoming.map((t) => {
+    if (t.id) return t;
+    const hit = byKey.get(contentKey(t.content));
+    if (hit) return { ...t, id: hit };
+    let id: string;
+    do {
+      id = `t${prev.length + ++n}`;
+    } while (used.has(id));
+    used.add(id);
+    return { ...t, id };
+  });
+}
+
+export function mergeTodos(prev: TodoItem[], incomingRaw: TodoItem[]): TodoItem[] {
+  const incoming = resolveIds(prev, incomingRaw);
+  const byId = new Map(prev.map((t) => [t.id, t]));
+  for (const t of incoming) {
+    const cur = byId.get(t.id);
+    byId.set(t.id, cur ? { ...cur, ...t } : t);
+  }
+  const order = prev.map((t) => t.id);
+  for (const t of incoming) {
+    if (!order.includes(t.id)) order.push(t.id);
+  }
+  return order.map((id) => byId.get(id)!);
+}
+
+function withIds(list: TodoItem[]): TodoItem[] {
+  const used = new Set(list.filter((t) => t.id).map((t) => t.id));
+  let n = 0;
+  return list.map((t) => {
+    if (t.id) return t;
+    let id: string;
+    do {
+      id = String(++n);
+    } while (used.has(id));
+    used.add(id);
+    return { ...t, id };
+  });
 }
 
 export function parseNumberedTasks(text: string): TodoItem[] {
@@ -138,30 +158,137 @@ function isTodoTool(name: string): boolean {
   return n.includes('updatetodos') || n.includes('todowrite') || n === 'todo' || n === 'readtodos';
 }
 
-export function todosFromDelta(delta: unknown, depth = 0): TodoItem[] | null {
-  if (!delta || depth > 8) return null;
-  if (Array.isArray(delta)) {
-    const direct = parseTodoList(delta);
-    if (direct) return direct;
-    for (const x of delta) {
-      const found = todosFromDelta(x, depth + 1);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (typeof delta !== 'object') return parseTodoList(delta);
+function mergeFlag(raw: unknown): boolean | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const m = (raw as { merge?: unknown }).merge;
+  if (m === false || m === 0 || m === 'false') return false;
+  if (m === true || m === 1 || m === 'true') return true;
+  return null;
+}
 
-  const rec = delta as Record<string, unknown>;
+function resultOf(rec: Record<string, unknown>): unknown {
+  return jsonMaybe(rec.result ?? rec.output ?? rec.toolResult ?? rec.tool_result);
+}
+
+function todoToolError(rec: Record<string, unknown>, result: unknown): string | undefined {
+  const recErr = rec.error ?? rec.rejection ?? rec.rejectReason;
+  if (typeof recErr === 'string' && recErr.trim()) return recErr.trim();
+  if (recErr && typeof recErr === 'object') {
+    const o = recErr as { message?: unknown; msg?: unknown };
+    const msg = String(o.message || o.msg || '').trim();
+    if (msg) return msg;
+  }
+  if (rec.isError === true || rec.rejected === true) {
+    return 'Todo tool rejected this update.';
+  }
+  if (typeof result === 'string' && /invalid|rejected|enum|in_progress|inProgress/i.test(result)) {
+    return result.trim();
+  }
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return undefined;
+  const o = result as Record<string, unknown>;
+  if (o.success === false || o.ok === false) {
+    const msg = String(o.error || o.message || o.reason || '').trim();
+    return msg || 'Todo tool rejected this update.';
+  }
+  const nested = o.error ?? o.message;
+  if (typeof nested === 'string' && /invalid|rejected|enum/i.test(nested)) return nested.trim();
+  return undefined;
+}
+
+export type TodoCall = {
+  todos: TodoItem[];
+  merge: boolean | null;
+  snapshot?: boolean;
+  error?: string;
+};
+
+const RESULT_LINE = /^\s*-\s*\*\*(\w+)\*\*:\s*(.+?)\s*\(id:\s*([^)]+)\)\s*$/gm;
+
+export function parseTodoResultText(text: unknown): TodoItem[] | null {
+  if (typeof text !== 'string' || !text.includes('(id:')) return null;
+  const out: TodoItem[] = [];
+  RESULT_LINE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RESULT_LINE.exec(text))) {
+    out.push({ id: m[3].trim(), content: m[2].trim(), status: normalizeTodoStatus(m[1]) });
+  }
+  return out.length ? out : null;
+}
+
+export function applyTodoCallToList(cur: TodoItem[], call: TodoCall): TodoItem[] {
+  if (!call.todos.length) return cur;
+  const incoming = resolveIds(cur, call.todos);
+  if (call.snapshot && cur.length) {
+    // tool result groups items by status, keep the order the list already had
+    const byId = new Map(incoming.map((t) => [t.id, t]));
+    const byKey = new Map(incoming.map((t) => [contentKey(t.content), t]));
+    const out: TodoItem[] = [];
+    const seen = new Set<TodoItem>();
+    for (const c of cur) {
+      const hit = byId.get(c.id) || byKey.get(contentKey(c.content));
+      if (hit && !seen.has(hit)) {
+        seen.add(hit);
+        out.push({ ...hit, id: c.id });
+      }
+    }
+    for (const t of incoming) if (!seen.has(t)) out.push(t);
+    return out;
+  }
+  const ids = new Set(cur.map((t) => t.id));
+  const keys = new Set(cur.map((t) => contentKey(t.content)));
+  const subset =
+    incoming.every((t) => ids.has(t.id) || keys.has(contentKey(t.content))) &&
+    incoming.length < cur.length;
+  const doMerge = call.merge === true || (call.merge === null && subset);
+  return doMerge ? mergeTodos(cur, incoming) : withIds(call.todos);
+}
+
+function callFromRecord(rec: Record<string, unknown>): TodoCall | null {
   const name = toolNameOf(rec);
   const args = argsOf(rec);
-  if (isTodoTool(name)) {
-    const list = parseTodoList(args) || parseTodoList((args as { todos?: unknown } | null)?.todos);
-    if (list) return list;
+  const result = resultOf(rec);
+  const argList =
+    parseTodoList(args) || parseTodoList((args as { todos?: unknown } | null)?.todos);
+  const resultObj = result && typeof result === 'object' && !Array.isArray(result) ? (result as Record<string, unknown>) : null;
+  const resultList =
+    parseTodoList(resultObj?.final_todos) ||
+    parseTodoList(resultObj?.finalTodos) ||
+    parseTodoResultText(result) ||
+    parseTodoResultText(resultObj?.text) ||
+    parseTodoResultText(resultObj?.content) ||
+    parseTodoList(result);
+  const error = isTodoTool(name) ? todoToolError(rec, result) : undefined;
+  const mergeArg = mergeFlag(args) ?? mergeFlag(rec);
+  const wasMerge = resultObj?.was_merge === true || resultObj?.wasMerge === true;
+  const merge: boolean | null = mergeArg === true || wasMerge ? true : mergeArg === false ? false : null;
+  if (resultList && resultList.length >= (argList?.length || 0)) {
+    return { todos: resultList, merge: false, snapshot: true, error };
   }
-  if (Array.isArray(rec.todos)) {
-    const list = parseTodoList(rec.todos);
-    if (list) return list;
+  const todos = argList || resultList || (Array.isArray(rec.todos) ? parseTodoList(rec.todos) : null);
+  if (!todos?.length && !error) return null;
+  if (!isTodoTool(name) && !todos?.length) return null;
+  return { todos: todos || [], merge, error };
+}
+
+export function todoCallFromDelta(delta: unknown, depth = 0): TodoCall | null {
+  if (!delta || depth > 8) return null;
+  if (Array.isArray(delta)) {
+    let last: TodoCall | null = null;
+    const direct = parseTodoList(delta);
+    if (direct) last = { todos: direct, merge: false };
+    for (const x of delta) {
+      const found = todoCallFromDelta(x, depth + 1);
+      if (found) last = found;
+    }
+    return last;
   }
+  if (typeof delta !== 'object') {
+    const list = parseTodoList(delta);
+    return list ? { todos: list, merge: false } : null;
+  }
+
+  const rec = delta as Record<string, unknown>;
+  let last = callFromRecord(rec);
 
   for (const key of [
     'update',
@@ -173,13 +300,19 @@ export function todosFromDelta(delta: unknown, depth = 0): TodoItem[] | null {
     'result',
     'steps',
     'message',
+    'messages',
   ]) {
     if (rec[key]) {
-      const found = todosFromDelta(rec[key], depth + 1);
-      if (found) return found;
+      const found = todoCallFromDelta(rec[key], depth + 1);
+      if (found) last = found;
     }
   }
-  return null;
+  return last;
+}
+
+export function todosFromDelta(delta: unknown, depth = 0): TodoItem[] | null {
+  const call = todoCallFromDelta(delta, depth);
+  return call?.todos.length ? call.todos : null;
 }
 
 export function parseMessageTodos(meta: string | null | undefined): TodoItem[] {

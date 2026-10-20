@@ -456,7 +456,7 @@ export function formatRuntimeContext(agentId: string): string {
     `Agent: ${snap.self.name} (id ${snap.self.id})`,
     `Workspace (write files only here): ${db.agentWorkspacePath(agentId)}`,
     'Do not write into the TecAdRiseBot app/repo folder.',
-    'Use the todo tool already in this turn (TodoWrite or updateTodos). Do not search the repo for it.',
+    'Use the todo tool already in this turn (TodoWrite or updateTodos). TodoWrite statuses: pending / in_progress / completed / cancelled. updateTodos: pending / inProgress / completed / cancelled. Use the spelling for the tool you have. Do not search the repo for it.',
     `Model: ${formatModelLabel(snap.self.model, snap.self.config)}`,
     `Peers: ${snap.peers.length}`,
     '[/This turn]',

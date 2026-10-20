@@ -71,7 +71,7 @@ function TodoList({ todos }: { todos: TodoItem[] }) {
     <div className="todo-box">
       <div className="todo-head">Task list</div>
       <div className="todo-list">
-        {todos.map((t) => {
+        {todos.map((t, i) => {
           const st =
             t.status === 'completed'
               ? 'done'
@@ -81,7 +81,7 @@ function TodoList({ todos }: { todos: TodoItem[] }) {
                   ? 'cancelled'
                   : 'todo';
           return (
-            <div key={t.id} className={`todo-row ${st}`}>
+            <div key={`${t.id}:${i}`} className={`todo-row ${st}`}>
               <span className="tk">{TODO_MARK[t.status] || '[ ]'}</span>
               <span className="tx">{t.content}</span>
             </div>

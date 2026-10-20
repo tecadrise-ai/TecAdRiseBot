@@ -4,7 +4,7 @@ import { ChatView } from './components/ChatView';
 import { SettingsModal } from './components/SettingsModal';
 import { AgentSettingsModal } from './components/AgentSettingsModal';
 import type { Agent, AppSettings, ChatMessage } from './types';
-import { mergeTodos, type TodoItem } from './lib/todos';
+import type { TodoItem } from './lib/todos';
 import './styles/app.css';
 
 function mergeMeta(meta: string | null, patch: Record<string, unknown>): string {
@@ -167,7 +167,7 @@ export default function App() {
         const p = payload as { agentId: string; messageId: string; todos: TodoItem[] };
         if (p.agentId !== selectedIdRef.current) return;
         setLiveTodoMessageId(p.messageId);
-        setLiveTodos((prev) => mergeTodos(prev, Array.isArray(p.todos) ? p.todos : []));
+        setLiveTodos(Array.isArray(p.todos) ? p.todos : []);
         setMessages((prev) =>
           prev.map((m) =>
             m.id === p.messageId

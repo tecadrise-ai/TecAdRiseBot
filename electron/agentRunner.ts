@@ -13,7 +13,7 @@ import { getApiKey } from './secrets';
 import { DEFAULT_MODEL_ID, readLastMessages, readResumeSession, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
-import { mergeTodos, parseNumberedTasks, todosFromDelta, type TodoItem } from '../src/lib/todos';
+import { applyTodoCallToList, parseNumberedTasks, todoCallFromDelta, type TodoCall, type TodoItem } from '../src/lib/todos';
 
 function broadcastUi(channel: string, payload: unknown, preferred?: BrowserWindow | null): void {
   const seen = new Set<number>();
@@ -272,6 +272,17 @@ function isFailedAssistantBubble(content: string): boolean {
   return /^Error:/i.test(t) || /^Agent error:/i.test(t);
 }
 
+function todoErrorFromMeta(meta: string | null | undefined): string {
+  if (!meta) return '';
+  try {
+    const o = JSON.parse(meta) as { todoError?: unknown };
+    const msg = String(o?.todoError || '').trim();
+    return msg;
+  } catch {
+    return '';
+  }
+}
+
 function lastAssistantIsFail(agentId: string): boolean {
   const rows = db.listMessages(agentId);
   for (let i = rows.length - 1; i >= 0; i--) {
@@ -335,6 +346,10 @@ function formatRecentChat(
     if (m.role === 'assistant' && isFailedAssistantBubble(m.content)) continue;
     if (m.role === 'user' && String(m.content || '').trim().length > PROMPT_INLINE_MAX) continue;
     let body = recentChatBody(m.role, m.content);
+    if (m.role === 'assistant') {
+      const todoErr = todoErrorFromMeta(m.meta);
+      if (todoErr) body = `${body}\n[todo tool error] ${todoErr}`;
+    }
     if (!body.trim()) continue;
     if (alreadyCovered(current, body)) continue;
     const key = `${m.role}:${body.slice(0, 400)}`;
@@ -780,7 +795,14 @@ const sdkPrompt = [
     systemPrompt,
     '[Checklist tool]\n' +
       'If you need a task list, call the todo tool already in this turn (TodoWrite or updateTodos). ' +
-      'Pass { todos: [{ id, content, status }] }. Do not grep the app source. Do not use GetDynamicTools or HTTP for todos.\n' +
+      'Pass { todos: [{ id, content, status }], merge }. merge: false replaces the list. merge: true updates matching ids and keeps the rest.\n' +
+      'Todo tool statuses depend on the tool name you were given this turn:\n' +
+      '- TodoWrite: pending / in_progress / completed / cancelled (underscore). inProgress is rejected and nothing in that call is applied.\n' +
+      '- updateTodos: pending / inProgress / completed / cancelled (camelCase).\n' +
+      'Use the spelling for the tool you actually have. If the tool returns a validation error, the allowed values in that error are correct, so retry with them immediately.\n' +
+      'After every todo call, read the returned list. If it was rejected or does not match, fix it before continuing.\n' +
+      'Never reword or drop items, only change status. Mark an item completed as soon as it is done. Each open user action is its own item.\n' +
+      'Do not grep the app source. Do not use GetDynamicTools or HTTP for todos.\n' +
       '[/Checklist tool]',
     systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
     '[Memory directory]' + '\n' + db.ensureMemoryDir() + '\nRead index.md first. Write lasting facts here. Shared by all agents.\n[/Memory directory]',
@@ -853,11 +875,22 @@ const sdkPrompt = [
         if (!deltaEmitTimer) deltaEmitTimer = setTimeout(fire, wait);
       };
 
-      const applyTodos = (incoming: TodoItem[]) => {
-        if (!incoming.length) return;
-        todos = mergeTodos(todos, incoming);
+      const applyTodoCall = (call: TodoCall) => {
+        if (call.error) {
+          const hint = /inProgress|enum|status/i.test(call.error)
+            ? ' TodoWrite status must be pending / in_progress / completed / cancelled.'
+            : '';
+          const err = `${call.error}${hint}`;
+          console.error('[TecAdRiseBot] todo rejected', err);
+          thinkText += `\n[todo tool error] ${err}\n`;
+          db.patchMessageMeta(assistantMessageId, { todoError: err });
+          emitDelta(true);
+          return;
+        }
+        if (!call.todos.length) return;
+        todos = applyTodoCallToList(todos, call);
         console.log('[TecAdRiseBot] todos', todos.map((t) => t.status + ':' + t.content).join(' | '));
-        db.patchMessageMeta(assistantMessageId, { todos });
+        db.patchMessageMeta(assistantMessageId, { todos, todoError: null });
         emit('chat:todos', {
           agentId: opts.agentId,
           messageId: assistantMessageId,
@@ -865,7 +898,7 @@ const sdkPrompt = [
         });
       };
       const seeded = parseNumberedTasks(opts.userText);
-      if (seeded.length >= 2) applyTodos(seeded);
+      if (seeded.length >= 2) applyTodoCall({ todos: seeded, merge: false });
 
       const addImgs = (imgs: GenImage[]) => {
         for (const img of imgs) {
@@ -909,8 +942,8 @@ const sdkPrompt = [
         if (update.type === 'usage' && (update.usage || delta.usage)) {
           usage = addUsage(usage, update.usage || delta.usage);
         }
-        const incomingTodos = todosFromDelta(update) || todosFromDelta(delta);
-        if (incomingTodos && incomingTodos.length) applyTodos(incomingTodos);
+        const incomingCall = todoCallFromDelta(update) || todoCallFromDelta(delta);
+        if (incomingCall) applyTodoCall(incomingCall);
         if (update.type === 'tool-call-completed') {
           addImgs(imagesFromUnknown(update.toolCall ?? update));
           persistVisible();
@@ -968,8 +1001,8 @@ const sdkPrompt = [
         void (async () => {
           try {
             for await (const ev of run.stream!()) {
-              const incoming = todosFromDelta(ev);
-              if (incoming && incoming.length) applyTodos(incoming);
+              const incoming = todoCallFromDelta(ev);
+              if (incoming) applyTodoCall(incoming);
             }
           } catch {
             /* stream closed */
@@ -991,8 +1024,8 @@ const sdkPrompt = [
           if (typeof run.conversation === 'function') {
             const conv = await run.conversation();
             addImgs(imagesFromUnknown(conv));
-            const convTodos = todosFromDelta(conv);
-            if (convTodos && convTodos.length) applyTodos(convTodos);
+            const convCall = todoCallFromDelta(conv);
+            if (convCall && !todos.length) applyTodoCall(convCall);
             const fromConv = lastAssistantFromConversation(conv);
             if (fromConv.trim() && fromConv.trim().length >= turnText.trim().length) turnText = fromConv;
             const fromThink = lastThinkingFromConversation(conv);
@@ -1048,8 +1081,8 @@ const sdkPrompt = [
           if (typeof run.conversation === 'function') {
             const conv = await run.conversation();
             addImgs(imagesFromUnknown(conv));
-            const convTodos = todosFromDelta(conv);
-            if (convTodos && convTodos.length) applyTodos(convTodos);
+            const convCall = todoCallFromDelta(conv);
+            if (convCall && !todos.length) applyTodoCall(convCall);
             fromConv = lastAssistantFromConversation(conv);
             const fromThink = lastThinkingFromConversation(conv);
             if (fromThink && fromThink.length >= thinkText.length) thinkText = fromThink;

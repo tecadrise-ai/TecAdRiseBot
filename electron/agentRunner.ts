@@ -584,7 +584,7 @@ async function getHandle(
       handle = (await Agent.resume(agent.cursorAgentId, {
         apiKey,
         model: modelSel,
-        mcpServers,
+        mcpServers: mcpServers as never,
         local,
       })) as unknown as CursorAgent;
     } catch (e) {
@@ -598,7 +598,7 @@ async function getHandle(
       apiKey,
       name: agent.name,
       model: modelSel,
-      mcpServers,
+      mcpServers: mcpServers as never,
       local,
     })) as unknown as CursorAgent;
     db.updateAgent(agent.id, { cursorAgentId: handle.agentId });
@@ -678,13 +678,30 @@ export async function listModels(): Promise<CatalogModel[]> {
   }
 }
 
+type TurnResult = {
+  userMessageId: string;
+  assistantMessageId: string;
+  stopped?: boolean;
+  stalled?: boolean;
+  failed?: boolean;
+  todos?: TodoItem[];
+  answer?: string;
+};
+
+/** Cancel a run that produced no stream event for this long (hung tool call). */
+const STALL_MS = 15 * 60_000;
+/** Extra automatic turns when a turn ends with unfinished todo items. */
+const MAX_AUTO_CONTINUE = 3;
+
 async function runAgentTurnInner(opts: {
   agentId: string;
   userText: string;
   win: BrowserWindow | null;
   source?: 'user' | 'routine' | 'interbot';
   attachments?: ChatAttachment[];
-}): Promise<{ userMessageId: string; assistantMessageId: string }> {
+  seedTodos?: TodoItem[];
+  deferNotify?: boolean;
+}): Promise<TurnResult> {
   const agent = db.getAgent(opts.agentId);
   if (!agent) throw new Error('Agent not found');
 
@@ -729,7 +746,7 @@ async function runAgentTurnInner(opts: {
     emit('chat:stream-done', { agentId: opts.agentId, messageId: assistantMessageId, content: err });
     claimed.delete(opts.agentId);
     liveTurns.delete(opts.agentId);
-    return { userMessageId, assistantMessageId };
+    return { userMessageId, assistantMessageId, failed: true };
   }
 
   const cwd = db.agentWorkspacePath(opts.agentId);
@@ -820,6 +837,9 @@ const sdkPrompt = [
   let assembled = '';
   let usage: TokenUsage | null = null;
   let todos: TodoItem[] = [];
+  let stalled = false;
+  let wasStopped = false;
+  let lastActivity = Date.now();
   try {
     let handle = await getHandle(agent, apiKey, cwd, poisoned);
 
@@ -897,8 +917,8 @@ const sdkPrompt = [
           todos,
         });
       };
-      const seeded = parseNumberedTasks(opts.userText);
-      if (seeded.length >= 2) applyTodoCall({ todos: seeded, merge: false });
+      const seeded = opts.seedTodos?.length ? opts.seedTodos : parseNumberedTasks(opts.userText);
+      if (seeded.length >= (opts.seedTodos?.length ? 1 : 2)) applyTodoCall({ todos: seeded, merge: false });
 
       const addImgs = (imgs: GenImage[]) => {
         for (const img of imgs) {
@@ -938,6 +958,7 @@ const sdkPrompt = [
         usage?: TokenUsage;
         toolCall?: unknown;
       }) => {
+        lastActivity = Date.now();
         const update = delta.update ?? delta;
         if (update.type === 'usage' && (update.usage || delta.usage)) {
           usage = addUsage(usage, update.usage || delta.usage);
@@ -1001,6 +1022,7 @@ const sdkPrompt = [
         void (async () => {
           try {
             for await (const ev of run.stream!()) {
+              lastActivity = Date.now();
               const incoming = todoCallFromDelta(ev);
               if (incoming) applyTodoCall(incoming);
             }
@@ -1055,6 +1077,15 @@ const sdkPrompt = [
         if (stopRequested.has(opts.agentId)) resolve();
       });
 
+      // Watchdog: a hung tool call (browser click, script) emits nothing. Cut the run and let auto-continue retry.
+      lastActivity = Date.now();
+      const watchdog = setInterval(() => {
+        if (Date.now() - lastActivity < STALL_MS) return;
+        stalled = true;
+        console.warn('[TecAdRiseBot] run stalled, cancelling', opts.agentId);
+        stopWaiters.get(opts.agentId)?.();
+      }, 30_000);
+
       try {
         const raced = await Promise.race([
           run.wait().then((r) => ({ kind: 'wait' as const, r })),
@@ -1063,7 +1094,7 @@ const sdkPrompt = [
         ]);
         if (raced.kind === 'stop' || stopRequested.has(opts.agentId)) {
           try {
-            await run.cancel();
+            await Promise.race([run.cancel(), new Promise<void>((r) => setTimeout(r, 10_000))]);
           } catch {
             /* ignore */
           }
@@ -1119,6 +1150,7 @@ const sdkPrompt = [
         }
         if (assembled && !published) publishDone();
       } finally {
+        clearInterval(watchdog);
         activeRuns.delete(opts.agentId);
         stopWaiters.delete(opts.agentId);
       }
@@ -1188,6 +1220,7 @@ const sdkPrompt = [
     claimed.delete(opts.agentId);
     activeRuns.delete(opts.agentId);
     liveTurns.delete(opts.agentId);
+    wasStopped = stopRequested.has(opts.agentId);
     stopRequested.delete(opts.agentId);
     stopWaiters.delete(opts.agentId);
     const cur = db.getMessage(assistantMessageId);
@@ -1203,16 +1236,41 @@ const sdkPrompt = [
       usage,
       todos,
     });
-    maybeNotifyChatDone({
-      source: opts.source,
-      toastEnabled: readToastEnabled(agent.config),
-      agentName: agent.name,
-      content: text,
-      win: opts.win,
-    });
+    if (!opts.deferNotify) {
+      maybeNotifyChatDone({
+        source: opts.source,
+        toastEnabled: readToastEnabled(agent.config),
+        agentName: agent.name,
+        content: text,
+        win: opts.win,
+      });
+    }
   }
 
-  return { userMessageId, assistantMessageId };
+  return {
+    userMessageId,
+    assistantMessageId,
+    stopped: wasStopped,
+    stalled,
+    failed: /^(Error:|Agent error:)/i.test(String(assembled || '').trim()),
+    todos,
+    answer: unpackAssistantBody(assembled).answer,
+  };
+}
+
+function continuePrompt(n: number, r: TurnResult): string {
+  const open = (r.todos || []).filter((t) => t.status === 'pending' || t.status === 'inProgress');
+  const why = r.stalled
+    ? 'A step hung with no output for 15 minutes and was cancelled.'
+    : 'The previous turn ended before every todo item was finished.';
+  return [
+    `[Auto-continue ${n}/${MAX_AUTO_CONTINUE}] ${why}`,
+    'Unfinished items:',
+    ...open.map((t) => `- ${t.content} (${t.status})`),
+    'Do not redo finished work. Continue with the first unfinished item and finish all of them in this turn.',
+    'Wrap every browser, network, form send or script step in a hard timeout of about 90 seconds. If a step times out, hits a captcha, or fails twice, record it as failed or assist, skip it, and go on to the next item.',
+    'Never end the turn while an item is pending or in progress. Mark each item completed or cancelled with a reason, then give the final one-line result.',
+  ].join('\n');
 }
 
 export async function runAgentTurn(opts: {
@@ -1222,8 +1280,44 @@ export async function runAgentTurn(opts: {
   source?: 'user' | 'routine' | 'interbot';
   attachments?: ChatAttachment[];
 }): Promise<{ userMessageId: string; assistantMessageId: string }> {
-  return enqueue(opts.agentId, () => runAgentTurnInner({ ...opts, attachments: opts.attachments ?? [] })) as Promise<{
-    userMessageId: string;
-    assistantMessageId: string;
-  }>;
+  const first = (await enqueue(opts.agentId, () =>
+    runAgentTurnInner({ ...opts, attachments: opts.attachments ?? [], deferNotify: true })
+  )) as TurnResult;
+  let last = first;
+  for (let n = 1; n <= MAX_AUTO_CONTINUE; n++) {
+    if (last.stopped || last.failed) break;
+    const open = (last.todos || []).filter((t) => t.status === 'pending' || t.status === 'inProgress');
+    if (!open.length) break;
+    // Chat turns may leave user-action items open on purpose, so only retry them after a hang or an empty reply.
+    const unattended = opts.source === 'routine';
+    if (!unattended && !last.stalled && last.answer) break;
+    if (last.stalled) dropAgentHandle(opts.agentId);
+    const cont = last;
+    console.log('[TecAdRiseBot] auto-continue', n, opts.agentId, open.length, 'open');
+    last = (await enqueue(opts.agentId, () =>
+      runAgentTurnInner({
+        agentId: opts.agentId,
+        userText: continuePrompt(n, cont),
+        win: opts.win,
+        source: opts.source,
+        attachments: [],
+        seedTodos: cont.todos,
+        deferNotify: true,
+      })
+    )) as TurnResult;
+  }
+  // One toast for the whole job, from the final turn.
+  const agent = db.getAgent(opts.agentId);
+  const finalText = String(db.getMessage(last.assistantMessageId)?.content || '').trim();
+  if (agent && finalText) {
+    maybeNotifyChatDone({
+      source: opts.source,
+      toastEnabled: readToastEnabled(agent.config),
+      agentName: agent.name,
+      content: finalText,
+      win: opts.win,
+    });
+  }
+  // Callers read the reply from the last turn, which holds the final answer and todo state.
+  return { userMessageId: first.userMessageId, assistantMessageId: last.assistantMessageId };
 }

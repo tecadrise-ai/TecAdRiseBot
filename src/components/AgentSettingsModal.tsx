@@ -111,12 +111,12 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setSaving(true);
     setStatus('');
     try {
-      await window.tecapi.agents.update(agent.id, {
-        name: name.trim() || agent.name,
-        model: baseModelId(model.trim() || agent.model),
+      await window.tecapi.agents.update(agent!.id, {
+        name: name.trim() || agent!.name,
+        model: baseModelId(model.trim() || agent!.model),
         color,
         instructions: soul.trim() ? soul : null,
-        config: { ...(agent.config || {}), modelMode, effort, lastMessages, toastEnabled, resumeSession },
+        config: { ...(agent!.config || {}), modelMode, effort, lastMessages, toastEnabled, resumeSession },
       });
       setStatus('Saved.');
       onSaved();
@@ -131,8 +131,8 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setSaving(true);
     setStatus('');
     try {
-      await window.tecapi.agents.update(agent.id, {
-        config: { ...(agent.config || {}), modelMode, effort, lastMessages, toastEnabled, resumeSession },
+      await window.tecapi.agents.update(agent!.id, {
+        config: { ...(agent!.config || {}), modelMode, effort, lastMessages, toastEnabled, resumeSession },
       });
       setStatus('Saved.');
       onSaved();
@@ -153,10 +153,10 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setClearing(true);
     setStatus('');
     try {
-      await window.tecapi.messages.clear(agent.id);
+      await window.tecapi.messages.clear(agent!.id);
       setConfirmClear(false);
       onSaved();
-      onSessionCleared?.(agent.id);
+      onSessionCleared?.(agent!.id);
       onClose();
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
@@ -179,7 +179,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
         await window.tecapi.routines.update(editingId, payload);
       } else {
         await window.tecapi.routines.create({
-          agentId: agent.id,
+          agentId: agent!.id,
           ...payload,
         });
       }
@@ -202,10 +202,10 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
       return;
     }
     try {
-      await window.tecapi.agents.update(agent.id, {
-        config: { ...(agent.config || {}), mcpServers: parsed.servers },
+      await window.tecapi.agents.update(agent!.id, {
+        config: { ...(agent!.config || {}), mcpServers: parsed.servers },
       });
-      const result = await window.tecapi.agents.registerMcp(agent.id);
+      const result = await window.tecapi.agents.registerMcp(agent!.id);
       setStatus(result.ok ? result.note || 'Registered.' : result.error || 'Register failed');
       onSaved();
     } catch (e) {

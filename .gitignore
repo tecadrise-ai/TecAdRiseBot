@@ -12,3 +12,6 @@ release/
 Thumbs.db
 *.local
 .vite/
+
+.playwright-mcp/
+uploads/

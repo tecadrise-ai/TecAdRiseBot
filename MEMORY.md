@@ -4,8 +4,9 @@ This file is app-wide. It is injected on every agent turn (same as SYSTEM.md). P
 
 Use the shared skill `memory-management` from the Skills directory (`skills/memory-management/SKILL.md` in App data). Read that SKILL.md when you need the procedure.
 
-The live store path is in `[Memory directory]` on this turn (Settings → Computer). That folder is shared by every agent. Do not write memory under the agent workspace cwd.
+Two stores:
 
-- Read the skill, then read `index.md` in the memory directory before answering from prior context.
-- After a lasting fact or decision, update `index.md` and append `log.md` (and `notes/` as the skill says).
+- Shared: `[Memory directory]` this turn (Settings → Computer). Facts every agent should know. Read `index.md` first. After a shared fact, update `index.md` and append `log.md` (and `notes/` as the skill says).
+- Local: `memory.md` in this agent's workspace (cwd, the Workspace path this turn). Private to this agent. Read it at the start of a turn when you need your own history. Write lasting per-agent facts, procedures, and lessons there. Do not dump shared company facts only into local `memory.md`.
+
 - Do not store secrets, API keys, or passwords.

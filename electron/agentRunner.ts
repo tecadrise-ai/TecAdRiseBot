@@ -748,6 +748,16 @@ async function runAgentTurnInner(opts: {
         'utf8'
       );
     }
+    const localMemory = path.join(cwd, 'memory.md');
+    if (!fs.existsSync(localMemory)) {
+      fs.writeFileSync(
+        localMemory,
+        '# ' +
+          agent.name +
+          ' memory\n\nPrivate to this agent. Shared facts go in the host Memory directory.\n',
+        'utf8'
+      );
+    }
   } catch {
     /* ignore */
   }
@@ -808,7 +818,12 @@ async function runAgentTurnInner(opts: {
         'Do not grep the app source. Do not use GetDynamicTools or HTTP for todos.\n' +
         '[/Checklist tool]',
       systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
-      '[Memory directory]' + '\n' + db.ensureMemoryDir() + '\nRead index.md first. Write lasting facts here. Shared by all agents.\n[/Memory directory]',
+      '[Memory directory]' +
+        '\n' +
+        db.ensureMemoryDir() +
+        '\nRead index.md first. Write lasting facts every agent should know here. Shared by all agents.\n' +
+        'Your private store is memory.md in the Workspace path this turn. Read and update that file for per-agent memory. Do not put shared facts only there.\n' +
+        '[/Memory directory]',
       '[Skills]' + '\n' + db.formatSkillsCatalog() + '\n[/Skills]',
       instructions
         ? '[Agent soul]' + '\n' + instructions + '\n[/Agent soul]'

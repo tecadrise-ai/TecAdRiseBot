@@ -10,7 +10,7 @@ import { finalizeAssistantBody, packAssistantBody, unpackAssistantBody } from '.
 import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
 import { getApiKey } from './secrets';
-import { DEFAULT_MODEL_ID, readLastMessages, readResumeSession, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
+import { DEFAULT_MODEL_ID, readLastMessages, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
 import { applyTodoCallToList, parseNumberedTasks, todoCallFromDelta, type TodoCall, type TodoItem } from '../src/lib/todos';
@@ -283,17 +283,6 @@ function todoErrorFromMeta(meta: string | null | undefined): string {
   }
 }
 
-function lastAssistantIsFail(agentId: string): boolean {
-  const rows = db.listMessages(agentId);
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i].role !== 'assistant') continue;
-    const t = String(rows[i].content || '').trim();
-    if (!t) continue;
-    return isFailedAssistantBubble(t);
-  }
-  return false;
-}
-
 const PROMPT_INLINE_MAX = 2500;
 
 function offloadLongText(cwd: string, filename: string, body: string): string {
@@ -314,7 +303,9 @@ function recentChatBody(role: string, raw: string): string {
   let body = String(raw || '').replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]');
   if (role === 'assistant') {
     const unpacked = unpackAssistantBody(body);
-    body = unpacked.answer.trim() || body;
+    // Never replay hidden reasoning. A thinking-only/incomplete bubble carries no
+    // reliable assistant answer and must be omitted from recovered chat.
+    body = unpacked.answer.trim();
   }
   return body;
 }
@@ -441,6 +432,10 @@ function isAnthropicPolicyError(err: unknown): boolean {
   return /blocked under Anthropic's Usage Policy|Request blocked by Anthropic/i.test(errorText(err));
 }
 
+function isSystemPromptUnsupported(err: unknown): boolean {
+  return /system.?prompt|--system-prompt/i.test(errorText(err)) && /invalid|access|enabled|argument/i.test(errorText(err));
+}
+
 function friendlyAgentError(err: unknown): string {
   if (isHttp2CalmError(err)) {
     return 'Cursor API closed this stream (HTTP/2 ENHANCE_YOUR_CALM). Too many agent calls at once. Stop other running agents, wait a few seconds, then send again.';
@@ -500,7 +495,7 @@ export async function cancelAgentRun(agentId: string): Promise<{ ok: true }> {
   }
   liveTurns.delete(agentId);
   if (!hadRun) stopRequested.delete(agentId);
-  dropAgentHandle(agentId);
+  await disposeFreshHandle(agentId, db.agentWorkspacePath(agentId));
   return { ok: true };
 }
 
@@ -549,24 +544,20 @@ async function getHandle(
   agent: db.AgentRow,
   apiKey: string,
   cwd: string,
-  forceNew = false
+  systemPrompt?: string
 ): Promise<CursorAgent> {
-  if (!forceNew) {
-    const existing = handles.get(agent.id);
-    if (existing) return existing;
-  } else {
-    const old = handles.get(agent.id);
-    if (old) {
-      try {
-        old.close();
-      } catch {
-        /* ignore */
-      }
-      handles.delete(agent.id);
-    }
-  }
+  // Every user message and routine is an independent bounded-context SDK agent.
+  const oldAgentId = handles.get(agent.id)?.agentId;
+  dropAgentHandle(agent.id);
 
   const { Agent } = await loadCursorSdk();
+  if (oldAgentId) {
+    try {
+      await Agent.delete(oldAgentId, { cwd });
+    } catch {
+      /* already gone */
+    }
+  }
   if (!modelCatalog.length) {
     try {
       await listModels();
@@ -574,38 +565,34 @@ async function getHandle(
       /* ignore */
     }
   }
-  let handle: CursorAgent | null = null;
   const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
   const mcpServers = mcpServersForAgent(agent.config, cwd);
   const local = localAgentOpts(cwd);
 
-  if (!forceNew && readResumeSession(agent.config) && agent.cursorAgentId) {
-    try {
-      handle = (await Agent.resume(agent.cursorAgentId, {
-        apiKey,
-        model: modelSel,
-        mcpServers: mcpServers as never,
-        local,
-      })) as unknown as CursorAgent;
-    } catch (e) {
-      console.warn('Agent.resume failed, creating new', e);
-      handle = null;
-    }
-  }
-
-  if (!handle) {
-    handle = (await Agent.create({
-      apiKey,
-      name: agent.name,
-      model: modelSel,
-      mcpServers: mcpServers as never,
-      local,
-    })) as unknown as CursorAgent;
-    db.updateAgent(agent.id, { cursorAgentId: handle.agentId });
-  }
+  const handle = (await Agent.create({
+    apiKey,
+    name: agent.name,
+    model: modelSel,
+    mcpServers: mcpServers as never,
+    local,
+    ...(systemPrompt ? { systemPrompt } : {}),
+  })) as unknown as CursorAgent;
 
   handles.set(agent.id, handle);
+  if (agent.cursorAgentId) db.updateAgent(agent.id, { cursorAgentId: null });
   return handle;
+}
+
+async function disposeFreshHandle(agentId: string, cwd: string): Promise<void> {
+  const sdkAgentId = handles.get(agentId)?.agentId;
+  dropAgentHandle(agentId);
+  if (!sdkAgentId) return;
+  try {
+    const { Agent } = await loadCursorSdk();
+    await Agent.delete(sdkAgentId, { cwd });
+  } catch (e) {
+    console.warn('[TecAdRiseBot] delete fresh SDK agent failed', sdkAgentId, errorText(e));
+  }
 }
 
 export async function registerAgentMcp(agentId: string): Promise<{ ok: boolean; error?: string; note?: string }> {
@@ -617,13 +604,15 @@ export async function registerAgentMcp(agentId: string): Promise<{ ok: boolean; 
     return { ok: true, note: 'Saved. MCP attaches on the next chat turn after you set an API key.' };
   }
   try {
-    await getHandle(agent, apiKey, db.agentWorkspacePath(agentId), false);
+    const cwd = db.agentWorkspacePath(agentId);
+    await getHandle(agent, apiKey, cwd);
+    await disposeFreshHandle(agentId, cwd);
     const n = Object.keys(mcpServersForAgent(agent.config, db.agentWorkspacePath(agentId)) || {}).length;
     return {
       ok: true,
       note: n
-        ? 'MCP registered on this agent session (global + this agent). Next message can use those tools.'
-        : 'Session refreshed with no MCP servers.',
+        ? 'MCP configuration validated. Every new run will load global + agent MCP servers.'
+        : 'MCP configuration validated with no servers.',
     };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -797,51 +786,56 @@ async function runAgentTurnInner(opts: {
     userBody = offloadLongText(cwd, 'last_user.md', userBody);
   }
 
-  const poisoned = lastAssistantIsFail(opts.agentId);
-  const recentChat = poisoned
-    ? ''
-    : formatRecentChat(
-        opts.agentId,
-        [userMessageId, assistantMessageId],
-        readLastMessages(agent.config),
-        userBody,
-        cwd
-      );
+  const recoveredChat = formatRecentChat(
+    opts.agentId,
+    [userMessageId, assistantMessageId],
+    readLastMessages(agent.config),
+    userBody,
+    cwd
+  );
 
-const sdkPrompt = [
-    systemPrompt,
-    '[Checklist tool]\n' +
-      'If you need a task list, call the todo tool already in this turn (TodoWrite or updateTodos). ' +
-      'Pass { todos: [{ id, content, status }], merge }. merge: false replaces the list. merge: true updates matching ids and keeps the rest.\n' +
-      'Todo tool statuses depend on the tool name you were given this turn:\n' +
-      '- TodoWrite: pending / in_progress / completed / cancelled (underscore). inProgress is rejected and nothing in that call is applied.\n' +
-      '- updateTodos: pending / inProgress / completed / cancelled (camelCase).\n' +
-      'Use the spelling for the tool you actually have. If the tool returns a validation error, the allowed values in that error are correct, so retry with them immediately.\n' +
-      'After every todo call, read the returned list. If it was rejected or does not match, fix it before continuing.\n' +
-      'Never reword or drop items, only change status. Mark an item completed as soon as it is done. Each open user action is its own item.\n' +
-      'Do not grep the app source. Do not use GetDynamicTools or HTTP for todos.\n' +
-      '[/Checklist tool]',
-    systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
-    '[Memory directory]' + '\n' + db.ensureMemoryDir() + '\nRead index.md first. Write lasting facts here. Shared by all agents.\n[/Memory directory]',
-    '[Skills]' + '\n' + db.formatSkillsCatalog() + '\n[/Skills]',
-    runtimeCtx,
-    instructions
-      ? '[Agent soul]' + '\n' + instructions + '\n[/Agent soul]'
-      : '',
-    recentChat,
-    '[User message]' + '\n' + userBody + '\n[/User message]',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  const hostSystemPrompt = [
+      systemPrompt,
+      '[Checklist tool]\n' +
+        'If you need a task list, call the todo tool already in this turn (TodoWrite or updateTodos). ' +
+        'Pass { todos: [{ id, content, status }], merge }. merge: false replaces the list. merge: true updates matching ids and keeps the rest.\n' +
+        'Todo tool statuses depend on the tool name you were given this turn:\n' +
+        '- TodoWrite: pending / in_progress / completed / cancelled (underscore). inProgress is rejected and nothing in that call is applied.\n' +
+        '- updateTodos: pending / inProgress / completed / cancelled (camelCase).\n' +
+        'Use the spelling for the tool you actually have. If the tool returns a validation error, the allowed values in that error are correct, so retry with them immediately.\n' +
+        'After every todo call, read the returned list. If it was rejected or does not match, fix it before continuing.\n' +
+        'Never reword or drop items, only change status. Mark an item completed as soon as it is done. Each open user action is its own item.\n' +
+        'Do not grep the app source. Do not use GetDynamicTools or HTTP for todos.\n' +
+        '[/Checklist tool]',
+      systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
+      '[Memory directory]' + '\n' + db.ensureMemoryDir() + '\nRead index.md first. Write lasting facts here. Shared by all agents.\n[/Memory directory]',
+      '[Skills]' + '\n' + db.formatSkillsCatalog() + '\n[/Skills]',
+      instructions
+        ? '[Agent soul]' + '\n' + instructions + '\n[/Agent soul]'
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+  const turnPrompt = [
+      runtimeCtx,
+      recoveredChat,
+      '[User message]' + '\n' + userBody + '\n[/User message]',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
   let assembled = '';
   let usage: TokenUsage | null = null;
   let todos: TodoItem[] = [];
   let stalled = false;
   let wasStopped = false;
+  let policyBlocked = false;
+  let systemPromptRejected = false;
+  let customSystemPrompt = true;
   let lastActivity = Date.now();
   try {
-    let handle = await getHandle(agent, apiKey, cwd, poisoned);
+    let handle = await getHandle(agent, apiKey, cwd, hostSystemPrompt);
 
     const sendOnce = async (h: CursorAgent) => {
       let turnText = '';
@@ -1005,6 +999,19 @@ const sdkPrompt = [
 
       const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
       console.log('[TecAdRiseBot] sdk model', JSON.stringify(modelSel));
+      const sdkPrompt = customSystemPrompt
+        ? turnPrompt
+        : [hostSystemPrompt, turnPrompt].filter(Boolean).join('\n\n');
+      console.log(
+        '[TecAdRiseBot] sdk prompt',
+        JSON.stringify({
+          independentRun: true,
+          customSystemPrompt,
+          systemChars: hostSystemPrompt.length,
+          turnChars: turnPrompt.length,
+          recoveredChatChars: recoveredChat.length,
+        })
+      );
       const run = await h.send(
         imageParts.length
           ? { text: sdkPrompt, images: imageParts }
@@ -1137,16 +1144,20 @@ const sdkPrompt = [
         assembled = finalizeAssistantBody(thinkText, rawAnswer);
         if (result.status === 'error') {
           const msg = result.error?.message || 'Agent run failed';
-          if (isCursorStoreError(msg) || isAnthropicPolicyError(msg)) {
-            dropAgentHandle(opts.agentId);
+          if (customSystemPrompt && isSystemPromptUnsupported(msg)) {
+            systemPromptRejected = true;
+          }
+          if (isAnthropicPolicyError(msg)) {
+            policyBlocked = true;
+          }
+          if (isCursorStoreError(msg) || policyBlocked) {
             db.updateAgent(opts.agentId, { cursorAgentId: null });
           }
           if (isHttp2CalmError(msg) && !unpackAssistantBody(assembled).answer) {
             throw new Error(msg);
           }
-          if (!unpackAssistantBody(assembled).answer && !unpackAssistantBody(assembled).thinking) {
-            assembled = `Error: ${friendlyAgentError(msg)}`;
-          }
+          // Never persist partial reasoning as if it were a valid response.
+          assembled = `Error: ${friendlyAgentError(msg)}`;
         }
         if (assembled && !published) publishDone();
       } finally {
@@ -1158,7 +1169,25 @@ const sdkPrompt = [
     };
 
     try {
-      const alreadyPublished = await sendOnce(handle);
+      let alreadyPublished = await sendOnce(handle);
+      if (systemPromptRejected && !stopRequested.has(opts.agentId)) {
+        console.warn('[TecAdRiseBot] custom system prompt unavailable, using bounded inline fallback');
+        customSystemPrompt = false;
+        systemPromptRejected = false;
+        handle = await getHandle(agent, apiKey, cwd);
+        assembled = '';
+        usage = null;
+        alreadyPublished = await sendOnce(handle);
+      }
+      if (policyBlocked && !stopRequested.has(opts.agentId)) {
+        console.warn('[TecAdRiseBot] policy block, retrying once with fresh SDK session', opts.agentId);
+        await cancelActive(opts.agentId);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined);
+        assembled = '';
+        usage = null;
+        policyBlocked = false;
+        alreadyPublished = await sendOnce(handle);
+      }
       if (stopRequested.has(opts.agentId)) {
         const cur = db.getMessage(assistantMessageId);
         const text = String(cur?.content || assembled || '').trim() || 'Stopped.';
@@ -1181,6 +1210,30 @@ const sdkPrompt = [
         const cur = db.getMessage(assistantMessageId);
         const text = String(cur?.content || assembled || '').trim() || 'Stopped.';
         db.updateMessageContent(assistantMessageId, text);
+      } else if (customSystemPrompt && isSystemPromptUnsupported(e)) {
+        console.warn('[TecAdRiseBot] custom system prompt unavailable, using bounded inline fallback');
+        customSystemPrompt = false;
+        handle = await getHandle(agent, apiKey, cwd);
+        assembled = '';
+        usage = null;
+        systemPromptRejected = false;
+        const alreadyPublished = await sendOnce(handle);
+        if (!alreadyPublished) {
+          if (!assembled) assembled = '(No response text from agent.)';
+          db.updateMessageContent(assistantMessageId, assembled);
+        }
+      } else if (isAnthropicPolicyError(e)) {
+        console.warn('[TecAdRiseBot] thrown policy block, retrying once with fresh SDK session', opts.agentId);
+        db.updateAgent(opts.agentId, { cursorAgentId: null });
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined);
+        assembled = '';
+        usage = null;
+        policyBlocked = false;
+        const alreadyPublished = await sendOnce(handle);
+        if (!alreadyPublished) {
+          if (!assembled) assembled = '(No response text from agent.)';
+          db.updateMessageContent(assistantMessageId, assembled);
+        }
       } else if (assembled.trim() && !isHttp2CalmError(e)) {
         db.updateMessageContent(assistantMessageId, assembled);
       } else if (!isBusyError(e)) {
@@ -1190,7 +1243,7 @@ const sdkPrompt = [
           await new Promise((r) => setTimeout(r, 2000));
         }
         await cancelActive(opts.agentId);
-        handle = await getHandle(agent, apiKey, cwd, true);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined);
         assembled = '';
         usage = null;
         const alreadyPublished = await sendOnce(handle);
@@ -1219,6 +1272,7 @@ const sdkPrompt = [
   } finally {
     claimed.delete(opts.agentId);
     activeRuns.delete(opts.agentId);
+    await disposeFreshHandle(opts.agentId, cwd);
     liveTurns.delete(opts.agentId);
     wasStopped = stopRequested.has(opts.agentId);
     stopRequested.delete(opts.agentId);

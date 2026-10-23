@@ -1040,11 +1040,6 @@
   align-items: center;
   gap: 8px;
 }
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 12px;
-  word-break: break-all;
-}
 
 .routine-form {
   border: 1px solid var(--border);

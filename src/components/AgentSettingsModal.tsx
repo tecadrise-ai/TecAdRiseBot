@@ -14,7 +14,6 @@ import {
   DEFAULT_LAST_MESSAGES,
   readLastMessages,
   readModelMode,
-  readResumeSession,
   readToastEnabled,
   type CatalogModel,
   type ModelMode,
@@ -29,11 +28,10 @@ type Props = {
 };
 
 export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCleared }: Props) {
-  const [tab, setTab] = useState<'general' | 'routines' | 'mcp' | 'session'>('general');
+  const [tab, setTab] = useState<'general' | 'routines' | 'mcp'>('general');
   const [name, setName] = useState('');
   const [color, setColor] = useState('#4C78FF');
   const [toastEnabled, setToastEnabled] = useState(true);
-  const [resumeSession, setResumeSession] = useState(true);
   const [model, setModel] = useState('');
   const [modelMode, setModelMode] = useState<ModelMode>('usual');
   const [effort, setEffort] = useState('medium');
@@ -86,7 +84,6 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setName(agent.name);
     setColor(agent.color);
     setToastEnabled(readToastEnabled(agent.config));
-    setResumeSession(readResumeSession(agent.config));
     setModel(baseModelId(agent.model));
     setModelMode(readModelMode(agent.config, agent.model));
     setEffort(readEffort(agent.config));
@@ -111,28 +108,14 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setSaving(true);
     setStatus('');
     try {
+      const { resumeSession: _oldResume, promptProtocolVersion: _oldProtocol, ...keptConfig } =
+        agent!.config || {};
       await window.tecapi.agents.update(agent!.id, {
         name: name.trim() || agent!.name,
         model: baseModelId(model.trim() || agent!.model),
         color,
         instructions: soul.trim() ? soul : null,
-        config: { ...(agent!.config || {}), modelMode, effort, lastMessages, toastEnabled, resumeSession },
-      });
-      setStatus('Saved.');
-      onSaved();
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveSession() {
-    setSaving(true);
-    setStatus('');
-    try {
-      await window.tecapi.agents.update(agent!.id, {
-        config: { ...(agent!.config || {}), modelMode, effort, lastMessages, toastEnabled, resumeSession },
+        config: { ...keptConfig, modelMode, effort, lastMessages, toastEnabled },
       });
       setStatus('Saved.');
       onSaved();
@@ -147,7 +130,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     if (clearing) return;
     if (!confirmClear) {
       setConfirmClear(true);
-      setStatus('Click Clear again to wipe this chat. Cannot be undone.');
+      setStatus('Click Confirm clear chat history. This cannot be undone.');
       return;
     }
     setClearing(true);
@@ -248,13 +231,6 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
             onClick={() => setTab('mcp')}
           >
             MCP
-          </button>
-          <button
-            type="button"
-            className={tab === 'session' ? 'active' : ''}
-            onClick={() => setTab('session')}
-          >
-            Session
           </button>
         </div>
 
@@ -361,7 +337,8 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   }}
                 />
                 <span className="hint">
-                  Inject the last N chat lines into every turn so follow-ups like "smaller one" work. 0 turns this off. Default 5.
+                  Visible chat messages included in every independent run for short-term context.
+                  The default is 5. Use Memory and Soul for durable context.
                 </span>
               </label>
               <label className="field soul-field">
@@ -372,8 +349,22 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   onChange={(e) => setSoul(e.target.value)}
                   placeholder={DEFAULT_AGENT_SOUL}
                 />
-                <span className="hint">Only this agent. Injected on every turn. Saved with Save below. App-wide prompt is in Local user settings.</span>
+                <span className="hint">Only this agent. Included in every independent run. App-wide prompt is in Local user settings.</span>
               </label>
+              <div className="session-panel">
+                <p className="hint">
+                  Clear this agent&apos;s visible chat history. Soul, MCP, routines, workspace files,
+                  and Memory are unchanged.
+                </p>
+                <button
+                  type="button"
+                  className="primary danger-btn"
+                  disabled={clearing}
+                  onClick={() => void clearSession()}
+                >
+                  {clearing ? 'Clearing...' : confirmClear ? 'Confirm clear chat history' : 'Clear chat history'}
+                </button>
+              </div>
               {status ? <p className="status">{status}</p> : null}
             </>
           )}
@@ -532,30 +523,12 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
             </div>
           )}
 
-          {tab === 'session' && (
-            <div className="session-panel">
-              <p className="hint" style={{ marginTop: 0 }}>
-                Clear the current session to wipe this agent&apos;s chat history. The next message
-                starts a fresh SDK session. Soul, MCP, and routines stay as they are.
-              </p>
-              <label className="toast-toggle" title="After an app restart, reconnect the same Cursor SDK thread. Turn off if a blocked thread keeps failing.">
-                <input
-                  type="checkbox"
-                  checked={resumeSession}
-                  onChange={(e) => setResumeSession(e.target.checked)}
-                />
-                Resume SDK session
-              </label>
-              {status ? <p className="status">{status}</p> : null}
-            </div>
-          )}
-
           {tab === 'mcp' && (
             <div className="mcp-panel">
               <div className="hint" style={{ marginTop: 0 }}>
                 Extra MCP for this agent only. Merged on top of Local user → MCP. Same name wins here.
-                Empty {'{}'} still keeps globals. Register attaches this mix on this session. Next chat
-                turn also sends the merged list.
+                Empty {'{}'} still keeps globals. Register validates the configuration. Every run
+                loads the merged list.
               </div>
               <label className="field">
                 <span>mcpServers</span>
@@ -596,26 +569,6 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
             >
               {mcpBusy ? 'Registering...' : 'Register'}
             </button>
-          )}
-          {tab === 'session' && (
-            <>
-              <button
-                type="button"
-                className="primary"
-                disabled={saving}
-                onClick={() => void saveSession()}
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                className="primary danger-btn"
-                disabled={clearing}
-                onClick={() => void clearSession()}
-              >
-                {clearing ? 'Clearing...' : 'Clear current session'}
-              </button>
-            </>
           )}
         </div>
       </div>

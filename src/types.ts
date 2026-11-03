@@ -41,4 +41,5 @@ export type AppSettings = {
   skillsPath: string;
   version: string;
   platform: string;
+  missedGraceMinutes: number;
 };

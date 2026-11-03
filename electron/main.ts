@@ -263,8 +263,10 @@ function registerIpc() {
       skillsPath: db.ensureSkillsDir(),
       version: app.getVersion(),
       platform: process.platform,
+      missedGraceMinutes: db.getMissedGraceMinutes(),
     };
   });
+  ipcMain.handle('settings:setMissedGraceMinutes', (_e, min: number) => db.setMissedGraceMinutes(min));
 
   ipcMain.handle('settings:setApiKey', (_e, apiKey: string) => secrets.saveApiKey(apiKey.trim()));
   ipcMain.handle('settings:clearApiKey', () => {

@@ -6,6 +6,12 @@ import { isAgentBusy, runAgentTurn } from './agentRunner';
 let timer: NodeJS.Timeout | null = null;
 let winRef: BrowserWindow | null = null;
 let ticking = false;
+// A routine due longer ago than this (app was closed, PC off) is skipped, not run late.
+// Value comes from the app-wide setting (Settings > General), default 15 minutes.
+function missedGraceMs(): number {
+  // Floor of 15s so the 5s tick cannot miss a routine that is exactly due.
+  return Math.max(15_000, db.getMissedGraceMinutes() * 60_000);
+}
 
 export function startScheduler(getWin: () => BrowserWindow | null): void {
   winRef = getWin();
@@ -111,10 +117,14 @@ async function tickInner(): Promise<void> {
           } else {
             db.updateRoutine(r.id, { lastRunAt: now });
           }
-        } else if (now - last >= interval.ms * 2) {
-          db.updateRoutine(r.id, { lastRunAt: now });
         } else if (now - last >= interval.ms) {
-          await fire(r, now);
+          // Missed slots (app closed, PC off) are skipped. Fire only if the latest slot is just due.
+          const slot = last + Math.floor((now - last) / interval.ms) * interval.ms;
+          if (now - slot < Math.min(missedGraceMs(), interval.ms)) {
+            await fire(r, now);
+          } else {
+            db.updateRoutine(r.id, { lastRunAt: slot });
+          }
         }
         continue;
       }
@@ -122,7 +132,8 @@ async function tickInner(): Promise<void> {
       const at = onceAt(stored);
       if (at !== null) {
         if (now >= at && !(r.lastRunAt && r.lastRunAt >= at)) {
-          await fire(r, now);
+          // One-time routine missed while the app was off: do not fire late.
+          if (now - at < missedGraceMs()) await fire(r, now);
           db.updateRoutine(r.id, { enabled: 0 });
         }
         continue;
@@ -133,7 +144,7 @@ async function tickInner(): Promise<void> {
       const expr = CronExpressionParser.parse(exprStr, { currentDate: new Date(now) });
       const prev = expr.prev().getTime();
       const last = r.lastRunAt ?? 0;
-      if (prev > last && now - prev < 120_000) {
+      if (prev > last && now - prev < missedGraceMs()) {
         await fire(r, now);
       }
     } catch (e) {

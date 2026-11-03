@@ -614,6 +614,22 @@ export function setSetting(key: string, value: string): void {
   persist();
 }
 
+export const DEFAULT_MISSED_GRACE_MIN = 15;
+
+// App-wide: how late (minutes) a routine may still fire. Older missed slots are skipped.
+export function getMissedGraceMinutes(): number {
+  const n = Number(getSetting('routine_missed_grace_min'));
+  return Number.isFinite(n) && n >= 0 && getSetting('routine_missed_grace_min') !== null
+    ? n
+    : DEFAULT_MISSED_GRACE_MIN;
+}
+
+export function setMissedGraceMinutes(min: number): number {
+  const v = Math.min(1440, Math.max(0, Math.round(Number(min) || 0)));
+  setSetting('routine_missed_grace_min', String(v));
+  return v;
+}
+
 export function ensureWorkspacesDir(userDataPath?: string): string {
   const base = userDataPath ?? app.getPath('userData');
   const dir = path.join(base, 'workspaces');

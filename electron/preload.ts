@@ -95,6 +95,8 @@ const api = {
     clearApiKey: () => ipcRenderer.invoke('settings:clearApiKey'),
     setModel: (model: string) => ipcRenderer.invoke('settings:setModel', model),
     setAccountName: (name: string) => ipcRenderer.invoke('settings:setAccountName', name),
+    setMissedGraceMinutes: (min: number): Promise<number> =>
+      ipcRenderer.invoke('settings:setMissedGraceMinutes', min),
     getSystemPrompt: (): Promise<string> => ipcRenderer.invoke('settings:getSystemPrompt'),
     setSystemPrompt: (text: string): Promise<{ ok: true }> =>
       ipcRenderer.invoke('settings:setSystemPrompt', text),

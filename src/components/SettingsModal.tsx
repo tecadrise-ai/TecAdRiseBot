@@ -127,11 +127,13 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
   const [memoryDirty, setMemoryDirty] = useState(false);
   const [mcpJson, setMcpJson] = useState(EMPTY_MCP_JSON);
   const [mcpBusy, setMcpBusy] = useState(false);
+  const [missedGrace, setMissedGrace] = useState(String(settings?.missedGraceMinutes ?? 15));
 
   useEffect(() => {
     if (!open) return;
     setAccountName(settings?.accountName ?? '');
     setModel(settings?.selectedModel ?? 'composer-2.5');
+    setMissedGrace(String(settings?.missedGraceMinutes ?? 15));
     void window.tecapi.models.list().then(setModels).catch(() => setModels([]));
     const loadPrompt = window.tecapi.settings.getSystemPrompt;
     if (typeof loadPrompt === 'function') {
@@ -188,6 +190,13 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
     await window.tecapi.settings.setModel(model);
     setStatus(`Default model set to ${model}`);
     await onRefresh();
+  }
+
+  async function saveMissedGrace() {
+    const v = await window.tecapi.settings.setMissedGraceMinutes(Number(missedGrace));
+    setMissedGrace(String(v));
+    await onRefresh();
+    setStatus(`Missed routines older than ${v} min are skipped.`);
   }
 
   async function saveName() {
@@ -326,6 +335,27 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                       Apply
                     </button>
                   </div>
+                </label>
+
+                <label className="field">
+                  <span>Missed routine window (minutes)</span>
+                  <div className="row">
+                    <input
+                      type="number"
+                      min={0}
+                      max={1440}
+                      value={missedGrace}
+                      onChange={(e) => setMissedGrace(e.target.value)}
+                    />
+                    <button type="button" className="primary" onClick={() => void saveMissedGrace()}>
+                      Save
+                    </button>
+                  </div>
+                  <p className="hint">
+                    All agents. A routine that was due while the app was closed (PC off) still runs on
+                    start only if it was due within this many minutes. Older ones are skipped and wait
+                    for their next scheduled time.
+                  </p>
                 </label>
 
                 {settings?.hasApiKey && (

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Agent, Workflow, WorkflowRunView } from '../types';
-import type { RoleOverride, WorkflowSettings } from '../lib/workflow/types';
+import type { WorkflowSettings } from '../lib/workflow/types';
 import { EXAMPLE_DEFINITION } from '../lib/workflow/definition';
-import { dropdownModels, effortParam, type CatalogModel } from '../lib/modelOptions';
+import type { CatalogModel } from '../lib/modelOptions';
 import { WorkflowCard } from './WorkflowCard';
 
 type Props = {
@@ -11,30 +11,12 @@ type Props = {
   onSaved: () => void;
 };
 
-type Role = 'runner' | 'owner';
-type RoleDraft = { model: string; modelMode: string; effort: string };
-
-const EMPTY_ROLE: RoleDraft = { model: '', modelMode: '', effort: '' };
-
-function toDraft(r: RoleOverride | undefined): RoleDraft {
-  return { model: r?.model || '', modelMode: r?.modelMode || '', effort: r?.effort || '' };
-}
-
-function fromDraft(d: RoleDraft): RoleOverride | undefined {
-  const out: RoleOverride = {};
-  if (d.model) out.model = d.model;
-  if (d.modelMode) out.modelMode = d.modelMode;
-  if (d.effort) out.effort = d.effort;
-  return Object.keys(out).length ? out : undefined;
-}
-
-export function WorkflowsPanel({ agent, models, onSaved }: Props) {
+export function WorkflowsPanel({ agent, onSaved }: Props) {
   const [ownerOn, setOwnerOn] = useState(agent.config?.workflowOwner === true);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [json, setJson] = useState('');
-  const [roles, setRoles] = useState<Record<Role, RoleDraft>>({ runner: EMPTY_ROLE, owner: EMPTY_ROLE });
   const [runs, setRuns] = useState<WorkflowRunView[]>([]);
   const [runnerId, setRunnerId] = useState('');
   const [runInput, setRunInput] = useState('');
@@ -87,7 +69,6 @@ export function WorkflowsPanel({ agent, models, onSaved }: Props) {
     setStatus('');
     setEditId(wf ? wf.id : 'new');
     setJson(JSON.stringify(wf ? wf.definition : EXAMPLE_DEFINITION, null, 2));
-    setRoles({ runner: toDraft(wf?.settings.runner), owner: toDraft(wf?.settings.owner) });
     const firstOther = agents.find((a) => a.id !== agent.id);
     setRunnerId((cur) => cur || firstOther?.id || '');
   }
@@ -101,11 +82,7 @@ export function WorkflowsPanel({ agent, models, onSaved }: Props) {
       setStatus(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
-    const settings: WorkflowSettings = {};
-    const runner = fromDraft(roles.runner);
-    const owner = fromDraft(roles.owner);
-    if (runner) settings.runner = runner;
-    if (owner) settings.owner = owner;
+    const settings: WorkflowSettings = workflows.find((w) => w.id === editId)?.settings ?? {};
     setBusy(true);
     setStatus('');
     try {
@@ -155,45 +132,6 @@ export function WorkflowsPanel({ agent, models, onSaved }: Props) {
     } finally {
       setBusy(false);
     }
-  }
-
-  function setRole(role: Role, patch: Partial<RoleDraft>) {
-    setRoles((prev) => ({ ...prev, [role]: { ...prev[role], ...patch } }));
-  }
-
-  function roleRow(role: Role) {
-    const d = roles[role];
-    const efforts = effortParam(models.find((m) => m.id === d.model)).values;
-    return (
-      <>
-        <span>{role === 'runner' ? 'Runner' : 'Owner'}</span>
-        <select value={d.model} onChange={(e) => setRole(role, { model: e.target.value })}>
-          <option value="">Agent default model</option>
-          {dropdownModels(models).map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.displayName || m.id}
-            </option>
-          ))}
-          {d.model && !dropdownModels(models).some((m) => m.id === d.model) ? (
-            <option value={d.model}>{d.model}</option>
-          ) : null}
-        </select>
-        <select value={d.modelMode} onChange={(e) => setRole(role, { modelMode: e.target.value })}>
-          <option value="">Agent default mode</option>
-          <option value="usual">Usual</option>
-          <option value="fast">Fast</option>
-        </select>
-        <select value={d.effort} onChange={(e) => setRole(role, { effort: e.target.value })}>
-          <option value="">Agent default effort</option>
-          {efforts.map((v) => (
-            <option key={v.value} value={v.value}>
-              {v.displayName || v.value}
-            </option>
-          ))}
-          {d.effort && !efforts.some((v) => v.value === d.effort) ? <option value={d.effort}>{d.effort}</option> : null}
-        </select>
-      </>
-    );
   }
 
   return (
@@ -260,13 +198,6 @@ export function WorkflowsPanel({ agent, models, onSaved }: Props) {
                   definition creates a new version. Running runs keep their version.
                 </span>
               </label>
-              <div className="field">
-                <span>Model overrides (optional)</span>
-                <div className="wf-overrides">
-                  {roleRow('runner')}
-                  {roleRow('owner')}
-                </div>
-              </div>
               {editId !== 'new' ? (
                 <div className="field">
                   <span>Start a run now</span>

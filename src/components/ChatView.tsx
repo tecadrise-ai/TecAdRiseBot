@@ -4,6 +4,7 @@ import { WorkflowCard } from './WorkflowCard';
 import { MarkdownBody } from './MarkdownBody';
 import { fmtTs, fmtUsage, parseMessageUsage } from '../lib/usage';
 import { formatModelLabel } from '../lib/modelOptions';
+import { ownerRoleOverride } from '../lib/workflow/definition';
 import { unpackAssistantBody } from '../lib/assistantBody';
 import { parseMessageTodos, type TodoItem, type TodoStatus } from '../lib/todos';
 
@@ -24,10 +25,11 @@ type Props = {
   agentRunning?: boolean;
   workflowRuns?: Record<string, WorkflowRunView>;
   onNeedWorkflowRun?: (runId: string) => void;
-  onSend: (text: string, attachments: PendingAttachment[], targetAgentId?: string) => Promise<void>;
+  onSend: (text: string, attachments: PendingAttachment[], role?: ChatRole) => Promise<void>;
   onStop: () => void | Promise<void>;
   onOpenAgentSettings: () => void;
   onRename?: (name: string) => Promise<void>;
+  ownerAgent?: Agent | null;
 };
 
 const TODO_MARK: Record<TodoStatus, string> = {
@@ -148,10 +150,18 @@ function fitComposer(el: HTMLTextAreaElement): void {
 type ComposerProps = {
   agentId: string;
   agentName: string;
+  /** Separate Owner agent of this runner, null when none is set. */
+  ownerName: string | null;
   busy: boolean;
-  onSend: (text: string, attachments: PendingAttachment[], targetAgentId?: string) => Promise<void>;
+  role: ChatRole;
+  onRole: (role: ChatRole) => void;
+  onPickOwner: () => void;
+  onSend: (text: string, attachments: PendingAttachment[], role?: ChatRole) => Promise<void>;
   onStop: () => void | Promise<void>;
 };
+
+/** Runner is this agent (runs workflows). Owner is its separate Owner agent (reviews and fixes, never runs). */
+export type ChatRole = 'runner' | 'owner';
 
 function EditableName({ name, onRename }: { name: string; onRename?: (name: string) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
@@ -217,66 +227,36 @@ function EditableName({ name, onRename }: { name: string; onRename?: (name: stri
   );
 }
 
-type OwnerTarget = { id: string; name: string };
-
-const SELF_OWNER = 'self';
-const SELF_OWNER_PREFIX =
-  '[Workflow owner role] Act as the workflow owner: use your workflow tools to create, edit, review or fix workflows.';
-
-/** Owner agents of the workflows this agent runs (routines in Step workflow mode and recent runs). */
-async function loadOwnerTargets(agentId: string): Promise<OwnerTarget[]> {
-  const [routines, workflows, runs, agents] = await Promise.all([
-    window.tecapi.routines.list(),
-    window.tecapi.workflows.list(),
-    window.tecapi.workflows.runs({ agentId, limit: 20 }),
-    window.tecapi.agents.list(),
-  ]);
-  const ids = new Set<string>();
-  for (const r of routines) {
-    if (r.agentId !== agentId || !r.workflowId) continue;
-    const wf = workflows.find((w) => w.id === r.workflowId);
-    if (wf) ids.add(wf.ownerAgentId);
-  }
-  for (const run of runs) if (run.runnerAgentId === agentId) ids.add(run.ownerAgentId);
-  ids.delete(agentId);
-  return agents.filter((a) => ids.has(a.id)).map((a) => ({ id: a.id, name: a.name }));
+/** Owner settings live on the runner: its own model settings plus the Owner row overrides. */
+function ownerModelLabel(runner: Agent): string {
+  const o = ownerRoleOverride(runner.config) ?? {};
+  return formatModelLabel(o.model || runner.model, { ...runner.config, ...o });
 }
 
-const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onStop }: ComposerProps) {
+const Composer = memo(function Composer({
+  agentId,
+  agentName,
+  ownerName,
+  busy,
+  role,
+  onRole,
+  onPickOwner,
+  onSend,
+  onStop,
+}: ComposerProps) {
+  const [sendNote, setSendNote] = useState('');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [sendError, setSendError] = useState('');
-  const [sendNote, setSendNote] = useState('');
-  const [owners, setOwners] = useState<OwnerTarget[]>([]);
-  /** Empty means the runner, this agent. */
-  const [target, setTarget] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setOwners([]);
-    setTarget('');
-    loadOwnerTargets(agentId)
-      .then((list) => {
-        if (alive) setOwners(list);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [agentId]);
-
-  const targetOwner = owners.find((o) => o.id === target) ?? null;
-  /** No other owner: the Owner role is this agent itself, working with its workflow tools. */
-  const selfOwner = target === SELF_OWNER;
+  const asOwner = role === 'owner' && Boolean(ownerName);
 
   useEffect(() => {
     setDraft('');
     setPending([]);
     setSendError('');
-    setSendNote('');
     const el = taRef.current;
     if (el) {
       el.style.height = 'auto';
@@ -308,8 +288,7 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
     const text = draft.trim();
     if ((!text && pending.length === 0) || sending) return;
     const attachments = pending;
-    const owner = targetOwner;
-    const mustStop = busy && !owner;
+    const mustStop = busy && !asOwner;
     setDraft('');
     setPending([]);
     const el = taRef.current;
@@ -324,11 +303,9 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
     };
     try {
       if (mustStop) await onStop();
-      if (owner) {
-        setSendNote(`Sent to owner ${owner.name}. The reply appears in its chat.`);
-        onSend(`[Message from the chat of runner agent ${agentName}]\n\n${text}`, attachments, owner.id).catch(restore);
-      } else if (selfOwner) {
-        onSend(`${SELF_OWNER_PREFIX}\n\n${text}`, attachments).catch(restore);
+      if (asOwner) {
+        setSendNote(`Sent to owner ${ownerName}. The reply appears in its chat.`);
+        onSend(text, attachments, 'owner').catch(restore);
       } else {
         onSend(text, attachments).catch(restore);
       }
@@ -385,7 +362,7 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
           className="composer-icon"
           title="Attach file"
           aria-label="Attach file"
-          disabled={busy && !targetOwner}
+          disabled={busy}
           onClick={() => fileRef.current?.click()}
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -398,53 +375,32 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
             />
           </svg>
         </button>
-          <div className="composer-target" role="radiogroup" aria-label="Send to">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!targetOwner && !selfOwner}
-              className={!targetOwner && !selfOwner ? 'active' : ''}
-              title={`Send to runner ${agentName}`}
-              onClick={() => setTarget('')}
-            >
-              Runner
-            </button>
-            {owners.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                role="radio"
-                aria-checked={target === o.id}
-                className={target === o.id ? 'active' : ''}
-                title={`Send to workflow owner ${o.name}`}
-                onClick={() => setTarget(o.id)}
-              >
-                {owners.length > 1 ? o.name : 'Owner'}
-              </button>
-            ))}
-            {owners.length === 0 ? (
-              <button
-                type="button"
-                role="radio"
-                aria-checked={selfOwner}
-                className={selfOwner ? 'active' : ''}
-                title={`${agentName} as workflow owner: create, edit, review or fix workflows`}
-                onClick={() => setTarget(SELF_OWNER)}
-              >
-                Owner
-              </button>
-            ) : null}
-          </div>
+        <div className="composer-target" role="radiogroup" aria-label="Role">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!asOwner}
+            className={!asOwner ? 'active' : ''}
+            title={`Send to runner ${agentName}`}
+            onClick={() => onRole('runner')}
+          >
+            Runner
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={asOwner}
+            className={asOwner ? 'active' : ''}
+            title={ownerName ? `Send to owner ${ownerName}` : 'No Owner agent yet, click to pick one in settings'}
+            onClick={() => (ownerName ? onRole('owner') : onPickOwner())}
+          >
+            Owner
+          </button>
+        </div>
         <textarea
           ref={taRef}
           className="composer-input"
-          placeholder={
-            targetOwner
-              ? `Message owner ${targetOwner.name}`
-              : selfOwner
-                ? `Message ${agentName} as workflow owner`
-                : `Message ${agentName}`
-          }
+          placeholder={asOwner ? `Message owner ${ownerName}` : `Message ${agentName}`}
           value={draft}
           rows={1}
           onChange={(e) => {
@@ -513,8 +469,11 @@ export function ChatView({
   onStop,
   onOpenAgentSettings,
   onRename,
+  ownerAgent = null,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [role, setRole] = useState<ChatRole>('runner');
+  const effectiveRole: ChatRole = role === 'owner' && ownerAgent ? 'owner' : 'runner';
   /** Follow new output only while the user is at the bottom, so reading older messages is not interrupted. */
   const stickToBottom = useRef(true);
   const lastMessageId = messages[messages.length - 1]?.id;
@@ -564,7 +523,11 @@ export function ChatView({
           </div>
           <div>
             <EditableName key={agent.id} name={agent.name} onRename={onRename} />
-            <div className="title-sub">{formatModelLabel(agent.model, agent.config)}</div>
+            <div className="title-sub">
+              {effectiveRole === 'owner' && ownerAgent
+                ? `Owner ${ownerAgent.name} · ${ownerModelLabel(agent)}`
+                : formatModelLabel(agent.model, agent.config)}
+            </div>
           </div>
         </div>
         <div className="header-actions">
@@ -686,7 +649,17 @@ export function ChatView({
         <div ref={bottomRef} />
       </div>
 
-      <Composer agentId={agent.id} agentName={agent.name} busy={busy} onSend={onSend} onStop={onStop} />
+      <Composer
+        agentId={agent.id}
+        agentName={agent.name}
+        ownerName={ownerAgent?.name ?? null}
+        busy={busy}
+        role={effectiveRole}
+        onRole={setRole}
+        onPickOwner={onOpenAgentSettings}
+        onSend={onSend}
+        onStop={onStop}
+      />
     </main>
   );
 }

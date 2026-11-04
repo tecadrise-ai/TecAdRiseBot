@@ -40,6 +40,8 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
   const [modelMode, setModelMode] = useState<ModelMode>('usual');
   const [effort, setEffort] = useState('medium');
   const [ownerOv, setOwnerOv] = useState<RoleOverride>({});
+  const [ownerAgentId, setOwnerAgentId] = useState('');
+  const [allAgents, setAllAgents] = useState<Agent[]>([]);
   const [lastMessages, setLastMessages] = useState(DEFAULT_LAST_MESSAGES);
   const [soul, setSoul] = useState('');
   const [mcpJson, setMcpJson] = useState('{\n}\n');
@@ -98,6 +100,11 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setModelMode(readModelMode(agent.config, agent.model));
     setEffort(readEffort(agent.config));
     setOwnerOv(normalizeSettings({ owner: agent.config?.workflowOwnerOverride }).owner ?? {});
+    setOwnerAgentId(typeof agent.config?.workflowOwnerAgentId === 'string' ? agent.config.workflowOwnerAgentId : '');
+    void window.tecapi.agents
+      .list()
+      .then(setAllAgents)
+      .catch(() => setAllAgents([]));
     setLastMessages(readLastMessages(agent.config));
     setSoul(resolveAgentSoul(agent.instructions));
     setMcpJson(mcpJsonFromConfig(agent.config));
@@ -140,6 +147,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
         resumeSession: _oldResume,
         promptProtocolVersion: _oldProtocol,
         workflowOwnerOverride: _oldOwner,
+        workflowOwnerAgentId: _oldOwnerAgent,
         ...keptConfig
       } = agent!.config || {};
       const ownerOverride = normalizeSettings({
@@ -160,7 +168,8 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
           effort,
           lastMessages,
           toastEnabled,
-          ...(ownerOverride ? { workflowOwnerOverride: ownerOverride } : {}),
+          ...(ownerAgentId ? { workflowOwnerAgentId: ownerAgentId } : {}),
+          ...(ownerAgentId && ownerOverride ? { workflowOwnerOverride: ownerOverride } : {}),
         },
       });
       setStatus('Saved.');
@@ -351,6 +360,9 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                 <span>Model, mode and effort</span>
                 <div className="wf-overrides wf-overrides-general">
                   <span>Runner</span>
+                  <select value={agent.id} disabled title="The runner is always this agent">
+                    <option value={agent.id}>{name.trim() || agent.name}</option>
+                  </select>
                   <select value={model} onChange={(e) => setModel(e.target.value)}>
                     {dropdownModels(models).map((m) => (
                       <option key={m.id} value={m.id}>
@@ -379,7 +391,21 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   <span>
                     Owner <span className="muted">(optional)</span>
                   </span>
-                  <select value={ownerModel} onChange={(e) => setOwnerField('model', e.target.value)}>
+                  <select value={ownerAgentId} onChange={(e) => setOwnerAgentId(e.target.value)}>
+                    <option value="">No owner agent</option>
+                    {allAgents
+                      .filter((a) => a.id !== agent.id)
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                  </select>
+                  <select
+                    value={ownerModel}
+                    disabled={!ownerAgentId}
+                    onChange={(e) => setOwnerField('model', e.target.value)}
+                  >
                     {dropdownModels(models).map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.displayName || m.id}
@@ -389,11 +415,19 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                       <option value={ownerModel}>{ownerModel}</option>
                     ) : null}
                   </select>
-                  <select value={ownerMode} onChange={(e) => setOwnerField('modelMode', e.target.value)}>
+                  <select
+                    value={ownerMode}
+                    disabled={!ownerAgentId}
+                    onChange={(e) => setOwnerField('modelMode', e.target.value)}
+                  >
                     <option value="usual">Usual</option>
                     <option value="fast">Fast</option>
                   </select>
-                  <select value={ownerEffort} onChange={(e) => setOwnerField('effort', e.target.value)}>
+                  <select
+                    value={ownerEffort}
+                    disabled={!ownerAgentId}
+                    onChange={(e) => setOwnerField('effort', e.target.value)}
+                  >
                     {ownerEfforts.map((v) => (
                       <option key={v.value} value={v.value}>
                         {v.displayName || v.value}
@@ -405,9 +439,9 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   </select>
                 </div>
                 <span className="hint">
-                  Runner is this agent, used for chats, routines and workflow steps. Owner reviews and fixes steps when
-                  this agent runs a Step workflow and uses the Runner settings unless changed. Fast, high, and max cost
-                  more.
+                  The Runner is this agent: it chats and runs workflows. The Owner is a separate agent that never runs
+                  workflows, it only reviews and fixes this agent&apos;s workflow steps, with the settings in its row
+                  (same as the Runner unless changed). Fast, high, and max cost more.
                 </span>
               </div>
               <label className="field">
@@ -498,7 +532,6 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                     </div>
                   </div>
                   <TaskModeFields
-                    agentId={agent.id}
                     mode={rTaskMode}
                     workflowId={rWorkflowId}
                     workflows={allWorkflows}

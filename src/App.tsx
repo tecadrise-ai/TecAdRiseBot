@@ -28,6 +28,11 @@ function sameIdSet(a: Set<string>, b: Set<string>): boolean {
   return true;
 }
 
+function ownerAgentIdOf(agent: Agent | null | undefined): string {
+  const id = agent?.config?.workflowOwnerAgentId;
+  return typeof id === 'string' ? id : '';
+}
+
 export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -261,15 +266,24 @@ export default function App() {
   const send = useCallback(async (
     text: string,
     attachments: Array<{ name: string; mimeType: string; dataBase64: string }> = [],
-    targetAgentId?: string
+    role: 'runner' | 'owner' = 'runner'
   ) => {
     if (!selectedId) return;
-    await window.tecapi.chat.send(
-      targetAgentId || selectedId,
-      text,
-      attachments.map(({ name, mimeType, dataBase64 }) => ({ name, mimeType, dataBase64 }))
-    );
-  }, [selectedId]);
+    const files = attachments.map(({ name, mimeType, dataBase64 }) => ({ name, mimeType, dataBase64 }));
+    if (role === 'owner') {
+      const runner = agents.find((a) => a.id === selectedId);
+      const ownerId = ownerAgentIdOf(runner);
+      if (!runner || !ownerId) throw new Error('No Owner agent set. Pick one in this agent\'s settings, General tab.');
+      await window.tecapi.chat.send(
+        ownerId,
+        `[Message from the chat of runner agent ${runner.name}]\n\n${text}`,
+        files,
+        { ownerOfRunnerId: runner.id }
+      );
+      return;
+    }
+    await window.tecapi.chat.send(selectedId, text, files);
+  }, [selectedId, agents]);
 
   const renameSelected = useCallback(async (name: string) => {
     if (!selectedId) return;
@@ -362,6 +376,7 @@ export default function App() {
         onStop={stop}
         onOpenAgentSettings={openAgentSettings}
         onRename={renameSelected}
+        ownerAgent={agents.find((a) => a.id === ownerAgentIdOf(selected)) ?? null}
       />
       <AgentSettingsModal
         open={agentSettingsOpen}

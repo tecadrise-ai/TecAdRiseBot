@@ -99,8 +99,12 @@ const api = {
     > => ipcRenderer.invoke('usage:byAgent'),
   },
   chat: {
-    send: (agentId: string, text: string, attachments?: Array<{ name: string; mimeType: string; dataBase64: string }>) =>
-      ipcRenderer.invoke('chat:send', agentId, text, attachments ?? []),
+    send: (
+      agentId: string,
+      text: string,
+      attachments?: Array<{ name: string; mimeType: string; dataBase64: string }>,
+      opts?: { ownerOfRunnerId?: string }
+    ) => ipcRenderer.invoke('chat:send', agentId, text, attachments ?? [], opts),
     stop: (agentId: string) => ipcRenderer.invoke('chat:stop', agentId),
   },
   interbot: {

@@ -16,7 +16,7 @@ import {
 import * as engine from '../../src/lib/workflow/engine';
 import { handleMcpMessage, MAP, S, STR, type JsonRpcMessage, type JsonRpcReply, type McpTool } from '../../src/lib/workflow/mcpProtocol';
 import type { RoleOverride, Workflow, WorkflowRun } from '../../src/lib/workflow/types';
-import { normalizeSettings } from '../../src/lib/workflow/definition';
+import { ownerRoleOverride } from '../../src/lib/workflow/definition';
 import { baseModelId, readEffort, readModelMode } from '../../src/lib/modelOptions';
 import { isRunActive } from '../../src/lib/workflow/types';
 import { isAgentBusy, runAgentTurn, setTurnAugmenter, type TurnExtras } from '../agentRunner';
@@ -458,10 +458,16 @@ export function startRun(input: {
 }): RunView {
   const wf = store.getWorkflow(input.workflowId);
   if (!wf) throw new Error('Workflow not found');
-  if (!db.getAgent(input.runnerAgentId)) throw new Error('Runner agent not found');
-  if (!db.getAgent(wf.ownerAgentId)) throw new Error('Workflow owner agent not found');
-  if (wf.ownerAgentId === input.runnerAgentId) {
-    throw new Error('Runner and workflow owner must be different agents, otherwise the runner could review its own work.');
+  const runner = db.getAgent(input.runnerAgentId);
+  if (!runner) throw new Error('Runner agent not found');
+  // The runner's Owner agent (General tab) reviews and fixes; without one, the workflow's owner does.
+  const configuredOwner = typeof runner.config?.workflowOwnerAgentId === 'string' ? runner.config.workflowOwnerAgentId : '';
+  const ownerAgentId = configuredOwner && db.getAgent(configuredOwner) ? configuredOwner : wf.ownerAgentId;
+  if (!db.getAgent(ownerAgentId)) throw new Error('Owner agent not found');
+  if (ownerAgentId === input.runnerAgentId) {
+    throw new Error(
+      `${runner.name} cannot be its own owner. Pick an Owner agent in ${runner.name}'s settings, General tab.`
+    );
   }
   const run = engine.createRun({
     id: uuid(),
@@ -471,7 +477,7 @@ export function startRun(input: {
     version: wf.version,
     definition: wf.definition,
     runnerAgentId: input.runnerAgentId,
-    ownerAgentId: wf.ownerAgentId,
+    ownerAgentId,
     routineId: input.routineId ?? null,
     input: input.input ?? '',
     now: Date.now(),
@@ -593,14 +599,21 @@ function dispatch(run: WorkflowRun): void {
 function ownerOverride(run: WorkflowRun, wf: Workflow | null): RoleOverride | undefined {
   const runner = db.getAgent(run.runnerAgentId);
   if (!runner) return wf?.settings.owner;
-  const model = baseModelId(runner.model);
-  const sameAsRunner: RoleOverride = {
-    model,
+  return { ...runnerSettings(runner), ...wf?.settings.owner, ...ownerRoleOverride(runner.config) };
+}
+
+function runnerSettings(runner: db.AgentRow): RoleOverride {
+  return {
+    model: baseModelId(runner.model),
     modelMode: readModelMode(runner.config, runner.model),
     effort: readEffort(runner.config),
   };
-  const fromRunner = normalizeSettings({ owner: runner.config?.workflowOwnerOverride }).owner;
-  return { ...sameAsRunner, ...wf?.settings.owner, ...fromRunner };
+}
+
+/** Model settings the runner's Owner agent works with: the runner's settings plus its Owner row overrides. */
+export function ownerSettingsForRunner(runnerAgentId: string): RoleOverride | undefined {
+  const runner = db.getAgent(runnerAgentId);
+  return runner ? { ...runnerSettings(runner), ...ownerRoleOverride(runner.config) } : undefined;
 }
 
 async function runTurn(run: WorkflowRun, role: 'runner' | 'review' | 'fix', wf: Workflow | null): Promise<void> {

@@ -236,14 +236,17 @@ function registerIpc() {
       _e,
       agentId: string,
       text: string,
-      attachments?: Array<{ name: string; mimeType: string; dataBase64: string }>
+      attachments?: Array<{ name: string; mimeType: string; dataBase64: string }>,
+      opts?: { ownerOfRunnerId?: string }
     ) => {
+      const modelOverride = opts?.ownerOfRunnerId ? workflows.ownerSettingsForRunner(opts.ownerOfRunnerId) : undefined;
       return runAgentTurn({
         agentId,
         userText: text,
         win: mainWindow,
         source: 'user',
         attachments: attachments ?? [],
+        ...(modelOverride ? { extras: { modelOverride } } : {}),
       });
     }
   );

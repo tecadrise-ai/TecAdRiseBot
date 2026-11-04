@@ -146,6 +146,11 @@ export function normalizeSettings(raw: unknown): WorkflowSettings {
   return out;
 }
 
+/** The Owner role's model, mode and effort from the agent's General tab; empty fields follow the Runner. */
+export function ownerRoleOverride(config: Record<string, unknown> | null | undefined): RoleOverride | undefined {
+  return normalizeRole(config?.workflowOwnerOverride);
+}
+
 export const EXAMPLE_DEFINITION: WorkflowDefinition = {
   name: 'Example workflow',
   description: 'Replace with your steps. The runner sees one step at a time.',

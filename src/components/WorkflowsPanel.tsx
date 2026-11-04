@@ -13,23 +13,18 @@ type Props = {
 
 export function WorkflowsPanel({ agent, onSaved }: Props) {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [json, setJson] = useState('');
   const [runs, setRuns] = useState<WorkflowRunView[]>([]);
-  const [runnerId, setRunnerId] = useState('');
-  const [runInput, setRunInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
 
   async function refresh() {
-    const [wfs, list, rs] = await Promise.all([
+    const [wfs, rs] = await Promise.all([
       window.tecapi.workflows.list(agent.id),
-      window.tecapi.agents.list(),
       window.tecapi.workflows.runs({ agentId: agent.id, limit: 5 }),
     ]);
     setWorkflows(wfs);
-    setAgents(list);
     setRuns(rs);
   }
 
@@ -56,8 +51,6 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
     setStatus('');
     setEditId(wf ? wf.id : 'new');
     setJson(JSON.stringify(wf ? wf.definition : EXAMPLE_DEFINITION, null, 2));
-    const firstOther = agents.find((a) => a.id !== agent.id);
-    setRunnerId((cur) => cur || firstOther?.id || '');
   }
 
   async function save() {
@@ -106,27 +99,12 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
     }
   }
 
-  async function startRun() {
-    if (!editId || editId === 'new' || !runnerId || busy) return;
-    setBusy(true);
-    setStatus('');
-    try {
-      await window.tecapi.workflows.start({ workflowId: editId, runnerAgentId: runnerId, input: runInput.trim() });
-      setStatus('Run started. Progress shows in the runner chat.');
-      await refresh();
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': /, '') : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="wf-panel">
       <div className="hint" style={{ margin: 0 }}>
-        {agent.name} is the owner of the workflows below. It creates and edits them, reviews steps marked for
-        review, and fixes broken steps. Runner agents only ever see their current step. Pick a workflow for a
-        runner in its Routines tab with Task mode Step workflow.
+        Workflows defined by {agent.name}. A Runner agent runs a workflow from its Routines tab (Task mode Step
+        workflow) and only ever sees its current step. The Runner&apos;s Owner agent, set in the Runner&apos;s General
+        tab, reviews and fixes the steps but never runs workflows.
       </div>
 
       {(
@@ -181,31 +159,6 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
                   definition creates a new version. Running runs keep their version.
                 </span>
               </label>
-              {editId !== 'new' ? (
-                <div className="field">
-                  <span>Start a run now</span>
-                  <div className="wf-overrides" style={{ gridTemplateColumns: '1fr 2fr auto' }}>
-                    <select value={runnerId} onChange={(e) => setRunnerId(e.target.value)}>
-                      <option value="">Runner agent</option>
-                      {agents
-                        .filter((a) => a.id !== agent.id)
-                        .map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.name}
-                          </option>
-                        ))}
-                    </select>
-                    <input
-                      value={runInput}
-                      onChange={(e) => setRunInput(e.target.value)}
-                      placeholder="Optional run input for the runner"
-                    />
-                    <button type="button" className="text-btn" disabled={!runnerId || busy} onClick={() => void startRun()}>
-                      Start
-                    </button>
-                  </div>
-                </div>
-              ) : null}
               <div className="routine-form-actions">
                 {editId !== 'new' ? (
                   <button type="button" className="text-btn danger-text" disabled={busy} onClick={() => void remove()}>

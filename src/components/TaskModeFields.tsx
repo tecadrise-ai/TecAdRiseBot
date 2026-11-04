@@ -3,8 +3,6 @@ import type { Workflow } from '../types';
 export type TaskMode = 'off' | 'todos' | 'workflow';
 
 type Props = {
-  /** Runner agent of the routine. Its own workflows are excluded, a runner cannot review itself. */
-  agentId: string;
   mode: TaskMode;
   workflowId: string;
   workflows: Workflow[];
@@ -12,8 +10,8 @@ type Props = {
   onWorkflow: (id: string) => void;
 };
 
-export function TaskModeFields({ agentId, mode, workflowId, workflows, onMode, onWorkflow }: Props) {
-  const usable = workflows.filter((w) => w.ownerAgentId !== agentId);
+export function TaskModeFields({ mode, workflowId, workflows, onMode, onWorkflow }: Props) {
+  const usable = workflows;
   return (
     <div className="routine-form-grid">
       <label className="field">
@@ -39,7 +37,7 @@ export function TaskModeFields({ agentId, mode, workflowId, workflows, onMode, o
             ) : null}
           </select>
           {usable.length === 0 ? (
-            <span className="hint">No workflows yet. Create one in another agent's Workflows tab, that agent is its owner.</span>
+            <span className="hint">No workflows yet. Create one in any agent's Workflows tab.</span>
           ) : null}
         </label>
       ) : null}

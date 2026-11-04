@@ -7,6 +7,7 @@ import { app } from 'electron';
 import { AGENT_BADGE_COLORS } from '../src/lib/agentColors';
 import { DEFAULT_AGENT_SOUL } from '../src/lib/soul';
 import { parseMessageUsage } from '../src/lib/usage';
+import type { WorkflowSettings } from '../src/lib/workflow/types';
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -50,9 +51,25 @@ export type RoutineRow = {
   enabled: number;
   forceTodos: number;
   workflowId: string | null;
+  /** Per-routine runner/owner model overrides for Step workflow, normalized by the caller. */
+  workflowSettings: WorkflowSettings | null;
   lastRunAt: number | null;
   createdAt: number;
 };
+
+function parseWorkflowSettings(raw: unknown): WorkflowSettings | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(String(raw));
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as WorkflowSettings) : null;
+  } catch {
+    return null;
+  }
+}
+
+function settingsJson(v: WorkflowSettings | null | undefined): string | null {
+  return v && (v.runner || v.owner) ? JSON.stringify(v) : null;
+}
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let persistDirty = false;
@@ -171,6 +188,9 @@ function migrateRoutinesSchema(): void {
   }
   if (!cols.has('workflow_id')) {
     mustDb().run(`ALTER TABLE routines ADD COLUMN workflow_id TEXT`);
+  }
+  if (!cols.has('workflow_settings')) {
+    mustDb().run(`ALTER TABLE routines ADD COLUMN workflow_settings TEXT`);
   }
 }
 
@@ -618,7 +638,7 @@ export function formatRoutineUserText(r: { name: string; prompt: string; forceTo
 }
 
 export function listRoutines(agentId?: string): RoutineRow[] {
-  let sql = `SELECT id, agent_id, name, cron, prompt, enabled, force_todos, workflow_id, last_run_at, created_at FROM routines`;
+  let sql = `SELECT id, agent_id, name, cron, prompt, enabled, force_todos, workflow_id, workflow_settings, last_run_at, created_at FROM routines`;
   if (agentId) sql += ` WHERE agent_id=$aid`;
   sql += ` ORDER BY created_at DESC`;
   const stmt = mustDb().prepare(sql);
@@ -635,6 +655,7 @@ export function listRoutines(agentId?: string): RoutineRow[] {
       enabled: Number(r.enabled),
       forceTodos: r.force_todos == null ? 0 : Number(r.force_todos),
       workflowId: r.workflow_id ? String(r.workflow_id) : null,
+      workflowSettings: parseWorkflowSettings(r.workflow_settings),
       lastRunAt: r.last_run_at != null ? Number(r.last_run_at) : null,
       createdAt: Number(r.created_at),
     });
@@ -656,15 +677,17 @@ export function createRoutine(input: {
   enabled?: number;
   forceTodos?: number;
   workflowId?: string | null;
+  workflowSettings?: WorkflowSettings | null;
 }): RoutineRow {
   const now = Date.now();
   const enabled = input.enabled ?? 1;
   const workflowId = input.workflowId || null;
   const forceTodos = input.forceTodos && !workflowId ? 1 : 0;
+  const workflowSettings = workflowId ? settingsJson(input.workflowSettings) : null;
   mustDb().run(
-    `INSERT INTO routines (id, agent_id, name, cron, prompt, enabled, force_todos, workflow_id, last_run_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-    [input.id, input.agentId, input.name, input.cron, input.prompt, enabled, forceTodos, workflowId, now]
+    `INSERT INTO routines (id, agent_id, name, cron, prompt, enabled, force_todos, workflow_id, workflow_settings, last_run_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+    [input.id, input.agentId, input.name, input.cron, input.prompt, enabled, forceTodos, workflowId, workflowSettings, now]
   );
   persist();
   return getRoutine(input.id)!;
@@ -679,12 +702,16 @@ export function updateRoutine(
     enabled: number;
     forceTodos: number;
     workflowId: string | null;
+    workflowSettings: WorkflowSettings | null;
     lastRunAt: number | null;
   }>
 ): RoutineRow | null {
   const existing = getRoutine(id);
   if (!existing) return null;
   const workflowId = patch.workflowId !== undefined ? patch.workflowId || null : existing.workflowId;
+  const workflowSettings = workflowId
+    ? settingsJson(patch.workflowSettings !== undefined ? patch.workflowSettings : existing.workflowSettings)
+    : null;
   const forceTodos = workflowId
     ? 0
     : patch.forceTodos !== undefined
@@ -702,7 +729,7 @@ export function updateRoutine(
         ? Date.now()
         : existing.lastRunAt;
   mustDb().run(
-    `UPDATE routines SET name=?, cron=?, prompt=?, enabled=?, force_todos=?, workflow_id=?, last_run_at=? WHERE id=?`,
+    `UPDATE routines SET name=?, cron=?, prompt=?, enabled=?, force_todos=?, workflow_id=?, workflow_settings=?, last_run_at=? WHERE id=?`,
     [
       patch.name ?? existing.name,
       cron,
@@ -710,6 +737,7 @@ export function updateRoutine(
       patch.enabled ?? existing.enabled,
       forceTodos,
       workflowId,
+      workflowSettings,
       lastRunAt,
       id,
     ]

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Agent, Routine, Workflow } from '../types';
 import { ModalBackdrop } from './ModalBackdrop';
 import { TaskModeFields, type TaskMode } from './TaskModeFields';
+import type { WorkflowSettings } from '../lib/workflow/types';
 import { WorkflowsPanel } from './WorkflowsPanel';
 import { ScheduleBuilder } from './ScheduleBuilder';
 import { AGENT_BADGE_COLORS } from '../lib/agentColors';
@@ -53,6 +54,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
   const [rPrompt, setRPrompt] = useState('');
   const [rTaskMode, setRTaskMode] = useState<TaskMode>('off');
   const [rWorkflowId, setRWorkflowId] = useState('');
+  const [rWfSettings, setRWfSettings] = useState<WorkflowSettings>({});
   const [allWorkflows, setAllWorkflows] = useState<Workflow[]>([]);
   const [creating, setCreating] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -64,6 +66,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setRPrompt('');
     setRTaskMode('off');
     setRWorkflowId('');
+    setRWfSettings({});
     setComposing(false);
     setEditingId(null);
   }
@@ -75,6 +78,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setRPrompt(r.prompt);
     setRTaskMode(r.workflowId ? 'workflow' : r.forceTodos ? 'todos' : 'off');
     setRWorkflowId(r.workflowId || '');
+    setRWfSettings(r.workflowSettings ?? {});
     setComposing(true);
   }
 
@@ -104,6 +108,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setRPrompt('');
     setRTaskMode('off');
     setRWorkflowId('');
+    setRWfSettings({});
     setComposing(false);
     setEditingId(null);
     void window.tecapi.models.list().then(setModels).catch(() => setModels([]));
@@ -170,6 +175,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
         prompt: rPrompt.trim(),
         forceTodos: rTaskMode === 'todos' ? 1 : 0,
         workflowId: rTaskMode === 'workflow' ? rWorkflowId : null,
+        workflowSettings: rTaskMode === 'workflow' ? rWfSettings : null,
       };
       if (editingId) {
         await window.tecapi.routines.update(editingId, payload);
@@ -449,6 +455,9 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                     workflows={allWorkflows}
                     onMode={setRTaskMode}
                     onWorkflow={setRWorkflowId}
+                    settings={rWfSettings}
+                    onSettings={setRWfSettings}
+                    models={models}
                   />
                   <label className="field">
                     <span>{rTaskMode === 'workflow' ? 'Run input (optional)' : 'Prompt'}</span>

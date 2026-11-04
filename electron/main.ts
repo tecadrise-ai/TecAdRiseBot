@@ -12,6 +12,7 @@ import { configureControlPlane, getBaseUrl } from './controlPlane';
 import * as workflows from './workflows/service';
 import { handleChatImages, registerChatImageScheme } from './chatImages';
 import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
+import { normalizeSettings } from '../src/lib/workflow/definition';
 import { APP_USER_MODEL_ID, APP_DISPLAY_NAME, appIconPath, ensureWindowsToastIdentity } from './notify';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -322,9 +323,17 @@ function registerIpc() {
     'routines:create',
     (
       _e,
-      input: { agentId: string; name: string; cron: string; prompt: string; forceTodos?: number; workflowId?: string | null }
+      input: {
+        agentId: string;
+        name: string;
+        cron: string;
+        prompt: string;
+        forceTodos?: number;
+        workflowId?: string | null;
+        workflowSettings?: unknown;
+      }
     ) => {
-      return db.createRoutine({ id: uuid(), ...input });
+      return db.createRoutine({ id: uuid(), ...input, workflowSettings: normalizeSettings(input.workflowSettings) });
     }
   );
   ipcMain.handle(
@@ -332,8 +341,22 @@ function registerIpc() {
     (
       _e,
       id: string,
-      patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; forceTodos: number; workflowId: string | null }>
-    ) => db.updateRoutine(id, patch)
+      patch: Partial<{
+        name: string;
+        cron: string;
+        prompt: string;
+        enabled: number;
+        forceTodos: number;
+        workflowId: string | null;
+        workflowSettings: unknown;
+      }>
+    ) => {
+      const { workflowSettings, ...rest } = patch;
+      return db.updateRoutine(
+        id,
+        workflowSettings === undefined ? rest : { ...rest, workflowSettings: normalizeSettings(workflowSettings) }
+      );
+    }
   );
   ipcMain.handle('routines:delete', (_e, id: string) => {
     db.deleteRoutine(id);

@@ -31,6 +31,8 @@ export type Routine = {
   enabled: number;
   forceTodos: number;
   workflowId: string | null;
+  /** Runner/owner model overrides for this routine's Step workflow runs. */
+  workflowSettings?: import('./lib/workflow/types').WorkflowSettings | null;
   lastRunAt: number | null;
   createdAt: number;
 };

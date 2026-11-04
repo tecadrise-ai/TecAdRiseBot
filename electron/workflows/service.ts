@@ -15,7 +15,7 @@ import {
 } from './prompts';
 import * as engine from '../../src/lib/workflow/engine';
 import { handleMcpMessage, MAP, S, STR, type JsonRpcMessage, type JsonRpcReply, type McpTool } from '../../src/lib/workflow/mcpProtocol';
-import type { Workflow, WorkflowRun } from '../../src/lib/workflow/types';
+import type { RoleOverride, Workflow, WorkflowRun, WorkflowSettings } from '../../src/lib/workflow/types';
 import { isRunActive } from '../../src/lib/workflow/types';
 import { isAgentBusy, runAgentTurn, setTurnAugmenter, type TurnExtras } from '../agentRunner';
 
@@ -569,7 +569,7 @@ function dispatch(run: WorkflowRun): void {
       return;
     }
   }
-  const wf = store.getWorkflow(run.workflowId);
+  const wf = effectiveSettings(run);
   if (run.state === 'running') {
     if (!agentFree(run.runnerAgentId)) return;
     void runTurn(run, 'runner', wf);
@@ -586,7 +586,15 @@ function dispatch(run: WorkflowRun): void {
   }
 }
 
-async function runTurn(run: WorkflowRun, role: 'runner' | 'review' | 'fix', wf: Workflow | null): Promise<void> {
+/** Workflow defaults, overridden field by field by the routine that started the run. */
+function effectiveSettings(run: WorkflowRun): { settings: WorkflowSettings } {
+  const base = store.getWorkflow(run.workflowId)?.settings ?? {};
+  const own = run.routineId ? db.getRoutine(run.routineId)?.workflowSettings ?? {} : {};
+  const merge = (a?: RoleOverride, b?: RoleOverride) => (a || b ? { ...a, ...b } : undefined);
+  return { settings: { runner: merge(base.runner, own.runner), owner: merge(base.owner, own.owner) } };
+}
+
+async function runTurn(run: WorkflowRun, role: 'runner' | 'review' | 'fix', wf: { settings: WorkflowSettings }): Promise<void> {
   const agentId = role === 'runner' ? run.runnerAgentId : run.ownerAgentId;
   const before = fingerprint(run);
   inFlight.set(run.id, role);

@@ -3,7 +3,6 @@ import type { Agent, Routine, Workflow } from '../types';
 import { ModalBackdrop } from './ModalBackdrop';
 import { TaskModeFields, type TaskMode } from './TaskModeFields';
 import { WorkflowsPanel } from './WorkflowsPanel';
-import type { RoleOverride } from '../lib/workflow/types';
 import { normalizeSettings } from '../lib/workflow/definition';
 import { ScheduleBuilder } from './ScheduleBuilder';
 import { AGENT_BADGE_COLORS } from '../lib/agentColors';
@@ -42,7 +41,9 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
   const [model, setModel] = useState('');
   const [modelMode, setModelMode] = useState<ModelMode>('usual');
   const [effort, setEffort] = useState('medium');
-  const [ownerOv, setOwnerOv] = useState<RoleOverride>({});
+  const [ownerModel, setOwnerModel] = useState('');
+  const [ownerMode, setOwnerMode] = useState<ModelMode>('usual');
+  const [ownerEffort, setOwnerEffort] = useState('medium');
   const [ownerAgentId, setOwnerAgentId] = useState('');
   const [allAgents, setAllAgents] = useState<Agent[]>([]);
   const [lastMessages, setLastMessages] = useState(DEFAULT_LAST_MESSAGES);
@@ -102,7 +103,10 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
     setModel(baseModelId(agent.model));
     setModelMode(readModelMode(agent.config, agent.model));
     setEffort(readEffort(agent.config));
-    setOwnerOv(normalizeSettings({ owner: agent.config?.workflowOwnerOverride }).owner ?? {});
+    const ov = normalizeSettings({ owner: agent.config?.workflowOwnerOverride }).owner ?? {};
+    setOwnerModel(ov.model || baseModelId(agent.model));
+    setOwnerMode((ov.modelMode as ModelMode) || readModelMode(agent.config, agent.model));
+    setOwnerEffort(ov.effort || readEffort(agent.config));
     setOwnerAgentId(typeof agent.config?.workflowOwnerAgentId === 'string' ? agent.config.workflowOwnerAgentId : '');
     void window.tecapi.agents
       .list()
@@ -120,27 +124,19 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
     setRWorkflowId('');
     setComposing(false);
     setEditingId(null);
-    void window.tecapi.models.list().then(setModels).catch(() => setModels([]));
+    void window.tecapi.models
+      .list()
+      .then((list) => {
+        if (list.length) setModels(list);
+        else setStatus('Could not load the model list. Check the API key in Settings, then reopen.');
+      })
+      .catch((e) => setStatus(`Could not load the model list: ${e instanceof Error ? e.message : String(e)}`));
     void refreshRoutines();
   }, [open, agent?.id, initialTab]);
 
   if (!open || !agent) return null;
 
-  // Owner follows the Runner settings; a field is stored only when it differs from the Runner.
-  const runnerValues: Required<RoleOverride> = { model, modelMode, effort };
-  const ownerModel = ownerOv.model || model;
-  const ownerMode = ownerOv.modelMode || modelMode;
-  const ownerEffort = ownerOv.effort || effort;
   const ownerEfforts = effortParam(models.find((m) => m.id === ownerModel)).values;
-
-  function setOwnerField(key: keyof RoleOverride, value: string) {
-    setOwnerOv((prev) => {
-      const next: RoleOverride = { ...prev };
-      if (value && value !== runnerValues[key]) next[key] = value;
-      else delete next[key];
-      return next;
-    });
-  }
 
   async function saveGeneral() {
     setSaving(true);
@@ -155,9 +151,9 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
       } = agent!.config || {};
       const ownerOverride = normalizeSettings({
         owner: {
-          model: ownerOv.model !== model ? ownerOv.model : undefined,
-          modelMode: ownerOv.modelMode !== modelMode ? ownerOv.modelMode : undefined,
-          effort: ownerOv.effort !== effort ? ownerOv.effort : undefined,
+          model: ownerModel !== model ? ownerModel : undefined,
+          modelMode: ownerMode !== modelMode ? ownerMode : undefined,
+          effort: ownerEffort !== effort ? ownerEffort : undefined,
         },
       }).owner;
       await window.tecapi.agents.update(agent!.id, {
@@ -172,7 +168,7 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
           lastMessages,
           toastEnabled,
           ...(ownerAgentId ? { workflowOwnerAgentId: ownerAgentId } : {}),
-          ...(ownerAgentId && ownerOverride ? { workflowOwnerOverride: ownerOverride } : {}),
+          ...(ownerOverride ? { workflowOwnerOverride: ownerOverride } : {}),
         },
       });
       setStatus('Saved.');
@@ -393,7 +389,7 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
                   </span>
                   <select
                     value={ownerModel}
-                    onChange={(e) => setOwnerField('model', e.target.value)}
+                    onChange={(e) => setOwnerModel(e.target.value)}
                   >
                     {dropdownModels(models).map((m) => (
                       <option key={m.id} value={m.id}>
@@ -406,14 +402,14 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
                   </select>
                   <select
                     value={ownerMode}
-                    onChange={(e) => setOwnerField('modelMode', e.target.value)}
+                    onChange={(e) => setOwnerMode(e.target.value as ModelMode)}
                   >
                     <option value="usual">Usual</option>
                     <option value="fast">Fast</option>
                   </select>
                   <select
                     value={ownerEffort}
-                    onChange={(e) => setOwnerField('effort', e.target.value)}
+                    onChange={(e) => setOwnerEffort(e.target.value)}
                   >
                     {ownerEfforts.map((v) => (
                       <option key={v.value} value={v.value}>
@@ -427,8 +423,8 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
                 </div>
                 <span className="hint">
                   The Runner is this agent: it chats and runs workflows. The Owner is a separate agent that never runs
-                  workflows, it only reviews and fixes this agent&apos;s workflow steps, with the settings in its row
-                  (same as the Runner unless changed). Fast, high, and max cost more.
+                  workflows, it only reviews and fixes this agent&apos;s workflow steps, with the settings in its row.
+                  Changing Runner does not change Owner. Fast, high, and max cost more.
                 </span>
               </div>
               <label className="field">

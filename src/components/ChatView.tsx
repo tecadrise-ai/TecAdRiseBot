@@ -409,7 +409,7 @@ const Composer = memo(function Composer({
         <textarea
           ref={taRef}
           className="composer-input"
-          placeholder={asOwner ? `Message owner ${ownerName ?? agentName}` : `Message ${agentName}`}
+          placeholder={asOwner ? `Message owner ${ownerName ?? agentName}` : `Message runner ${agentName}`}
           value={draft}
           rows={1}
           onChange={(e) => {
@@ -535,7 +535,7 @@ export function ChatView({
             <div className="title-sub">
               {effectiveRole === 'owner'
                 ? `Owner${ownerAgent ? ` ${ownerAgent.name}` : ''} · ${ownerModelLabel(agent)}`
-                : formatModelLabel(agent.model, agent.config)}
+                : `Runner · ${formatModelLabel(agent.model, agent.config)}`}
             </div>
           </div>
         </div>

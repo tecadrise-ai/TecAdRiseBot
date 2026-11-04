@@ -670,14 +670,15 @@ export async function listModels(): Promise<CatalogModel[]> {
     { id: DEFAULT_MODEL_ID, displayName: 'Composer 2.5' },
     { id: 'auto', displayName: 'Auto' },
   ];
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    modelCatalog = fallback;
-    return fallback;
-  }
   try {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      modelCatalog = fallback;
+      return fallback;
+    }
     const { Cursor } = await loadCursorSdk();
     const models = await Cursor.models.list({ apiKey });
+    if (!models.length) throw new Error('empty model list');
     modelCatalog = models.map((m) => ({
       id: m.id,
       displayName: m.displayName || m.id,
@@ -687,6 +688,7 @@ export async function listModels(): Promise<CatalogModel[]> {
     return modelCatalog;
   } catch (e) {
     console.error('listModels failed', e);
+    if (modelCatalog.length > fallback.length) return modelCatalog;
     modelCatalog = fallback;
     return fallback;
   }

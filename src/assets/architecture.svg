@@ -54,7 +54,7 @@
       <rect x="426" y="179" width="348" height="38" rx="8"/><text class="lname" x="440" y="203">MEMORY.md</text><text class="ldesc" x="760" y="203">memory rules · ~300 tok</text>
     </g>
     <g data-tip="Short description of how the app, roles and workflows work. Sent to every agent every turn.">
-      <rect x="426" y="225" width="348" height="38" rx="8"/><text class="lname" x="440" y="249">ARCHITECTURE.md</text><text class="ldesc" x="760" y="249">how the app works · ~540 tok</text>
+      <rect x="426" y="225" width="348" height="38" rx="8"/><text class="lname" x="440" y="249">ARCHITECTURE.md</text><text class="ldesc" x="760" y="249">app map · ~540 tok</text>
     </g>
     <g data-tip="How to use the updateTodos / TodoWrite checklist tool. In workflow runner turns it is replaced by the step rules.">
       <rect x="426" y="271" width="348" height="38" rx="8"/><text class="lname" x="440" y="295">Todo rules</text><text class="ldesc" x="760" y="295">updateTodos · ~290 tok</text>

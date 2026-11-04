@@ -72,7 +72,7 @@
     <g data-tip="Model, mode and effort from Agent settings, General, plus the [This turn] block: agent name, workspace path, model.">
       <rect x="426" y="409" width="348" height="38" rx="8"/><text class="lname" x="440" y="433">Model</text><text class="ldesc" x="760" y="433">turn info · ~120 tok</text>
     </g>
-    <g data-tip="Global MCP: servers every agent gets (Settings, MCP), ships with Playwright and AgentMail. Agent MCP: this agent's own MCP JSON (Agent settings, MCP), merged on top. Workflow turns also add the workflow MCP tools. Tool definitions cost extra tokens, not counted here.">
+    <g data-tip="Every turn the agent gets a [MCP] list of server names (Settings MCP, then this agent's MCP, then this-turn tools such as tecadrise-steps). Those servers are also attached as real MCP tools. Do not search the app folder for them. Tool definitions cost extra tokens, not counted here.">
       <rect x="426" y="455" width="348" height="38" rx="8"/><text class="lname" x="440" y="479">Global/Agent MCP</text><text class="ldesc" x="760" y="479">servers · tools</text>
     </g>
   </g>

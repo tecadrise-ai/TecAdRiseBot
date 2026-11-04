@@ -12,43 +12,44 @@ export function ScheduleBuilder({ value, onChange }: Props) {
 
   return (
     <div className="schedule-builder aos-trigger">
-      <label className="field">
-        <span>Schedule type</span>
-        <select value={value.kind} onChange={(e) => set({ kind: e.target.value as ScheduleDraft['kind'] })}>
-          {KINDS.map((k) => (
-            <option key={k.id} value={k.id}>
-              {k.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {showInterval && (
-        <div className="schedule-ui-grid">
-          <label className="field">
-            <span>Every</span>
-            <input
-              type="number"
-              min={1}
-              value={value.every}
-              onChange={(e) => set({ every: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-            />
-          </label>
-          <label className="field">
-            <span>Unit</span>
-            <select
-              value={value.unit}
-              onChange={(e) => set({ unit: e.target.value as ScheduleDraft['unit'] })}
-            >
-              {UNITS.map((u) => (
-                <option key={u.value} value={u.value}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
+      <div className={`schedule-ui-grid${showInterval ? ' schedule-type-row' : ''}`}>
+        <label className="field">
+          <span>Schedule type</span>
+          <select value={value.kind} onChange={(e) => set({ kind: e.target.value as ScheduleDraft['kind'] })}>
+            {KINDS.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {showInterval ? (
+          <>
+            <label className="field">
+              <span>Every</span>
+              <input
+                type="number"
+                min={1}
+                value={value.every}
+                onChange={(e) => set({ every: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+              />
+            </label>
+            <label className="field">
+              <span>Unit</span>
+              <select
+                value={value.unit}
+                onChange={(e) => set({ unit: e.target.value as ScheduleDraft['unit'] })}
+              >
+                {UNITS.map((u) => (
+                  <option key={u.value} value={u.value}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
+      </div>
 
       {value.kind === 'loop' && (
         <p className="hint">Loop runs tasks immediately, waits the delay, then repeats until disabled.</p>

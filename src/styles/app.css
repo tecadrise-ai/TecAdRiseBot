@@ -1525,6 +1525,10 @@
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+.aos-trigger .schedule-type-row {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 0.7fr) minmax(0, 1fr);
+  align-items: end;
+}
 .aos-trigger .schedule-summary {
   margin-top: 4px;
   padding: 8px 10px;

@@ -89,7 +89,7 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
 
   async function refreshRoutines() {
     if (!agent) return;
-    const [all, wfs] = await Promise.all([window.tecapi.routines.list(), window.tecapi.workflows.list()]);
+    const [all, wfs] = await Promise.all([window.tecapi.routines.list(), window.tecapi.workflows.list(agent.id)]);
     setRoutines(all.filter((r) => r.agentId === agent.id));
     setAllWorkflows(wfs);
   }
@@ -596,6 +596,7 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
                             void routineAction(async () => {
                               const res = (await window.tecapi.routines.runNow(r.id)) as { ok?: boolean; note?: string } | undefined;
                               if (res && res.ok === false) throw new Error(res.note || 'Routine could not start');
+                              setStatus(res?.note || 'Started.');
                             })
                           }
                         >

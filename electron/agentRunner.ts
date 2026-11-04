@@ -534,21 +534,87 @@ async function cancelActive(agentId: string) {
 
 const GLOBAL_MCP_SETTING = 'mcp_servers_json';
 
-function loadGlobalMcpServers(): McpServers {
-  const parsed = parseMcpJson(db.getSetting(GLOBAL_MCP_SETTING) || '{}');
-  return parsed.ok ? parsed.servers : {};
+function serversFromUnknown(raw: unknown): McpServers {
+  const text = typeof raw === 'string' ? raw : JSON.stringify(raw ?? {});
+  const all = parseMcpJson(text);
+  if (all.ok) return all.servers;
+  let obj: Record<string, unknown> = {};
+  try {
+    const v = JSON.parse(text);
+    if (v && typeof v === 'object' && !Array.isArray(v)) obj = v as Record<string, unknown>;
+  } catch {
+    console.warn('[TecAdRiseBot] mcp JSON ignored:', all.error);
+    return {};
+  }
+  if (obj.mcpServers && typeof obj.mcpServers === 'object' && !Array.isArray(obj.mcpServers)) {
+    obj = obj.mcpServers as Record<string, unknown>;
+  }
+  const out: McpServers = {};
+  for (const [name, entry] of Object.entries(obj)) {
+    const one = parseMcpJson(JSON.stringify({ [name]: entry }));
+    if (one.ok) Object.assign(out, one.servers);
+    else console.warn('[TecAdRiseBot] skip mcp', name, one.error);
+  }
+  return out;
 }
 
-function mcpServersForAgent(config: Record<string, unknown> | null | undefined, cwd: string): McpServers | undefined {
-  const agentParsed = parseMcpJson(JSON.stringify(config?.mcpServers ?? {}));
-  const agentServers = agentParsed.ok ? agentParsed.servers : {};
-  const merged = mergeMcpServers(loadGlobalMcpServers(), agentServers);
+function loadGlobalMcpServers(): McpServers {
+  return serversFromUnknown(db.getSetting(GLOBAL_MCP_SETTING) || '{}');
+}
+
+/** KEY=value lines from <userData>/.env; secrets for MCP headers stay out of the JSON and the DB. */
+function readUserEnvFile(): Record<string, string> {
+  const out: Record<string, string> = {};
+  try {
+    const text = fs.readFileSync(path.join(app.getPath('userData'), '.env'), 'utf8');
+    for (const line of text.split(/\r?\n/)) {
+      const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
+      if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+    }
+  } catch {
+    /* no .env */
+  }
+  return out;
+}
+
+function expandEnvRefs(servers: McpServers): McpServers {
+  const fileEnv = readUserEnvFile();
+  const sub = (v: string) =>
+    v.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_all, name: string) => {
+      const val = process.env[name] ?? fileEnv[name];
+      if (val === undefined) console.warn('[TecAdRiseBot] mcp env not set:', name);
+      return val ?? '';
+    });
+  const mapVals = (o?: Record<string, string>) =>
+    o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, sub(v)])) : o;
+  const out: McpServers = {};
+  for (const [name, s] of Object.entries(servers)) {
+    out[name] = {
+      ...s,
+      ...(s.headers ? { headers: mapVals(s.headers) } : {}),
+      ...(s.env ? { env: mapVals(s.env) } : {}),
+      ...(s.url ? { url: sub(s.url) } : {}),
+    };
+  }
+  return out;
+}
+
+function mcpServersForAgent(
+  config: Record<string, unknown> | null | undefined,
+  cwd: string,
+  extraMcp?: McpServers
+): McpServers | undefined {
+  const merged = mergeMcpServers(
+    mergeMcpServers(loadGlobalMcpServers(), serversFromUnknown(config?.mcpServers ?? {})),
+    extraMcp || {}
+  );
   if (!Object.keys(merged).length) return undefined;
   const pinned: McpServers = {};
-  for (const [name, server] of Object.entries(merged)) {
+  for (const [name, server] of Object.entries(expandEnvRefs(merged))) {
     const stdio = Boolean(server.command) && !server.url && server.type !== 'http' && server.type !== 'sse';
     pinned[name] = stdio ? { ...server, cwd: server.cwd || cwd } : server;
   }
+  console.log('[TecAdRiseBot] mcp this turn:', Object.keys(pinned).join(', '));
   return pinned;
 }
 
@@ -566,7 +632,8 @@ async function getHandle(
   apiKey: string,
   cwd: string,
   systemPrompt?: string,
-  extraDirs: string[] = []
+  extraDirs: string[] = [],
+  extraMcp?: McpServers
 ): Promise<CursorAgent> {
   // Every user message and routine is an independent bounded-context SDK agent.
   const oldAgentId = handles.get(agent.id)?.agentId;
@@ -588,7 +655,7 @@ async function getHandle(
     }
   }
   const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
-  const mcpServers = mcpServersForAgent(agent.config, cwd);
+  const mcpServers = mcpServersForAgent(agent.config, cwd, extraMcp);
   const local = localAgentOpts(cwd, extraDirs);
 
   const handle = (await Agent.create({
@@ -744,13 +811,6 @@ function withExtras(agent: db.AgentRow, extras: TurnExtras | undefined): db.Agen
   const o = extras.modelOverride;
   if (o?.modelMode) config.modelMode = o.modelMode;
   if (o?.effort) config.effort = o.effort;
-  if (extras.extraMcp && Object.keys(extras.extraMcp).length) {
-    const own =
-      config.mcpServers && typeof config.mcpServers === 'object' && !Array.isArray(config.mcpServers)
-        ? (config.mcpServers as Record<string, unknown>)
-        : {};
-    config.mcpServers = { ...own, ...extras.extraMcp };
-  }
   return { ...agent, model: o?.model || agent.model, config };
 }
 
@@ -904,6 +964,15 @@ async function runAgentTurnInner(opts: {
     userBody = offloadLongText(cwd, 'last_user.md', userBody);
   }
 
+  const mcpForTurn = mcpServersForAgent(agent.config, cwd, extras?.extraMcp);
+  const mcpBlock = !mcpForTurn
+    ? '[MCP]\nNo MCP servers this turn. Settings, MCP is empty and this agent has none.\n[/MCP]'
+    : '[MCP]\nServers attached this turn (Settings MCP, then this agent MCP, then this-turn tools):\n' +
+      Object.entries(mcpForTurn)
+        .map(([name, s]) => `- ${name} (${s.url ? 'http' : 'stdio'})`)
+        .join('\n') +
+      '\nUse these as MCP tools. Do not search the app folder to check if they exist. If a server has no tools, connect or login failed; it is still configured.\n[/MCP]';
+
   const recoveredChat = formatRecentChat(
     opts.agentId,
     [userMessageId, assistantMessageId],
@@ -928,6 +997,7 @@ async function runAgentTurnInner(opts: {
         '[/Checklist tool]',
       systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
       architecture ? '[Architecture]' + '\n' + architecture + '\n[/Architecture]' : '',
+      mcpBlock,
       '[Memory directory]' +
         '\n' +
         db.ensureMemoryDir() +
@@ -961,7 +1031,7 @@ async function runAgentTurnInner(opts: {
   let customSystemPrompt = true;
   let lastActivity = Date.now();
   try {
-    let handle = await getHandle(agent, apiKey, cwd, hostSystemPrompt, extraDirs);
+    let handle = await getHandle(agent, apiKey, cwd, hostSystemPrompt, extraDirs, extras?.extraMcp);
 
     const sendOnce = async (h: CursorAgent) => {
       let turnText = '';
@@ -1154,7 +1224,7 @@ async function runAgentTurnInner(opts: {
         {
           local: { ...localAgentOpts(cwd, extraDirs), force: true },
           model: modelSel,
-          mcpServers: mcpServersForAgent(agent.config, cwd),
+          mcpServers: mcpForTurn,
           onDelta: takeDelta,
         }
       );
@@ -1309,7 +1379,7 @@ async function runAgentTurnInner(opts: {
         console.warn('[TecAdRiseBot] custom system prompt unavailable, using bounded inline fallback');
         customSystemPrompt = false;
         systemPromptRejected = false;
-        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs);
+        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs, extras?.extraMcp);
         assembled = '';
         usage = null;
         alreadyPublished = await sendOnce(handle);
@@ -1317,7 +1387,7 @@ async function runAgentTurnInner(opts: {
       if (policyBlocked && !stopRequested.has(opts.agentId)) {
         console.warn('[TecAdRiseBot] policy block, retrying once with fresh SDK session', opts.agentId);
         await cancelActive(opts.agentId);
-        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs, extras?.extraMcp);
         assembled = '';
         usage = null;
         policyBlocked = false;
@@ -1348,7 +1418,7 @@ async function runAgentTurnInner(opts: {
       } else if (customSystemPrompt && isSystemPromptUnsupported(e)) {
         console.warn('[TecAdRiseBot] custom system prompt unavailable, using bounded inline fallback');
         customSystemPrompt = false;
-        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs);
+        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs, extras?.extraMcp);
         assembled = '';
         usage = null;
         systemPromptRejected = false;
@@ -1360,7 +1430,7 @@ async function runAgentTurnInner(opts: {
       } else if (isAnthropicPolicyError(e)) {
         console.warn('[TecAdRiseBot] thrown policy block, retrying once with fresh SDK session', opts.agentId);
         db.updateAgent(opts.agentId, { cursorAgentId: null });
-        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs, extras?.extraMcp);
         assembled = '';
         usage = null;
         policyBlocked = false;
@@ -1378,7 +1448,7 @@ async function runAgentTurnInner(opts: {
           await new Promise((r) => setTimeout(r, 2000));
         }
         await cancelActive(opts.agentId);
-        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs, extras?.extraMcp);
         assembled = '';
         usage = null;
         const alreadyPublished = await sendOnce(handle);

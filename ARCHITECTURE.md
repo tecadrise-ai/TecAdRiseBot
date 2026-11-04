@@ -6,7 +6,7 @@ Local Windows Electron app. Each agent has its own chat, settings, Soul, routine
 You / Routine / Other agent
         |
         v
-      AGENT  <-- gets: SYSTEM.md, MEMORY.md, ARCHITECTURE.md, Soul, recent chat, message
+      AGENT  <-- gets: SYSTEM.md, MEMORY.md, ARCHITECTURE.md, Soul, MCP names, recent chat, message
         |
         v
   Workspace, shared memory, workflows
@@ -21,7 +21,7 @@ User -> UI -> Main process -> Cursor SDK -> model
 ```
 
 ## Each turn you get
-SYSTEM.md, todo rules (updateTodos / TodoWrite) or step rules in workflows, MEMORY.md, memory dir, skills, your Soul, then [This turn], recent chat, the message.
+SYSTEM.md, todo rules (updateTodos / TodoWrite) or step rules in workflows, MEMORY.md, ARCHITECTURE.md, memory dir, skills, your Soul, MCP server names (Settings MCP + this agent MCP + this-turn tools), then [This turn], recent chat, the message.
 
 ## Step workflows
 ```

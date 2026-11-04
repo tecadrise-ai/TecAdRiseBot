@@ -492,13 +492,13 @@ export function startRun(input: {
 /** Routine fired in Step workflow mode: resume its active run, or start a new one. */
 export function startFromRoutine(r: db.RoutineRow): { ok: boolean; run?: RunView; note?: string } {
   if (!r.workflowId) return { ok: false, note: 'Routine has no workflow' };
-  const active = store.listActiveRuns().find((x) => x.routineId === r.id);
+  const active = store.listActiveRuns().find((x) => x.routineId === r.id && x.state !== 'blocked');
   if (active) {
     kickPump();
     return {
       ok: true,
       run: viewOf(active),
-      note: active.state === 'blocked' ? 'Previous run is blocked. Retry, skip or abort it first.' : 'Previous run still active, resumed.',
+      note: 'Previous run still active, resumed.',
     };
   }
   try {

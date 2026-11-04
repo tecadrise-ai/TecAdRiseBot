@@ -164,6 +164,19 @@ function migrateAgentsSchema(): void {
   }
 }
 
+function purgeOrphanWorkflows(): void {
+  mustDb().run(
+    `DELETE FROM workflow_runs WHERE owner_agent_id NOT IN (SELECT id FROM agents) OR runner_agent_id NOT IN (SELECT id FROM agents)`
+  );
+  mustDb().run(
+    `DELETE FROM workflow_versions WHERE workflow_id IN (SELECT id FROM workflows WHERE owner_agent_id NOT IN (SELECT id FROM agents))`
+  );
+  mustDb().run(`DELETE FROM workflows WHERE owner_agent_id NOT IN (SELECT id FROM agents)`);
+  mustDb().run(
+    `UPDATE routines SET workflow_id=NULL WHERE workflow_id IS NOT NULL AND workflow_id NOT IN (SELECT id FROM workflows)`
+  );
+}
+
 function migrateRoutinesSchema(): void {
   const cols = tableColumns('routines');
   if (!cols.has('force_todos')) {
@@ -327,6 +340,7 @@ export async function initDb(userDataPath?: string): Promise<void> {
   `);
   migrateAgentsSchema();
   migrateRoutinesSchema();
+  purgeOrphanWorkflows();
   persist();
   ensureMemoryDir(base);
   ensureSkillsDir(base);
@@ -494,6 +508,12 @@ export function reorderAgents(orderedIds: string[]): AgentRow[] {
 export function deleteAgent(id: string): void {
   mustDb().run(`DELETE FROM messages WHERE agent_id=?`, [id]);
   mustDb().run(`DELETE FROM routines WHERE agent_id=?`, [id]);
+  mustDb().run(`DELETE FROM workflow_runs WHERE runner_agent_id=? OR owner_agent_id=?`, [id, id]);
+  mustDb().run(
+    `DELETE FROM workflow_versions WHERE workflow_id IN (SELECT id FROM workflows WHERE owner_agent_id=?)`,
+    [id]
+  );
+  mustDb().run(`DELETE FROM workflows WHERE owner_agent_id=?`, [id]);
   mustDb().run(`DELETE FROM agents WHERE id=?`, [id]);
   persist();
 }

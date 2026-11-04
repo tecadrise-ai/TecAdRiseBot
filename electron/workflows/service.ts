@@ -17,7 +17,7 @@ import * as engine from '../../src/lib/workflow/engine';
 import { handleMcpMessage, MAP, S, STR, type JsonRpcMessage, type JsonRpcReply, type McpTool } from '../../src/lib/workflow/mcpProtocol';
 import type { RoleOverride, Workflow, WorkflowRun } from '../../src/lib/workflow/types';
 import { ownerRoleOverride } from '../../src/lib/workflow/definition';
-import { baseModelId, readEffort, readModelMode } from '../../src/lib/modelOptions';
+import { baseModelId, formatModelLabel, readEffort, readModelMode } from '../../src/lib/modelOptions';
 import { isRunActive } from '../../src/lib/workflow/types';
 import { isAgentBusy, runAgentTurn, setTurnAugmenter, type TurnExtras } from '../agentRunner';
 
@@ -63,13 +63,20 @@ function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /** Run view for the UI. Never exposes the runner token. */
-export type RunView = Omit<WorkflowRun, 'token'> & { runnerName: string; ownerName: string; inFlight: string | null };
+export type RunView = Omit<WorkflowRun, 'token'> & {
+  runnerName: string;
+  runnerModel: string;
+  ownerName: string;
+  inFlight: string | null;
+};
 
 export function viewOf(run: WorkflowRun): RunView {
   const { token: _token, ...rest } = run;
+  const runner = db.getAgent(run.runnerAgentId);
   return {
     ...rest,
-    runnerName: db.getAgent(run.runnerAgentId)?.name ?? '(deleted agent)',
+    runnerName: runner?.name ?? '(deleted agent)',
+    runnerModel: runner ? formatModelLabel(runner.model, runner.config) : '',
     ownerName: db.getAgent(run.ownerAgentId)?.name ?? '(deleted agent)',
     inFlight: inFlight.get(run.id) ?? null,
   };
@@ -464,11 +471,6 @@ export function startRun(input: {
   const configuredOwner = typeof runner.config?.workflowOwnerAgentId === 'string' ? runner.config.workflowOwnerAgentId : '';
   const ownerAgentId = configuredOwner && db.getAgent(configuredOwner) ? configuredOwner : wf.ownerAgentId;
   if (!db.getAgent(ownerAgentId)) throw new Error('Owner agent not found');
-  if (ownerAgentId === input.runnerAgentId) {
-    throw new Error(
-      `${runner.name} cannot be its own owner. Pick an Owner agent in ${runner.name}'s settings, General tab.`
-    );
-  }
   const run = engine.createRun({
     id: uuid(),
     token: crypto.randomBytes(18).toString('hex'),

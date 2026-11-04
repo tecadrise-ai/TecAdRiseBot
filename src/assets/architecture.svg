@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" font-family="Inter, 'Segoe UI', system-ui, sans-serif">
+  <style>
+    .card { fill: #ffffff; stroke: #e3e3e6; stroke-width: 1; }
+    .title { font-size: 17px; font-weight: 600; fill: #1a1a1a; }
+    .sub { font-size: 15px; fill: #6b6b70; }
+    .col { font-size: 15px; fill: #6b6b70; text-anchor: middle; }
+    .arrow { fill: none; stroke: #6b6b70; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .lname { font-size: 15px; }
+    .ldesc { font-size: 15px; text-anchor: end; }
+    .blue rect { fill: #dbe6fd; } .blue text { fill: #1e3a8a; }
+    .purple rect { fill: #e8e6fb; } .purple text { fill: #4c3f91; }
+    .orange rect { fill: #fbdccc; } .orange text { fill: #9a3412; }
+    .legend { font-size: 14px; fill: #3a3a3f; }
+    [data-tip] { cursor: help; }
+    [data-tip]:hover rect { stroke: #1d4ed8; stroke-width: 1.5; }
+  </style>
+
+  <rect width="1200" height="630" fill="#f6f6f7"/>
+
+  <g transform="translate(40 28)">
+    <rect x="0" y="-11" width="12" height="12" rx="3" fill="#3b6fe0"/><text class="legend" x="20" y="0">App-wide</text>
+    <rect x="110" y="-11" width="12" height="12" rx="3" fill="#8b80e0"/><text class="legend" x="130" y="0">Own</text>
+    <rect x="185" y="-11" width="12" height="12" rx="3" fill="#e8743b"/><text class="legend" x="205" y="0">This turn</text>
+  </g>
+
+  <text class="col" x="185" y="190">Starts a turn</text>
+  <g data-tip="You type in the chat. The message starts one turn of this agent. If the agent is busy, its current turn is stopped first.">
+    <rect class="card" x="40" y="206" width="290" height="80" rx="12"/>
+    <text class="title" x="60" y="238">You</text><text class="sub" x="60" y="264">Chat message</text>
+  </g>
+  <g data-tip="Per-agent schedule: loop, interval, daily, weekly, once or cron. Task mode Off = plain prompt. Force updateTodos = the agent must work through a todo checklist. Step workflow = runs a workflow with this agent as Runner.">
+    <rect class="card" x="40" y="302" width="290" height="80" rx="12"/>
+    <text class="title" x="60" y="334">Routine</text><text class="sub" x="60" y="360">Schedule, updateTodos, workflow</text>
+  </g>
+  <g data-tip="Interbot message from another agent (POST /api/agents/&lt;id&gt;/interbot). Saved in both chats. The target agent must be idle.">
+    <rect class="card" x="40" y="398" width="290" height="80" rx="12"/>
+    <text class="title" x="60" y="430">Other agent</text><text class="sub" x="60" y="456">Interbot message</text>
+  </g>
+
+  <path class="arrow" d="M348 342 H392 M384 334 L393 342 L384 350"/>
+
+  <text class="col" x="600" y="72">Gets every turn ~3.8k tokens + message</text>
+  <rect x="410" y="85" width="380" height="520" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.6"/>
+  <g data-tip="One agent runs one turn at a time. Each agent has its own chat, settings, Soul, routines and workspace.">
+    <rect x="420" y="95" width="200" height="30" fill="transparent"/>
+    <text x="426" y="117" class="title">Agent <tspan class="sub" font-weight="400">one turn at a time</tspan></text>
+  </g>
+
+  <g class="blue">
+    <g data-tip="App-wide system prompt for every agent. Edit in Settings, System prompt.">
+      <rect x="426" y="133" width="348" height="38" rx="8"/><text class="lname" x="440" y="157">SYSTEM.md</text><text class="ldesc" x="760" y="157">rules · ~1,040 tok</text>
+    </g>
+    <g data-tip="App-wide memory rules: shared memory folder plus private memory.md. Edit in Settings, System memory.">
+      <rect x="426" y="179" width="348" height="38" rx="8"/><text class="lname" x="440" y="203">MEMORY.md</text><text class="ldesc" x="760" y="203">memory rules · ~300 tok</text>
+    </g>
+    <g data-tip="Short description of how the app, roles and workflows work. Sent to every agent every turn.">
+      <rect x="426" y="225" width="348" height="38" rx="8"/><text class="lname" x="440" y="249">ARCHITECTURE.md</text><text class="ldesc" x="760" y="249">how the app works · ~540 tok</text>
+    </g>
+    <g data-tip="How to use the updateTodos / TodoWrite checklist tool. In workflow runner turns it is replaced by the step rules.">
+      <rect x="426" y="271" width="348" height="38" rx="8"/><text class="lname" x="440" y="295">Todo rules</text><text class="ldesc" x="760" y="295">updateTodos · ~290 tok</text>
+    </g>
+    <g data-tip="List of shared skills (folder with SKILL.md each, Settings, Computer). The agent reads a SKILL.md when it needs it.">
+      <rect x="426" y="317" width="348" height="38" rx="8"/><text class="lname" x="440" y="341">Skills</text><text class="ldesc" x="760" y="341">catalog · ~400 tok</text>
+    </g>
+  </g>
+  <g class="purple">
+    <g data-tip="This agent's sticky rules. Agent settings, General, Soul. The agent may update it itself. Tokens depend on its length.">
+      <rect x="426" y="363" width="348" height="38" rx="8"/><text class="lname" x="440" y="387">Soul</text><text class="ldesc" x="760" y="387">sticky rules · ~100 tok</text>
+    </g>
+    <g data-tip="Model, mode and effort from Agent settings, General. MCP servers: common MCP from Settings plus this agent's own MCP JSON. Tokens are for the [This turn] block. MCP tool definitions are not counted.">
+      <rect x="426" y="409" width="348" height="38" rx="8"/><text class="lname" x="440" y="433">Model, MCP</text><text class="ldesc" x="760" y="433">turn info · ~120 tok</text>
+    </g>
+  </g>
+  <g class="orange">
+    <g data-tip="The last N visible messages of this chat. Agent settings, General, Last messages (default 5). Tokens depend on message length.">
+      <rect x="426" y="455" width="348" height="38" rx="8"/><text class="lname" x="440" y="479">Recent chat</text><text class="ldesc" x="760" y="479">last N · ~1k tok</text>
+    </g>
+    <g data-tip="The message that started this turn, attached files, and in workflow turns the step rules for the current step.">
+      <rect x="426" y="501" width="348" height="38" rx="8"/><text class="lname" x="440" y="525">Message</text><text class="ldesc" x="760" y="525">varies</text>
+    </g>
+  </g>
+  <line x1="426" y1="557" x2="774" y2="557" stroke="#e3e3e6"/>
+  <g data-tip="Every turn runs through the Cursor TypeScript SDK on this PC, with the agent workspace as working folder.">
+    <rect x="420" y="565" width="200" height="28" fill="transparent"/>
+    <text class="sub" x="426" y="584">Cursor SDK on this PC</text>
+  </g>
+
+  <path class="arrow" d="M808 342 H852 M844 334 L853 342 L844 350"/>
+
+  <text class="col" x="1015" y="142">Works in</text>
+  <g data-tip="App data, workspaces, agent id. The only place the agent writes files. memory.md is its private memory, uploads/ holds attached files.">
+    <rect class="card" x="870" y="158" width="290" height="80" rx="12"/>
+    <text class="title" x="890" y="190">Own workspace</text><text class="sub" x="890" y="216">Files, memory.md</text>
+  </g>
+  <g data-tip="App data, memory: index.md, notes/, log.md. Facts every agent should know.">
+    <rect class="card" x="870" y="254" width="290" height="80" rx="12"/>
+    <text class="title" x="890" y="286">Shared memory</text><text class="sub" x="890" y="312">All agents</text>
+  </g>
+  <g data-tip="Runner does one step at a time. The app runs hard checks. The Owner reviews steps (if on) and fixes failed steps, but never runs workflows. Max 3 owner fixes per run.">
+    <rect class="card" x="870" y="350" width="290" height="80" rx="12"/>
+    <text class="title" x="890" y="382">Workflows</text><text class="sub" x="890" y="408">Runner runs, Owner fixes</text>
+  </g>
+  <g data-tip="http://127.0.0.1:8787, local only. Agents read live state, change their own settings, message peers and manage routines.">
+    <rect class="card" x="870" y="446" width="290" height="80" rx="12"/>
+    <text class="title" x="890" y="478">Local API</text><text class="sub" x="890" y="504">Agents, routines</text>
+  </g>
+</svg>

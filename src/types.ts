@@ -40,6 +40,7 @@ export type { Workflow, WorkflowRun, RunState, StepStatus } from './lib/workflow
 /** Run as sent to the UI (no runner token). */
 export type WorkflowRunView = Omit<WorkflowRun, 'token'> & {
   runnerName: string;
+  runnerModel: string;
   ownerName: string;
   inFlight: string | null;
 };

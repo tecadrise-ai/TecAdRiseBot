@@ -144,6 +144,10 @@ function writeHostFile(name: string, text: string): { ok: true } {
   return { ok: true };
 }
 
+export function readArchitecture(): string {
+  return readHostFile('ARCHITECTURE.md') ?? '';
+}
+
 export function readSystemPrompt(): string {
   return readHostFile('SYSTEM.md') ?? 'You are an agent inside TecAdRiseBot.\n';
 }
@@ -865,6 +869,7 @@ async function runAgentTurnInner(opts: {
 
   const systemPrompt = loadSystemPrompt();
   const systemMemory = loadSystemMemory();
+  const architecture = readArchitecture().trim();
   const runtimeCtx = formatRuntimeContext(opts.agentId);
   const instructions = resolveAgentSoul(agent.instructions);
   
@@ -920,6 +925,7 @@ async function runAgentTurnInner(opts: {
         'Do not grep the app source. Do not use GetDynamicTools or HTTP for todos.\n' +
         '[/Checklist tool]',
       systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
+      architecture ? '[Architecture]' + '\n' + architecture + '\n[/Architecture]' : '',
       '[Memory directory]' +
         '\n' +
         db.ensureMemoryDir() +

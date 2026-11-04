@@ -54,7 +54,12 @@ type RoutinePatch = Partial<{
   workflowId: string | null;
 }>;
 
-type WorkflowRunView = Omit<WorkflowRun, 'token'> & { runnerName: string; ownerName: string; inFlight: string | null };
+type WorkflowRunView = Omit<WorkflowRun, 'token'> & {
+  runnerName: string;
+  runnerModel: string;
+  ownerName: string;
+  inFlight: string | null;
+};
 
 const api = {
   agents: {
@@ -178,7 +183,7 @@ const api = {
   },
   app: {
     openPath: (p: string) => ipcRenderer.invoke('app:openPath', p),
-    openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+    readArchitecture: (): Promise<string> => ipcRenderer.invoke('app:readArchitecture'),    openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   },
   on: (channel: string, listener: (...args: unknown[]) => void) => {
     const allowed = [

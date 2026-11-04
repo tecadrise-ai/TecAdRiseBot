@@ -251,7 +251,7 @@ const Composer = memo(function Composer({
   const [sendError, setSendError] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const asOwner = role === 'owner' && Boolean(ownerName);
+  const asOwner = role === 'owner';
 
   useEffect(() => {
     setDraft('');
@@ -288,7 +288,7 @@ const Composer = memo(function Composer({
     const text = draft.trim();
     if ((!text && pending.length === 0) || sending) return;
     const attachments = pending;
-    const mustStop = busy && !asOwner;
+    const mustStop = busy && !(asOwner && ownerName);
     setDraft('');
     setPending([]);
     const el = taRef.current;
@@ -304,7 +304,7 @@ const Composer = memo(function Composer({
     try {
       if (mustStop) await onStop();
       if (asOwner) {
-        setSendNote(`Sent to owner ${ownerName}. The reply appears in its chat.`);
+        if (ownerName) setSendNote(`Sent to owner ${ownerName}. The reply appears in its chat.`);
         onSend(text, attachments, 'owner').catch(restore);
       } else {
         onSend(text, attachments).catch(restore);
@@ -391,8 +391,8 @@ const Composer = memo(function Composer({
             role="radio"
             aria-checked={asOwner}
             className={asOwner ? 'active' : ''}
-            title={ownerName ? `Send to owner ${ownerName}` : 'No Owner agent yet, click to pick one in settings'}
-            onClick={() => (ownerName ? onRole('owner') : onPickOwner())}
+            title={ownerName ? `Send to owner ${ownerName}` : 'Send with the Owner model, mode and effort'}
+            onClick={() => onRole('owner')}
           >
             Owner
           </button>
@@ -400,7 +400,7 @@ const Composer = memo(function Composer({
         <textarea
           ref={taRef}
           className="composer-input"
-          placeholder={asOwner ? `Message owner ${ownerName}` : `Message ${agentName}`}
+          placeholder={asOwner ? `Message owner ${ownerName ?? agentName}` : `Message ${agentName}`}
           value={draft}
           rows={1}
           onChange={(e) => {
@@ -473,7 +473,7 @@ export function ChatView({
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [role, setRole] = useState<ChatRole>('runner');
-  const effectiveRole: ChatRole = role === 'owner' && ownerAgent ? 'owner' : 'runner';
+  const effectiveRole: ChatRole = role;
   /** Follow new output only while the user is at the bottom, so reading older messages is not interrupted. */
   const stickToBottom = useRef(true);
   const lastMessageId = messages[messages.length - 1]?.id;
@@ -524,8 +524,8 @@ export function ChatView({
           <div>
             <EditableName key={agent.id} name={agent.name} onRename={onRename} />
             <div className="title-sub">
-              {effectiveRole === 'owner' && ownerAgent
-                ? `Owner ${ownerAgent.name} · ${ownerModelLabel(agent)}`
+              {effectiveRole === 'owner'
+                ? `Owner${ownerAgent ? ` ${ownerAgent.name}` : ''} · ${ownerModelLabel(agent)}`
                 : formatModelLabel(agent.model, agent.config)}
             </div>
           </div>

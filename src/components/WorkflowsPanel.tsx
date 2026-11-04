@@ -4,6 +4,7 @@ import type { WorkflowSettings } from '../lib/workflow/types';
 import { EXAMPLE_DEFINITION } from '../lib/workflow/definition';
 import type { CatalogModel } from '../lib/modelOptions';
 import { WorkflowCard } from './WorkflowCard';
+import { WorkflowTable } from './WorkflowTable';
 
 type Props = {
   agent: Agent;
@@ -18,6 +19,7 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
   const [runs, setRuns] = useState<WorkflowRunView[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [view, setView] = useState<'table' | 'json'>('table');
 
   async function refresh() {
     const [wfs, rs] = await Promise.all([
@@ -145,20 +147,46 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
           ) : (
             <div className="routine-form">
               <div className="routine-form-title">{editId === 'new' ? 'New workflow' : 'Edit workflow'}</div>
-              <label className="field">
-                <span>Definition (JSON)</span>
-                <textarea
-                  className="wf-editor"
-                  spellCheck={false}
-                  value={json}
-                  onChange={(e) => setJson(e.target.value)}
-                />
+              <div className="wf-view-bar">
+                <span>Definition</span>
+                <div className="composer-target" role="radiogroup" aria-label="View">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={view === 'table'}
+                    className={view === 'table' ? 'active' : ''}
+                    onClick={() => setView('table')}
+                  >
+                    Table
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={view === 'json'}
+                    className={view === 'json' ? 'active' : ''}
+                    onClick={() => setView('json')}
+                  >
+                    JSON
+                  </button>
+                </div>
+              </div>
+              <div className="field">
+                {view === 'table' ? (
+                  <WorkflowTable json={json} onChange={setJson} />
+                ) : (
+                  <textarea
+                    className="wf-editor"
+                    spellCheck={false}
+                    value={json}
+                    onChange={(e) => setJson(e.target.value)}
+                  />
+                )}
                 <span className="hint">
                   Each step: id, title, instructions, done_when, outputs, checks (file_exists, file_contains,
                   output_matches, command), validate (none or owner), max_attempts, skippable. Saving a changed
                   definition creates a new version. Running runs keep their version.
                 </span>
-              </label>
+              </div>
               <div className="routine-form-actions">
                 {editId !== 'new' ? (
                   <button type="button" className="text-btn danger-text" disabled={busy} onClick={() => void remove()}>
@@ -182,7 +210,7 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
       {runs.length ? (
         <>
           <div className="routines-title">Recent runs</div>
-          {runs.map((r) => (
+          {[...runs].sort((a, b) => b.createdAt - a.createdAt).map((r) => (
             <WorkflowCard key={r.id} run={r} />
           ))}
         </>

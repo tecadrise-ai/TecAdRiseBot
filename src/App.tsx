@@ -273,7 +273,11 @@ export default function App() {
     if (role === 'owner') {
       const runner = agents.find((a) => a.id === selectedId);
       const ownerId = ownerAgentIdOf(runner);
-      if (!runner || !ownerId) throw new Error('No Owner agent set. Pick one in this agent\'s settings, General tab.');
+      if (!runner) return;
+      if (!ownerId) {
+        await window.tecapi.chat.send(runner.id, text, files, { ownerOfRunnerId: runner.id });
+        return;
+      }
       await window.tecapi.chat.send(
         ownerId,
         `[Message from the chat of runner agent ${runner.name}]\n\n${text}`,

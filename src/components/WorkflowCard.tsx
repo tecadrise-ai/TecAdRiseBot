@@ -30,6 +30,12 @@ function oneLine(s: string | undefined, max = 160): string {
   return t.length > max ? `${t.slice(0, max)}...` : t;
 }
 
+function fmtTime(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 type Props = {
   run: WorkflowRunView;
   /** Older bubbles of the same run show one line only. */
@@ -72,11 +78,14 @@ export function WorkflowCard({ run, compact = false }: Props) {
       <div className="wf-head">
         <span className="wf-title">
           Workflow · {run.workflowName} <span className="wf-ver">v{run.version}</span>
+          {run.runnerModel ? <span className="wf-ver"> · Runner: {run.runnerModel.replace(/ · /g, ' ')}</span> : null}
         </span>
         <span className={`wf-state wf-state-${run.state}`}>{STATE_LABEL[run.state]}</span>
       </div>
       <div className="wf-sub">
-        {done}/{total} steps · runner {run.runnerName} · owner {run.ownerName}
+        {fmtTime(run.createdAt)}
+        {run.finishedAt ? ` to ${fmtTime(run.finishedAt)}` : ''} · {done}/{total} steps · runner {run.runnerName} · owner{' '}
+        {run.ownerName}
         {run.inFlight ? ` · ${IN_FLIGHT[run.inFlight] || run.inFlight}` : ''}
       </div>
       <div className="wf-steps">

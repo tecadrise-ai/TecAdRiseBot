@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppSettings } from '../types';
 import { ModalBackdrop } from './ModalBackdrop';
+import { ArchitectureDiagram } from './ArchitectureDiagram';
+import { MarkdownBody } from './MarkdownBody';
 import { EMPTY_MCP_JSON } from '../lib/mcpConfig';
 import { fmtTok } from '../lib/usage';
 
-type Tab = 'general' | 'system' | 'memory' | 'mcp' | 'computer' | 'usage' | 'updates';
+type Tab = 'general' | 'architecture' | 'system' | 'memory' | 'mcp' | 'computer' | 'usage' | 'updates';
 
 type AgentUsageRow = {
   agentId: string;
@@ -115,6 +117,7 @@ type Props = {
 
 export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('general');
+  const [archDoc, setArchDoc] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [accountName, setAccountName] = useState(settings?.accountName ?? '');
   const [models, setModels] = useState<{ id: string; displayName: string }[]>([]);
@@ -282,6 +285,7 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
             {(
               [
                 ['general', 'General'],
+                ['architecture', 'Architecture'],
                 ['system', 'System prompt'],
                 ['memory', 'System memory'],
                 ['mcp', 'MCP'],
@@ -560,6 +564,32 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                     Open skills folder
                   </button>
                 </div>
+              </section>
+            )}
+
+            {tab === 'architecture' && (
+              <section>
+                <h2>
+                  Architecture:{' '}
+                  <a
+                    href="#"
+                    className="arch-title-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (archDoc !== null) {
+                        setArchDoc(null);
+                        return;
+                      }
+                      window.tecapi.app
+                        .readArchitecture()
+                        .then((t) => setArchDoc(t || 'ARCHITECTURE.md not found.'))
+                        .catch((err) => setArchDoc(`Could not read ARCHITECTURE.md: ${String(err)}`));
+                    }}
+                  >
+                    {archDoc !== null ? 'Back to diagram' : 'See ARCHITECTURE.md'}
+                  </a>
+                </h2>
+                {archDoc !== null ? <MarkdownBody className="arch-doc" text={archDoc} /> : <ArchitectureDiagram />}
               </section>
             )}
 

@@ -360,9 +360,6 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                 <span>Model, mode and effort</span>
                 <div className="wf-overrides wf-overrides-general">
                   <span>Runner</span>
-                  <select value={agent.id} disabled title="The runner is always this agent">
-                    <option value={agent.id}>{name.trim() || agent.name}</option>
-                  </select>
                   <select value={model} onChange={(e) => setModel(e.target.value)}>
                     {dropdownModels(models).map((m) => (
                       <option key={m.id} value={m.id}>
@@ -391,19 +388,8 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   <span>
                     Owner <span className="muted">(optional)</span>
                   </span>
-                  <select value={ownerAgentId} onChange={(e) => setOwnerAgentId(e.target.value)}>
-                    <option value="">No owner agent</option>
-                    {allAgents
-                      .filter((a) => a.id !== agent.id)
-                      .map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                  </select>
                   <select
                     value={ownerModel}
-                    disabled={!ownerAgentId}
                     onChange={(e) => setOwnerField('model', e.target.value)}
                   >
                     {dropdownModels(models).map((m) => (
@@ -417,7 +403,6 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   </select>
                   <select
                     value={ownerMode}
-                    disabled={!ownerAgentId}
                     onChange={(e) => setOwnerField('modelMode', e.target.value)}
                   >
                     <option value="usual">Usual</option>
@@ -425,7 +410,6 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   </select>
                   <select
                     value={ownerEffort}
-                    disabled={!ownerAgentId}
                     onChange={(e) => setOwnerField('effort', e.target.value)}
                   >
                     {ownerEfforts.map((v) => (

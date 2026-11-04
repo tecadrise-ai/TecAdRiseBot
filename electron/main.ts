@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
-import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp, readGlobalMcpJson, registerGlobalMcp } from './agentRunner';
+import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp, readGlobalMcpJson, registerGlobalMcp, readArchitecture } from './agentRunner';
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
 import { configureControlPlane, getBaseUrl } from './controlPlane';
@@ -374,7 +374,7 @@ function registerIpc() {
   );
 
   ipcMain.handle('app:openPath', (_e, p: string) => shell.openPath(p));
-  ipcMain.handle('app:openExternal', (_e, url: string) => {
+  ipcMain.handle('app:readArchitecture', () => readArchitecture());  ipcMain.handle('app:openExternal', (_e, url: string) => {
     openInDefaultBrowser(String(url || ''));
     return { ok: true };
   });

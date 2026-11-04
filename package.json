@@ -60,6 +60,7 @@
       "resources/tecadrisebot-v2.ico",
       "SYSTEM.md",
       "MEMORY.md",
+      "ARCHITECTURE.md",
       "defaults/**/*",
       "package.json"
     ],

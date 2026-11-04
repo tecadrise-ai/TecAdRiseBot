@@ -6,6 +6,26 @@ Local desktop multi-agent chat (Electron + React + TypeScript + Cursor SDK). Age
 
 ## Screenshots
 
+**Step workflows in chat.** The Runner always runs the steps. The Owner reviews and can reject or fix. The bubble footer shows the role and the finish time.
+
+![Workflow owner review in chat](docs/screenshots/chat-workflow-owner-review.png)
+
+**Workflow editor.** Table or JSON. Hard checks, owner review, max tries, skippable steps.
+
+![Workflow table editor](docs/screenshots/workflow-table-editor.png)
+
+**Recent runs.** Newest first, with start and finish times, runner model, and step results.
+
+![Workflow recent runs](docs/screenshots/workflow-recent-runs.png)
+
+**Architecture.** Settings diagram of what every agent gets each turn (`SYSTEM.md`, `MEMORY.md`, `ARCHITECTURE.md`, Soul, MCP, chat). Zoom with Ctrl+wheel.
+
+![Architecture diagram](docs/screenshots/architecture-diagram.png)
+
+**Workflows map.** Runner works one step, the app runs hard checks, the Owner reviews and fixes.
+
+![Workflows diagram](docs/screenshots/workflows-diagram.png)
+
 **Shared memory in chat.** Agents can save lasting facts (here: nickname MrSpock) into the host memory wiki so other agents can reuse them.
 
 ![Chat with shared memory](docs/screenshots/chat-shared-memory.png)
@@ -48,6 +68,9 @@ Demo video will go here when it is ready.
 - Long-term wiki-style LLM memory (Obsidian-like `index.md`, `notes/`, `log.md`, `memory-management` skill)
 - LLM model selection (catalog from Cursor, usual/fast, effort)
 - Configurable scheduler for agent routines (loop, interval, daily, weekly, once, cron)
+- Step workflows: Runner always runs, Owner reviews and fixes, app hard checks
+- `ARCHITECTURE.md` sent every turn; zoomable diagrams in Settings
+- Chat bubble footer: Runner/Owner role, finish time, token usage
 - Task-based execution via Force updateTodos
 - Multi-agent sidebar (search, colors, drag reorder, last snippet)
 - Per-agent Soul (sticky instructions)

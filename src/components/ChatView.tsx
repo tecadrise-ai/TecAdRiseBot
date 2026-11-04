@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { Agent, ChatMessage } from '../types';
+import type { Agent, ChatMessage, WorkflowRunView } from '../types';
+import { WorkflowCard } from './WorkflowCard';
 import { MarkdownBody } from './MarkdownBody';
 import { fmtTs, fmtUsage, parseMessageUsage } from '../lib/usage';
 import { formatModelLabel } from '../lib/modelOptions';
@@ -21,6 +22,8 @@ type Props = {
   liveTodos?: TodoItem[];
   liveTodoMessageId?: string | null;
   agentRunning?: boolean;
+  workflowRuns?: Record<string, WorkflowRunView>;
+  onNeedWorkflowRun?: (runId: string) => void;
   onSend: (text: string, attachments: PendingAttachment[]) => Promise<void>;
   onStop: () => void | Promise<void>;
   onOpenAgentSettings: () => void;
@@ -63,6 +66,16 @@ function ThinkingSection({
       {open ? <MarkdownBody className="md-thinking" text={text} /> : null}
     </div>
   );
+}
+
+function workflowRunIdOf(meta: string | null): string | null {
+  if (!meta || !meta.includes('"workflow"')) return null;
+  try {
+    const runId = (JSON.parse(meta) as { workflow?: { runId?: unknown } }).workflow?.runId;
+    return typeof runId === 'string' && runId ? runId : null;
+  } catch {
+    return null;
+  }
 }
 
 function TodoList({ todos }: { todos: TodoItem[] }) {
@@ -143,12 +156,14 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const [sendError, setSendError] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDraft('');
     setPending([]);
+    setSendError('');
     const el = taRef.current;
     if (el) {
       el.style.height = 'auto';
@@ -163,8 +178,13 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
   async function addFiles(files: FileList | File[]) {
     const list = Array.from(files);
     if (!list.length) return;
-    const next = await Promise.all(list.map(fileToPending));
-    setPending((prev) => [...prev, ...next]);
+    try {
+      const next = await Promise.all(list.map(fileToPending));
+      setPending((prev) => [...prev, ...next]);
+      setSendError('');
+    } catch (e) {
+      setSendError(`Could not read file: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   const hasDraft = draft.trim().length > 0 || pending.length > 0;
@@ -181,9 +201,17 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
     const el = taRef.current;
     if (el) el.style.height = 'auto';
     setSending(true);
+    setSendError('');
+    const restore = (e: unknown) => {
+      setSendError(`Message not sent: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': /, '') : String(e)}`);
+      setDraft((cur) => cur || text);
+      setPending((cur) => (cur.length ? cur : attachments));
+    };
     try {
       if (mustStop) await onStop();
-      void onSend(text, attachments);
+      onSend(text, attachments).catch(restore);
+    } catch (e) {
+      restore(e);
     } finally {
       setSending(false);
       taRef.current?.focus();
@@ -192,6 +220,7 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
 
   return (
     <div className="composer-wrap">
+      {sendError ? <div className="composer-error">{sendError}</div> : null}
       {pending.length > 0 && (
         <div className="attach-chips" aria-label="Pending attachments">
           {pending.map((p) => (
@@ -303,15 +332,42 @@ export function ChatView({
   liveTodos = [],
   liveTodoMessageId = null,
   agentRunning = false,
+  workflowRuns = {},
+  onNeedWorkflowRun,
   onSend,
   onStop,
   onOpenAgentSettings,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  /** Follow new output only while the user is at the bottom, so reading older messages is not interrupted. */
+  const stickToBottom = useRef(true);
+  const lastMessageId = messages[messages.length - 1]?.id;
+  const lastRole = messages[messages.length - 1]?.role;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+    if (lastRole === 'user') stickToBottom.current = true;
+  }, [lastMessageId, lastRole]);
+
+  useEffect(() => {
+    if (stickToBottom.current) bottomRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [messages, streamingId]);
+
+  const wfRunIdOf = new Map<string, string>();
+  const wfLastMsg = new Map<string, string>();
+  for (const m of messages) {
+    if (m.role !== 'assistant') continue;
+    const runId = workflowRunIdOf(m.meta);
+    if (!runId) continue;
+    wfRunIdOf.set(m.id, runId);
+    wfLastMsg.set(runId, m.id);
+  }
+
+  useEffect(() => {
+    if (!onNeedWorkflowRun) return;
+    for (const runId of new Set(wfRunIdOf.values())) {
+      if (!workflowRuns[runId]) onNeedWorkflowRun(runId);
+    }
+  });
 
   if (!agent) {
     return (
@@ -377,7 +433,13 @@ export function ChatView({
         </div>
       </header>
 
-      <div className="transcript">
+      <div
+        className="transcript"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+      >
         {messages.length === 0 && (
           <div className="welcome">
             <h2>Chat with {agent.name}</h2>
@@ -390,7 +452,9 @@ export function ChatView({
         {messages.filter((m) => !m.agentId || m.agentId === agent.id).map((m) => {
           const todos =
             m.id === liveTodoMessageId && liveTodos.length ? liveTodos : parseMessageTodos(m.meta);
-          if (!m.content && !todos.length) return null;
+          const wfRunId = wfRunIdOf.get(m.id);
+          const wfRun = wfRunId ? workflowRuns[wfRunId] : undefined;
+          if (!m.content && !todos.length && !wfRun) return null;
           const metaLine = m.role === 'assistant' ? assistantMetaLine(m) : '';
           const parts = m.role === 'assistant' ? unpackAssistantBody(m.content || '') : null;
           return (
@@ -406,6 +470,7 @@ export function ChatView({
                         collapse={streamingId !== m.id && !!parts.answer}
                       />
                     ) : null}
+                    {wfRun ? <WorkflowCard run={wfRun} compact={wfLastMsg.get(wfRun.id) !== m.id} /> : null}
                     <TodoList todos={todos} />
                     {parts?.answer ? <MarkdownBody text={parts.answer} /> : null}
                     {metaLine ? (

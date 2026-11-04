@@ -49,6 +49,7 @@ export type RoutineRow = {
   prompt: string;
   enabled: number;
   forceTodos: number;
+  workflowId: string | null;
   lastRunAt: number | null;
   createdAt: number;
 };
@@ -69,10 +70,41 @@ export function flushPersist(): void {
   if (!db || !dbPath || !persistDirty) return;
   persistDirty = false;
   try {
-    const data = db.export();
-    fs.writeFileSync(dbPath, Buffer.from(data));
+    writeFileAtomic(dbPath, Buffer.from(db.export()));
   } catch (e) {
+    persistDirty = true;
     console.error('[TecAdRiseBot] persist failed', e);
+  }
+}
+
+/** Write to a temp file then rename, so a crash or power loss mid-write never truncates the database. */
+function writeFileAtomic(file: string, data: Buffer): void {
+  const tmp = `${file}.tmp`;
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeSync(fd, data);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    fs.renameSync(tmp, file);
+  } catch {
+    // Antivirus or indexers can briefly lock the target on Windows.
+    fs.copyFileSync(tmp, file);
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+function openDatabaseFile(SQLs: SqlJsStatic, file: string): Database | null {
+  if (!fs.existsSync(file)) return null;
+  try {
+    const candidate = new SQLs.Database(fs.readFileSync(file));
+    candidate.exec('SELECT count(*) FROM sqlite_master');
+    return candidate;
+  } catch (e) {
+    console.error('[TecAdRiseBot] unreadable database file', file, e);
+    return null;
   }
 }
 
@@ -137,6 +169,24 @@ function migrateRoutinesSchema(): void {
   if (!cols.has('force_todos')) {
     mustDb().run(`ALTER TABLE routines ADD COLUMN force_todos INTEGER NOT NULL DEFAULT 0`);
   }
+  if (!cols.has('workflow_id')) {
+    mustDb().run(`ALTER TABLE routines ADD COLUMN workflow_id TEXT`);
+  }
+}
+
+/** Generic helpers for feature modules that own their tables (electron/workflows). */
+export function dbAll(sql: string, params: Record<string, unknown> = {}): Record<string, unknown>[] {
+  const stmt = mustDb().prepare(sql);
+  if (Object.keys(params).length) stmt.bind(params as never);
+  const rows: Record<string, unknown>[] = [];
+  while (stmt.step()) rows.push(stmt.getAsObject() as Record<string, unknown>);
+  stmt.free();
+  return rows;
+}
+
+export function dbRun(sql: string, params: unknown[] = []): void {
+  mustDb().run(sql, params as never);
+  persist();
 }
 
 function parseConfig(raw: unknown): Record<string, unknown> | null {
@@ -175,9 +225,33 @@ export async function initDb(userDataPath?: string): Promise<void> {
     locateFile: (file) => path.join(wasmDir(), file),
   });
 
+  const bakPath = `${dbPath}.bak`;
   if (fs.existsSync(dbPath)) {
-    const buf = fs.readFileSync(dbPath);
-    db = new SQL.Database(buf);
+    let opened: Database | null = openDatabaseFile(SQL, dbPath);
+    if (opened) {
+      try {
+        fs.copyFileSync(dbPath, bakPath);
+      } catch (e) {
+        console.error('[TecAdRiseBot] database backup failed', e);
+      }
+    } else {
+      let source = '';
+      for (const f of [`${dbPath}.tmp`, bakPath]) {
+        opened = openDatabaseFile(SQL, f);
+        if (opened) {
+          source = f;
+          break;
+        }
+      }
+      if (!opened) {
+        throw new Error(`Database file is damaged and no usable backup was found: ${dbPath}`);
+      }
+      const aside = `${dbPath}.corrupt-${Date.now()}`;
+      fs.renameSync(dbPath, aside);
+      fs.copyFileSync(source, dbPath);
+      console.error('[TecAdRiseBot] database restored from', source, 'damaged copy kept at', aside);
+    }
+    db = opened;
   } else {
     db = new SQL.Database();
   }
@@ -221,6 +295,35 @@ export async function initDb(userDataPath?: string): Promise<void> {
       value TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_messages_agent ON messages(agent_id, created_at);
+    CREATE TABLE IF NOT EXISTS workflows (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      owner_agent_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      definition_json TEXT NOT NULL,
+      settings_json TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS workflow_versions (
+      workflow_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      definition_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (workflow_id, version)
+    );
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id TEXT PRIMARY KEY,
+      workflow_id TEXT NOT NULL,
+      runner_agent_id TEXT NOT NULL,
+      owner_agent_id TEXT NOT NULL,
+      routine_id TEXT,
+      state TEXT NOT NULL,
+      run_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_state ON workflow_runs(state, updated_at);
   `);
   migrateAgentsSchema();
   migrateRoutinesSchema();
@@ -238,7 +341,7 @@ function mustDb(): Database {
 
 function previewSnippet(text: string): string {
   return String(text || '')
-    .replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]')
+    .replace(/!\[[^\]]*]\((?:data|tecimg):[^)]+\)/g, '[image]')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
@@ -515,7 +618,7 @@ export function formatRoutineUserText(r: { name: string; prompt: string; forceTo
 }
 
 export function listRoutines(agentId?: string): RoutineRow[] {
-  let sql = `SELECT id, agent_id, name, cron, prompt, enabled, force_todos, last_run_at, created_at FROM routines`;
+  let sql = `SELECT id, agent_id, name, cron, prompt, enabled, force_todos, workflow_id, last_run_at, created_at FROM routines`;
   if (agentId) sql += ` WHERE agent_id=$aid`;
   sql += ` ORDER BY created_at DESC`;
   const stmt = mustDb().prepare(sql);
@@ -531,6 +634,7 @@ export function listRoutines(agentId?: string): RoutineRow[] {
       prompt: String(r.prompt),
       enabled: Number(r.enabled),
       forceTodos: r.force_todos == null ? 0 : Number(r.force_todos),
+      workflowId: r.workflow_id ? String(r.workflow_id) : null,
       lastRunAt: r.last_run_at != null ? Number(r.last_run_at) : null,
       createdAt: Number(r.created_at),
     });
@@ -551,14 +655,16 @@ export function createRoutine(input: {
   prompt: string;
   enabled?: number;
   forceTodos?: number;
+  workflowId?: string | null;
 }): RoutineRow {
   const now = Date.now();
   const enabled = input.enabled ?? 1;
-  const forceTodos = input.forceTodos ? 1 : 0;
+  const workflowId = input.workflowId || null;
+  const forceTodos = input.forceTodos && !workflowId ? 1 : 0;
   mustDb().run(
-    `INSERT INTO routines (id, agent_id, name, cron, prompt, enabled, force_todos, last_run_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-    [input.id, input.agentId, input.name, input.cron, input.prompt, enabled, forceTodos, now]
+    `INSERT INTO routines (id, agent_id, name, cron, prompt, enabled, force_todos, workflow_id, last_run_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+    [input.id, input.agentId, input.name, input.cron, input.prompt, enabled, forceTodos, workflowId, now]
   );
   persist();
   return getRoutine(input.id)!;
@@ -572,11 +678,20 @@ export function updateRoutine(
     prompt: string;
     enabled: number;
     forceTodos: number;
+    workflowId: string | null;
     lastRunAt: number | null;
   }>
 ): RoutineRow | null {
   const existing = getRoutine(id);
   if (!existing) return null;
+  const workflowId = patch.workflowId !== undefined ? patch.workflowId || null : existing.workflowId;
+  const forceTodos = workflowId
+    ? 0
+    : patch.forceTodos !== undefined
+      ? patch.forceTodos
+        ? 1
+        : 0
+      : existing.forceTodos;
   const cron = patch.cron ?? existing.cron;
   const scheduleChanged =
     patch.cron !== undefined && String(patch.cron).trim() !== String(existing.cron || '').trim();
@@ -587,13 +702,14 @@ export function updateRoutine(
         ? Date.now()
         : existing.lastRunAt;
   mustDb().run(
-    `UPDATE routines SET name=?, cron=?, prompt=?, enabled=?, force_todos=?, last_run_at=? WHERE id=?`,
+    `UPDATE routines SET name=?, cron=?, prompt=?, enabled=?, force_todos=?, workflow_id=?, last_run_at=? WHERE id=?`,
     [
       patch.name ?? existing.name,
       cron,
       patch.prompt ?? existing.prompt,
       patch.enabled ?? existing.enabled,
-      patch.forceTodos !== undefined ? (patch.forceTodos ? 1 : 0) : existing.forceTodos,
+      forceTodos,
+      workflowId,
       lastRunAt,
       id,
     ]

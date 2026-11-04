@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { Workflow, WorkflowRun } from '../src/lib/workflow/types';
 
 export type Agent = {
   id: string;
@@ -30,9 +31,30 @@ export type Routine = {
   prompt: string;
   enabled: number;
   forceTodos: number;
+  workflowId: string | null;
   lastRunAt: number | null;
   createdAt: number;
 };
+
+type RoutineInput = {
+  agentId: string;
+  name: string;
+  cron: string;
+  prompt: string;
+  forceTodos?: number;
+  workflowId?: string | null;
+};
+
+type RoutinePatch = Partial<{
+  name: string;
+  cron: string;
+  prompt: string;
+  enabled: number;
+  forceTodos: number;
+  workflowId: string | null;
+}>;
+
+type WorkflowRunView = Omit<WorkflowRun, 'token'> & { runnerName: string; ownerName: string; inFlight: string | null };
 
 const api = {
   agents: {
@@ -132,14 +154,23 @@ const api = {
   },
   routines: {
     list: (): Promise<Routine[]> => ipcRenderer.invoke('routines:list'),
-    create: (input: { agentId: string; name: string; cron: string; prompt: string; forceTodos?: number }) =>
-      ipcRenderer.invoke('routines:create', input),
-    update: (
-      id: string,
-      patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; forceTodos: number }>
-    ) => ipcRenderer.invoke('routines:update', id, patch),
+    create: (input: RoutineInput) => ipcRenderer.invoke('routines:create', input),
+    update: (id: string, patch: RoutinePatch) => ipcRenderer.invoke('routines:update', id, patch),
     delete: (id: string) => ipcRenderer.invoke('routines:delete', id),
     runNow: (id: string) => ipcRenderer.invoke('routines:runNow', id),
+  },
+  workflows: {
+    list: (ownerAgentId?: string): Promise<Workflow[]> => ipcRenderer.invoke('workflows:list', ownerAgentId),
+    save: (input: { id?: string; ownerAgentId: string; definition: unknown; settings?: unknown }): Promise<Workflow> =>
+      ipcRenderer.invoke('workflows:save', input),
+    delete: (id: string): Promise<{ ok: true }> => ipcRenderer.invoke('workflows:delete', id),
+    runs: (filter: { workflowId?: string; agentId?: string; limit?: number }): Promise<WorkflowRunView[]> =>
+      ipcRenderer.invoke('workflows:runs', filter),
+    getRun: (id: string): Promise<WorkflowRunView | null> => ipcRenderer.invoke('workflows:getRun', id),
+    action: (runId: string, action: 'retry' | 'skip' | 'abort'): Promise<WorkflowRunView> =>
+      ipcRenderer.invoke('workflows:action', runId, action),
+    start: (input: { workflowId: string; runnerAgentId: string; input?: string }): Promise<WorkflowRunView> =>
+      ipcRenderer.invoke('workflows:start', input),
   },
   app: {
     openPath: (p: string) => ipcRenderer.invoke('app:openPath', p),
@@ -154,6 +185,8 @@ const api = {
       'chat:stream-error',
       'chat:todos',
       'routines:fired',
+      'workflow:run',
+      'workflow:list-changed',
     ];
     if (!allowed.includes(channel)) return () => undefined;
     const wrapped = (_: Electron.IpcRendererEvent, ...args: unknown[]) => listener(...args);

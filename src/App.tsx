@@ -3,7 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { ChatView } from './components/ChatView';
 import { SettingsModal } from './components/SettingsModal';
 import { AgentSettingsModal } from './components/AgentSettingsModal';
-import type { Agent, AppSettings, ChatMessage } from './types';
+import type { Agent, AppSettings, ChatMessage, WorkflowRunView } from './types';
 import type { TodoItem } from './lib/todos';
 import './styles/app.css';
 
@@ -40,44 +40,63 @@ export default function App() {
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const [liveTodos, setLiveTodos] = useState<TodoItem[]>([]);
   const [liveTodoMessageId, setLiveTodoMessageId] = useState<string | null>(null);
+  const [wfRuns, setWfRuns] = useState<Record<string, WorkflowRunView>>({});
+  const wfRequested = useRef(new Set<string>());
   const liveRuns = useRef(new Set<string>());
   const selectedIdRef = useRef<string | null>(null);
   const messagesCache = useRef(new Map<string, ChatMessage[]>());
   const loadGen = useRef(0);
   selectedIdRef.current = selectedId;
 
+  // Background refreshes run from timers and events; a failed IPC call must not surface as an unhandled rejection.
   const refreshSettings = useCallback(async () => {
-    const s = await window.tecapi.settings.get();
-    setSettings(s);
+    try {
+      const s = await window.tecapi.settings.get();
+      setSettings(s);
+    } catch (e) {
+      console.error('refreshSettings', e);
+    }
   }, []);
 
   const refreshLeds = useCallback(async () => {
-    const [busy, routines] = await Promise.all([
-      window.tecapi.agents.busy(),
-      window.tecapi.routines.list(),
-    ]);
-    const busySet = new Set(busy);
-    for (const id of [...liveRuns.current]) {
-      if (!busySet.has(id)) liveRuns.current.delete(id);
+    try {
+      const [busy, routines] = await Promise.all([
+        window.tecapi.agents.busy(),
+        window.tecapi.routines.list(),
+      ]);
+      const busySet = new Set(busy);
+      for (const id of [...liveRuns.current]) {
+        if (!busySet.has(id)) liveRuns.current.delete(id);
+      }
+      setRunningIds((prev) => (sameIdSet(prev, busySet) ? prev : busySet));
+      const scheduled = new Set(routines.filter((r) => Number(r.enabled) !== 0).map((r) => r.agentId));
+      setScheduledIds((prev) => (sameIdSet(prev, scheduled) ? prev : scheduled));
+    } catch (e) {
+      console.error('refreshLeds', e);
     }
-    setRunningIds((prev) => (sameIdSet(prev, busySet) ? prev : busySet));
-    const scheduled = new Set(routines.filter((r) => Number(r.enabled) !== 0).map((r) => r.agentId));
-    setScheduledIds((prev) => (sameIdSet(prev, scheduled) ? prev : scheduled));
   }, []);
 
   const refreshAgents = useCallback(async () => {
-    const list = await window.tecapi.agents.list();
-    setAgents(list);
-    setSelectedId((cur) => cur ?? list[0]?.id ?? null);
+    try {
+      const list = await window.tecapi.agents.list();
+      setAgents(list);
+      setSelectedId((cur) => cur ?? list[0]?.id ?? null);
+    } catch (e) {
+      console.error('refreshAgents', e);
+    }
     void refreshLeds();
   }, [refreshLeds]);
 
   const loadMessages = useCallback(async (agentId: string) => {
     const gen = ++loadGen.current;
-    const list = await window.tecapi.messages.list(agentId);
-    if (gen !== loadGen.current || selectedIdRef.current !== agentId) return;
-    messagesCache.current.set(agentId, list);
-    setMessages(list);
+    try {
+      const list = await window.tecapi.messages.list(agentId);
+      if (gen !== loadGen.current || selectedIdRef.current !== agentId) return;
+      messagesCache.current.set(agentId, list);
+      setMessages(list);
+    } catch (e) {
+      console.error('loadMessages', e);
+    }
   }, []);
 
   useEffect(() => {
@@ -133,7 +152,7 @@ export default function App() {
         void refreshAgents();
       }),
       window.tecapi.on('chat:stream-start', (payload) => {
-        const p = payload as { agentId: string; messageId: string };
+        const p = payload as { agentId: string; messageId: string; meta?: string | null };
         liveRuns.current.add(p.agentId);
         setRunningIds((prev) => new Set(prev).add(p.agentId));
         if (p.agentId !== selectedIdRef.current) return;
@@ -150,7 +169,7 @@ export default function App() {
                   agentId: p.agentId,
                   role: 'assistant',
                   content: '',
-                  meta: null,
+                  meta: p.meta ?? null,
                   createdAt: Date.now(),
                 },
               ]
@@ -215,6 +234,10 @@ export default function App() {
         const id = selectedIdRef.current;
         if (id && !liveRuns.current.has(id)) void loadMessages(id);
       }),
+      window.tecapi.on('workflow:run', (payload) => {
+        const run = payload as WorkflowRunView;
+        if (run?.id) setWfRuns((prev) => ({ ...prev, [run.id]: run }));
+      }),
     ];
     return () => offs.forEach((off) => off());
   }, [refreshAgents, loadMessages]);
@@ -224,11 +247,15 @@ export default function App() {
   async function createAgent() {
     const name = `Agent ${agents.length + 1}`;
     const model = settings?.selectedModel;
-    const a = await window.tecapi.agents.create(name, model);
-    // Apply default model onto agent row
-    if (model) await window.tecapi.agents.update(a.id, { model });
-    await refreshAgents();
-    setSelectedId(a.id);
+    try {
+      const a = await window.tecapi.agents.create(name, model);
+      // Apply default model onto agent row
+      if (model) await window.tecapi.agents.update(a.id, { model });
+      await refreshAgents();
+      setSelectedId(a.id);
+    } catch (e) {
+      window.alert(`Could not create agent: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   const send = useCallback(async (
@@ -258,6 +285,17 @@ export default function App() {
 
   const openAgentSettings = useCallback(() => setAgentSettingsOpen(true), []);
 
+  const needWorkflowRun = useCallback((runId: string) => {
+    if (wfRequested.current.has(runId)) return;
+    wfRequested.current.add(runId);
+    void window.tecapi.workflows
+      .getRun(runId)
+      .then((run) => {
+        if (run) setWfRuns((prev) => (prev[run.id] ? prev : { ...prev, [run.id]: run }));
+      })
+      .catch(() => wfRequested.current.delete(runId));
+  }, []);
+
   return (
     <div className="app-shell">
       <Sidebar
@@ -278,7 +316,12 @@ export default function App() {
             const target = agents.find((a) => a.id === id);
             const ok = window.confirm(`Delete ${target?.name || 'this agent'}? This cannot be undone.`);
             if (!ok) return;
-            await window.tecapi.agents.delete(id);
+            try {
+              await window.tecapi.agents.delete(id);
+            } catch (e) {
+              window.alert(`Could not delete agent: ${e instanceof Error ? e.message : String(e)}`);
+              return;
+            }
             const list = await window.tecapi.agents.list();
             setAgents(list);
             setSelectedId((cur) => {
@@ -306,6 +349,8 @@ export default function App() {
         liveTodos={liveTodos}
         liveTodoMessageId={liveTodoMessageId}
         agentRunning={Boolean(selectedId && runningIds.has(selectedId))}
+        workflowRuns={wfRuns}
+        onNeedWorkflowRun={needWorkflowRun}
         onSend={send}
         onStop={stop}
         onOpenAgentSettings={openAgentSettings}

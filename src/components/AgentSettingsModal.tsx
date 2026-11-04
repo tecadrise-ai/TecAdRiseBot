@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { Agent, Routine } from '../types';
+import type { Agent, Routine, Workflow } from '../types';
 import { ModalBackdrop } from './ModalBackdrop';
+import { TaskModeFields, type TaskMode } from './TaskModeFields';
+import { WorkflowsPanel } from './WorkflowsPanel';
 import { ScheduleBuilder } from './ScheduleBuilder';
 import { AGENT_BADGE_COLORS } from '../lib/agentColors';
 import { DEFAULT_SCHEDULE, decodeSchedule, describeSchedule, encodeSchedule, type ScheduleDraft } from '../lib/schedule';
@@ -28,7 +30,7 @@ type Props = {
 };
 
 export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCleared }: Props) {
-  const [tab, setTab] = useState<'general' | 'routines' | 'mcp'>('general');
+  const [tab, setTab] = useState<'general' | 'routines' | 'workflows' | 'mcp'>('general');
   const [name, setName] = useState('');
   const [color, setColor] = useState('#4C78FF');
   const [toastEnabled, setToastEnabled] = useState(true);
@@ -49,7 +51,9 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
   const [rName, setRName] = useState('');
   const [schedule, setSchedule] = useState<ScheduleDraft>(DEFAULT_SCHEDULE);
   const [rPrompt, setRPrompt] = useState('');
-  const [rForceTodos, setRForceTodos] = useState(false);
+  const [rTaskMode, setRTaskMode] = useState<TaskMode>('off');
+  const [rWorkflowId, setRWorkflowId] = useState('');
+  const [allWorkflows, setAllWorkflows] = useState<Workflow[]>([]);
   const [creating, setCreating] = useState(false);
   const [composing, setComposing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -58,7 +62,8 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setRName('');
     setSchedule(DEFAULT_SCHEDULE);
     setRPrompt('');
-    setRForceTodos(false);
+    setRTaskMode('off');
+    setRWorkflowId('');
     setComposing(false);
     setEditingId(null);
   }
@@ -68,14 +73,16 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setRName(r.name);
     setSchedule(decodeSchedule(r.cron));
     setRPrompt(r.prompt);
-    setRForceTodos(Boolean(r.forceTodos));
+    setRTaskMode(r.workflowId ? 'workflow' : r.forceTodos ? 'todos' : 'off');
+    setRWorkflowId(r.workflowId || '');
     setComposing(true);
   }
 
   async function refreshRoutines() {
     if (!agent) return;
-    const all = await window.tecapi.routines.list();
+    const [all, wfs] = await Promise.all([window.tecapi.routines.list(), window.tecapi.workflows.list()]);
     setRoutines(all.filter((r) => r.agentId === agent.id));
+    setAllWorkflows(wfs);
   }
 
   useEffect(() => {
@@ -95,7 +102,8 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setRName('');
     setSchedule(DEFAULT_SCHEDULE);
     setRPrompt('');
-    setRForceTodos(false);
+    setRTaskMode('off');
+    setRWorkflowId('');
     setComposing(false);
     setEditingId(null);
     void window.tecapi.models.list().then(setModels).catch(() => setModels([]));
@@ -148,15 +156,20 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     }
   }
 
+  const routineReady =
+    Boolean(encodeSchedule(schedule)) &&
+    (rTaskMode === 'workflow' ? Boolean(rWorkflowId) : Boolean(rPrompt.trim()));
+
   async function saveRoutine() {
-    if (!rPrompt.trim() || creating) return;
+    if (!routineReady || creating) return;
     setCreating(true);
     try {
       const payload = {
         name: rName.trim() || 'Routine',
         cron: encodeSchedule(schedule),
         prompt: rPrompt.trim(),
-        forceTodos: rForceTodos ? 1 : 0,
+        forceTodos: rTaskMode === 'todos' ? 1 : 0,
+        workflowId: rTaskMode === 'workflow' ? rWorkflowId : null,
       };
       if (editingId) {
         await window.tecapi.routines.update(editingId, payload);
@@ -169,8 +182,21 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
       resetRoutineForm();
       await refreshRoutines();
       onSaved();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function routineAction(fn: () => Promise<unknown>) {
+    setStatus('');
+    try {
+      await fn();
+      await refreshRoutines();
+      onSaved();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -224,6 +250,13 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
             onClick={() => setTab('routines')}
           >
             Routines
+          </button>
+          <button
+            type="button"
+            className={tab === 'workflows' ? 'active' : ''}
+            onClick={() => setTab('workflows')}
+          >
+            Workflows
           </button>
           <button
             type="button"
@@ -409,21 +442,25 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                       <ScheduleBuilder value={schedule} onChange={setSchedule} />
                     </div>
                   </div>
-                  <label className="check-row">
-                    <input
-                      type="checkbox"
-                      checked={rForceTodos}
-                      onChange={(e) => setRForceTodos(e.target.checked)}
-                    />
-                    <span>Force updateTodos</span>
-                  </label>
+                  <TaskModeFields
+                    agentId={agent.id}
+                    mode={rTaskMode}
+                    workflowId={rWorkflowId}
+                    workflows={allWorkflows}
+                    onMode={setRTaskMode}
+                    onWorkflow={setRWorkflowId}
+                  />
                   <label className="field">
-                    <span>Prompt</span>
+                    <span>{rTaskMode === 'workflow' ? 'Run input (optional)' : 'Prompt'}</span>
                     <textarea
                       value={rPrompt}
                       onChange={(e) => setRPrompt(e.target.value)}
                       rows={10}
-                      placeholder="What should this agent do when the routine fires?"
+                      placeholder={
+                        rTaskMode === 'workflow'
+                          ? 'Extra context passed to every run of the workflow.'
+                          : 'What should this agent do when the routine fires?'
+                      }
                     />
                   </label>
                   <div className="routine-form-actions">
@@ -437,7 +474,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                     <button
                       type="button"
                       className="primary"
-                      disabled={!rPrompt.trim() || creating}
+                      disabled={!routineReady || creating}
                       onClick={() => void saveRoutine()}
                     >
                       {creating ? 'Saving...' : editingId ? 'Save changes' : 'Save routine'}
@@ -455,6 +492,11 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                           {r.name}
                           {!r.enabled ? <span className="routine-paused-tag">Paused</span> : null}
                           {r.forceTodos ? <span className="routine-paused-tag">updateTodos</span> : null}
+                          {r.workflowId ? (
+                            <span className="routine-paused-tag">
+                              Workflow: {allWorkflows.find((w) => w.id === r.workflowId)?.name || 'missing'}
+                            </span>
+                          ) : null}
                         </div>
                         <div className="muted">{describeSchedule(r.cron)}</div>
                         <div className="routine-prompt-preview">{r.prompt}</div>
@@ -471,12 +513,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                           type="button"
                           className="text-btn"
                           onClick={() =>
-                            void window.tecapi.routines
-                              .update(r.id, { enabled: r.enabled ? 0 : 1 })
-                              .then(() => {
-                                void refreshRoutines();
-                                onSaved();
-                              })
+                            void routineAction(() => window.tecapi.routines.update(r.id, { enabled: r.enabled ? 0 : 1 }))
                           }
                         >
                           {r.enabled ? 'Pause' : 'Resume'}
@@ -484,19 +521,19 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                         <button
                           type="button"
                           className="text-btn"
-                          onClick={() => void window.tecapi.routines.runNow(r.id)}
+                          onClick={() =>
+                            void routineAction(async () => {
+                              const res = (await window.tecapi.routines.runNow(r.id)) as { ok?: boolean; note?: string } | undefined;
+                              if (res && res.ok === false) throw new Error(res.note || 'Routine could not start');
+                            })
+                          }
                         >
                           Run
                         </button>
                         <button
                           type="button"
                           className="text-btn danger-text"
-                          onClick={() =>
-                            void window.tecapi.routines.delete(r.id).then(() => {
-                              void refreshRoutines();
-                              onSaved();
-                            })
-                          }
+                          onClick={() => void routineAction(() => window.tecapi.routines.delete(r.id))}
                         >
                           Delete
                         </button>
@@ -520,8 +557,11 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   )}
                 </div>
               )}
+              {status ? <p className="status">{status}</p> : null}
             </div>
           )}
+
+          {tab === 'workflows' && <WorkflowsPanel agent={agent} models={models} onSaved={onSaved} />}
 
           {tab === 'mcp' && (
             <div className="mcp-panel">

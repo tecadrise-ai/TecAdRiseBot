@@ -1,3 +1,5 @@
+import type { WorkflowRun } from './lib/workflow/types';
+
 export type Agent = {
   id: string;
   name: string;
@@ -28,8 +30,18 @@ export type Routine = {
   prompt: string;
   enabled: number;
   forceTodos: number;
+  workflowId: string | null;
   lastRunAt: number | null;
   createdAt: number;
+};
+
+export type { Workflow, WorkflowRun, RunState, StepStatus } from './lib/workflow/types';
+
+/** Run as sent to the UI (no runner token). */
+export type WorkflowRunView = Omit<WorkflowRun, 'token'> & {
+  runnerName: string;
+  ownerName: string;
+  inFlight: string | null;
 };
 
 export type AppSettings = {

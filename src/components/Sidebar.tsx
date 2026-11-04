@@ -60,7 +60,11 @@ export function Sidebar({
     const next = [...agents];
     const [item] = next.splice(from, 1);
     next.splice(to, 0, item);
+    // Chromium usually fires no click after a drop, so the guard must expire on its own.
     skipClick.current = true;
+    setTimeout(() => {
+      skipClick.current = false;
+    }, 250);
     onReorder(next.map((a) => a.id));
   }
 

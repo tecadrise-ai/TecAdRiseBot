@@ -1,4 +1,4 @@
-import { Notification, type BrowserWindow, app, shell } from 'electron';
+import { Notification, BrowserWindow, app, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -80,7 +80,10 @@ export function maybeNotifyChatDone(opts: {
 }): void {
   if (opts.source && opts.source !== 'user') return;
   if (!opts.toastEnabled) return;
-  if (opts.win?.isFocused()) return;
+  // The window captured at turn start may have been replaced after a renderer crash.
+  const liveWin = (): BrowserWindow | null =>
+    opts.win && !opts.win.isDestroyed() ? opts.win : BrowserWindow.getAllWindows().find((w) => !w.isDestroyed()) ?? null;
+  if (liveWin()?.isFocused()) return;
   const text = String(opts.content || '').trim();
   if (!text || text === 'Stopped.') return;
   if (!Notification.isSupported()) return;
@@ -95,10 +98,11 @@ export function maybeNotifyChatDone(opts: {
       timeoutType: 'default',
     });
     n.on('click', () => {
-      if (!opts.win) return;
-      if (opts.win.isMinimized()) opts.win.restore();
-      opts.win.show();
-      opts.win.focus();
+      const w = liveWin();
+      if (!w) return;
+      if (w.isMinimized()) w.restore();
+      w.show();
+      w.focus();
     });
     n.show();
     setTimeout(() => {

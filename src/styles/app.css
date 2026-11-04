@@ -648,6 +648,11 @@
 .composer-wrap {
   padding: 8px 12% 22px;
 }
+.composer-error {
+  font-size: 12px;
+  color: #c0392b;
+  margin-bottom: 6px;
+}
 .composer {
   display: flex;
   align-items: flex-end;
@@ -1518,6 +1523,174 @@
 .todo-row.cancelled .tk,
 .todo-row.cancelled .tx {
   color: #9ca3af;
+}
+
+/* Step workflow progress card */
+.wf-card {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border: 1px solid #c7d7fe;
+  background: #fafbff;
+  border-radius: 10px;
+}
+.wf-card.wf-blocked {
+  border-color: #fdba74;
+  background: #fffaf3;
+}
+.wf-card.wf-done {
+  border-color: #cfe8d6;
+  background: #fbfdfa;
+}
+.wf-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.wf-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #3851c9;
+}
+.wf-ver {
+  font-weight: 500;
+  color: #6b7280;
+}
+.wf-state {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 8px;
+  border: 1px solid #c7d7fe;
+  color: #3851c9;
+  background: #fff;
+}
+.wf-state-blocked {
+  color: #b45309;
+  border-color: #fdba74;
+}
+.wf-state-done {
+  color: #1a9d5a;
+  border-color: #a7dcb9;
+}
+.wf-state-aborted {
+  color: #6b7280;
+  border-color: var(--border);
+}
+.wf-sub {
+  font-size: 11px;
+  color: #6b7280;
+  margin: 2px 0 6px;
+}
+.wf-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wf-step {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.wf-step .tk {
+  flex: 0 0 auto;
+  font-family: ui-monospace, Consolas, monospace;
+  color: #6b7280;
+}
+.wf-step-body {
+  min-width: 0;
+}
+.wf-step .tx {
+  color: #1f2430;
+}
+.wf-step-active .tk,
+.wf-step-review .tk {
+  color: #2563eb;
+}
+.wf-step-active .tx {
+  font-weight: 650;
+}
+.wf-step-passed .tk {
+  color: #1a9d5a;
+}
+.wf-step-passed .tx,
+.wf-step-skipped .tx {
+  color: #6b7280;
+}
+.wf-step-failed .tk {
+  color: #c0392b;
+}
+.wf-tag {
+  margin-left: 6px;
+  font-size: 10px;
+  color: #6b7280;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+.wf-line {
+  font-size: 12px;
+  color: #6b7280;
+  overflow-wrap: anywhere;
+}
+.wf-good {
+  color: #1a9d5a;
+}
+.wf-bad {
+  color: #c0392b;
+}
+.wf-blocked {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #b45309;
+}
+.wf-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.wf-actions .text-btn {
+  font-size: 12px;
+  padding: 3px 8px;
+}
+.wf-chip {
+  margin: 6px 0;
+  font-size: 11px;
+  color: #3851c9;
+}
+.wf-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wf-editor {
+  width: 100%;
+  min-height: 260px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: #fff;
+  resize: vertical;
+}
+.wf-overrides {
+  display: grid;
+  grid-template-columns: 70px 1fr 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+.wf-overrides select,
+.wf-overrides input {
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 5px 7px;
+  background: #fff;
+  min-width: 0;
 }
 
 /* Thinking / processing indicator */

@@ -96,19 +96,21 @@ export function decodeSchedule(stored: string): ScheduleDraft {
   if (s.startsWith('cron:')) {
     const cron = s.slice(5).trim();
     const p = cron.split(/\s+/);
-    if (p.length === 5 && p[2] === '*' && p[3] === '*' && p[4] === '*') {
+    // Only plain "M H * * *" and "M H * * D" map to the simple editors; anything else stays custom cron.
+    const simpleTime = p.length === 5 && /^\d{1,2}$/.test(p[0]) && /^\d{1,2}$/.test(p[1]) && p[2] === '*' && p[3] === '*';
+    if (simpleTime && p[4] === '*') {
       return {
         ...base,
         kind: 'daily',
         time: `${p[1].padStart(2, '0')}:${p[0].padStart(2, '0')}`,
       };
     }
-    if (p.length === 5 && p[2] === '*' && p[3] === '*' && p[4] !== '*') {
+    if (simpleTime && /^[0-7]$/.test(p[4])) {
       return {
         ...base,
         kind: 'weekly',
         time: `${p[1].padStart(2, '0')}:${p[0].padStart(2, '0')}`,
-        weekday: parseInt(p[4], 10),
+        weekday: parseInt(p[4], 10) % 7,
       };
     }
     return { ...base, kind: 'cron', cronExpr: cron };

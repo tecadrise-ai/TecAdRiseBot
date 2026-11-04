@@ -17,7 +17,7 @@ export const MarkdownBody = memo(function MarkdownBody({
     ADD_TAGS: ['img'],
     ADD_ATTR: ['src', 'alt', 'title'],
     ALLOWED_URI_REGEXP:
-      /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+      /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data|tecimg):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
   })
     .replace(/<h[1-6](\s[^>]*)?>/gi, '<p class="md-heading">')
     .replace(/<\/h[1-6]>/gi, '</p>');
@@ -29,9 +29,10 @@ export const MarkdownBody = memo(function MarkdownBody({
         const a = (e.target as HTMLElement | null)?.closest?.('a');
         if (!a) return;
         const href = a.getAttribute('href') || '';
-        if (!/^https?:/i.test(href) && !/^mailto:/i.test(href)) return;
+        if (href.startsWith('#')) return;
+        // Relative or file links would navigate the whole app window away.
         e.preventDefault();
-        void window.tecapi.app.openExternal(href);
+        if (/^https?:/i.test(href) || /^mailto:/i.test(href)) void window.tecapi.app.openExternal(href);
       }}
     />
   );

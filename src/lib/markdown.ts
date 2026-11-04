@@ -1,9 +1,10 @@
 /** If the SDK flattened markdown into one line, put structure back. */
 export function restoreFlattenedMarkdown(raw: string): string {
-  let s = String(raw || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/\\n/g, '\n');
+  const normalized = String(raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // Real line breaks or code fences mean the text is not flattened. Rewriting it would break code
+  // ("\n" in strings, "# comment", "a - b", "Console.WriteLine").
+  if (normalized.includes('\n') || normalized.includes('```')) return normalized.trim();
+  let s = normalized.replace(/\\n/g, '\n');
   s = s.replace(/\s+(#{1,6})\s+/g, '\n\n$1 ');
   s = s.replace(/\s+(- |\* )(?=[A-Za-z0-9*`])/g, '\n$1');
   s = rebuildPipeTables(s);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppSettings } from '../types';
 import { ModalBackdrop } from './ModalBackdrop';
 import { EMPTY_MCP_JSON } from '../lib/mcpConfig';
@@ -129,11 +129,22 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
   const [mcpBusy, setMcpBusy] = useState(false);
   const [missedGrace, setMissedGrace] = useState(String(settings?.missedGraceMinutes ?? 15));
 
+  // Seed form fields once per open. Re-seeding on every settings refresh wiped unsaved edits.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      seeded.current = false;
+      return;
+    }
+    if (seeded.current || !settings) return;
+    seeded.current = true;
+    setAccountName(settings.accountName ?? '');
+    setModel(settings.selectedModel ?? 'composer-2.5');
+    setMissedGrace(String(settings.missedGraceMinutes ?? 15));
+  }, [open, settings]);
+
   useEffect(() => {
     if (!open) return;
-    setAccountName(settings?.accountName ?? '');
-    setModel(settings?.selectedModel ?? 'composer-2.5');
-    setMissedGrace(String(settings?.missedGraceMinutes ?? 15));
     void window.tecapi.models.list().then(setModels).catch(() => setModels([]));
     const loadPrompt = window.tecapi.settings.getSystemPrompt;
     if (typeof loadPrompt === 'function') {
@@ -163,7 +174,7 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
         .then((t) => setMcpJson(typeof t === 'string' && t.trim() ? t : EMPTY_MCP_JSON))
         .catch(() => setMcpJson(EMPTY_MCP_JSON));
     }
-  }, [open, settings]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -186,23 +197,38 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
     }
   }
 
-  async function saveModel() {
-    await window.tecapi.settings.setModel(model);
-    setStatus(`Default model set to ${model}`);
-    await onRefresh();
+  async function guarded(fn: () => Promise<void>) {
+    setStatus('');
+    try {
+      await fn();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    }
   }
 
-  async function saveMissedGrace() {
-    const v = await window.tecapi.settings.setMissedGraceMinutes(Number(missedGrace));
-    setMissedGrace(String(v));
-    await onRefresh();
-    setStatus(`Missed routines older than ${v} min are skipped.`);
+  function saveModel() {
+    return guarded(async () => {
+      await window.tecapi.settings.setModel(model);
+      setStatus(`Default model set to ${model}`);
+      await onRefresh();
+    });
   }
 
-  async function saveName() {
-    await window.tecapi.settings.setAccountName(accountName.trim() || 'Local user');
-    await onRefresh();
-    setStatus('Account name updated.');
+  function saveMissedGrace() {
+    return guarded(async () => {
+      const v = await window.tecapi.settings.setMissedGraceMinutes(Number(missedGrace));
+      setMissedGrace(String(v));
+      await onRefresh();
+      setStatus(`Missed routines older than ${v} min are skipped.`);
+    });
+  }
+
+  function saveName() {
+    return guarded(async () => {
+      await window.tecapi.settings.setAccountName(accountName.trim() || 'Local user');
+      await onRefresh();
+      setStatus('Account name updated.');
+    });
   }
 
   async function saveSystem() {
@@ -363,7 +389,10 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                     type="button"
                     className="danger-link"
                     onClick={() =>
-                      void window.tecapi.settings.clearApiKey().then(onRefresh)
+                      void guarded(async () => {
+                        await window.tecapi.settings.clearApiKey();
+                        await onRefresh();
+                      })
                     }
                   >
                     Clear saved API key

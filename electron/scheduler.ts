@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron';
 import { CronExpressionParser } from 'cron-parser';
 import * as db from './db';
 import { isAgentBusy, runAgentTurn } from './agentRunner';
+import * as workflows from './workflows/service';
 
 let timer: NodeJS.Timeout | null = null;
 let winRef: BrowserWindow | null = null;
@@ -75,7 +76,26 @@ function onceAt(stored: string): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
+function notifyFired(routineId: string, at: number): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed()) continue;
+    try {
+      w.webContents.send('routines:fired', { routineId, at });
+    } catch {
+      /* window going away */
+    }
+  }
+}
+
 async function fire(r: db.RoutineRow, now: number): Promise<void> {
+  if (r.workflowId) {
+    // Step workflow: the workflow dispatcher runs the turns and waits for a busy agent itself.
+    db.updateRoutine(r.id, { lastRunAt: now });
+    const res = workflows.startFromRoutine(r);
+    if (!res.ok) console.error('routine workflow start failed', r.id, res.note);
+    notifyFired(r.id, now);
+    return;
+  }
   if (isAgentBusy(r.agentId)) return;
   db.updateRoutine(r.id, { lastRunAt: now });
   const prompt = db.formatRoutineUserText(r);
@@ -87,9 +107,7 @@ async function fire(r: db.RoutineRow, now: number): Promise<void> {
     source: 'routine',
   })
     .catch((e) => console.error('routine turn failed', r.id, e))
-    .finally(() => {
-      winRef?.webContents.send('routines:fired', { routineId: r.id, at: now });
-    });
+    .finally(() => notifyFired(r.id, now));
 }
 
 async function tick(): Promise<void> {
@@ -97,6 +115,7 @@ async function tick(): Promise<void> {
   ticking = true;
   try {
     await tickInner();
+    await workflows.pump();
   } finally {
     ticking = false;
   }

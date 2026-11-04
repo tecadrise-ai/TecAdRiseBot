@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage, shell, Menu } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, Menu } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,9 @@ import * as secrets from './secrets';
 import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp, readGlobalMcpJson, registerGlobalMcp } from './agentRunner';
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
-import { configureControlPlane } from './controlPlane';
+import { configureControlPlane, getBaseUrl } from './controlPlane';
+import * as workflows from './workflows/service';
+import { handleChatImages, registerChatImageScheme } from './chatImages';
 import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 import { APP_USER_MODEL_ID, APP_DISPLAY_NAME, appIconPath, ensureWindowsToastIdentity } from './notify';
 
@@ -18,6 +20,21 @@ app.setName(APP_DISPLAY_NAME);
 if (process.platform === 'win32') {
   app.setAppUserModelId(APP_USER_MODEL_ID);
 }
+
+// A second instance would run its own scheduler and overwrite the shared sql.js file.
+// TECADRISE_PROFILE gives a deliberately separate instance its own data folder.
+const profile = (process.env.TECADRISE_PROFILE || '').replace(/[^\w-]/g, '');
+if (profile) app.setPath('userData', path.join(app.getPath('appData'), `TecAdRiseBot-${profile}`));
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+}
+registerChatImageScheme();
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
 
 // Safer on varied Windows GPUs / VMs
 app.disableHardwareAcceleration();
@@ -54,7 +71,14 @@ process.on('unhandledRejection', (reason) => {
 });
 
 function isInternalAppUrl(url: string): boolean {
-  if (url.startsWith('file:') || url.startsWith('devtools:')) return true;
+  if (url.startsWith('devtools:')) return true;
+  if (url.startsWith('file:')) {
+    try {
+      return path.resolve(fileURLToPath(url.split(/[?#]/)[0])) === path.resolve(RENDERER_DIST, 'index.html');
+    } catch {
+      return false;
+    }
+  }
   const dev = VITE_DEV_SERVER_URL || 'http://localhost:5173/';
   try {
     return new URL(url).origin === new URL(dev).origin;
@@ -296,7 +320,10 @@ function registerIpc() {
   ipcMain.handle('routines:list', () => db.listRoutines());
   ipcMain.handle(
     'routines:create',
-    (_e, input: { agentId: string; name: string; cron: string; prompt: string; forceTodos?: number }) => {
+    (
+      _e,
+      input: { agentId: string; name: string; cron: string; prompt: string; forceTodos?: number; workflowId?: string | null }
+    ) => {
       return db.createRoutine({ id: uuid(), ...input });
     }
   );
@@ -305,7 +332,7 @@ function registerIpc() {
     (
       _e,
       id: string,
-      patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; forceTodos: number }>
+      patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; forceTodos: number; workflowId: string | null }>
     ) => db.updateRoutine(id, patch)
   );
   ipcMain.handle('routines:delete', (_e, id: string) => {
@@ -316,6 +343,7 @@ function registerIpc() {
     const r = db.listRoutines().find((x) => x.id === id);
     if (!r) throw new Error('Routine not found');
     db.updateRoutine(id, { lastRunAt: Date.now() });
+    if (r.workflowId) return workflows.startFromRoutine(r);
     return runAgentTurn({
       agentId: r.agentId,
       userText: db.formatRoutineUserText(r),
@@ -323,6 +351,24 @@ function registerIpc() {
       source: 'routine',
     });
   });
+
+  ipcMain.handle('workflows:list', (_e, ownerAgentId?: string) => workflows.listWorkflowsView(ownerAgentId || undefined));
+  ipcMain.handle(
+    'workflows:save',
+    (_e, input: { id?: string; ownerAgentId: string; definition: unknown; settings?: unknown }) =>
+      workflows.saveWorkflowFromUi(input)
+  );
+  ipcMain.handle('workflows:delete', (_e, id: string) => workflows.deleteWorkflowFromUi(id));
+  ipcMain.handle('workflows:runs', (_e, filter: { workflowId?: string; agentId?: string; limit?: number }) =>
+    workflows.listRunsView(filter || {})
+  );
+  ipcMain.handle('workflows:getRun', (_e, id: string) => workflows.getRunView(id));
+  ipcMain.handle('workflows:action', (_e, runId: string, action: 'retry' | 'skip' | 'abort') =>
+    workflows.humanAction(runId, action)
+  );
+  ipcMain.handle('workflows:start', (_e, input: { workflowId: string; runnerAgentId: string; input?: string }) =>
+    workflows.startRun(input)
+  );
 
   ipcMain.handle('app:openPath', (_e, p: string) => shell.openPath(p));
   ipcMain.handle('app:openExternal', (_e, url: string) => {
@@ -354,16 +400,36 @@ app.whenReady().then(async () => {
   if (process.platform === 'win32') {
     // re-applied after window create via setMenuBarVisibility
   }
-  await db.initDb();
-  cleanupLegacyControlPlaneFiles();
-  ensureWindowsToastIdentity();
-  // Seed a default agent if empty
-  if (db.listAgents().length === 0) {
-    db.createAgent({ id: uuid(), name: 'Assistant' });
+  try {
+    await db.initDb();
+    // Seed a default agent if empty
+    if (db.listAgents().length === 0) {
+      db.createAgent({ id: uuid(), name: 'Assistant' });
+    }
+  } catch (e) {
+    crashLog('startup', e);
+    dialog.showErrorBox(
+      `${APP_DISPLAY_NAME} could not start`,
+      `The local database could not be opened.\n\n${e instanceof Error ? e.message : String(e)}\n\nDetails are in crash.log in ${app.getPath('userData')}.`
+    );
+    app.exit(1);
+    return;
   }
+  for (const [name, step] of [
+    ['cleanupLegacyControlPlaneFiles', cleanupLegacyControlPlaneFiles],
+    ['ensureWindowsToastIdentity', ensureWindowsToastIdentity],
+  ] as const) {
+    try {
+      step();
+    } catch (e) {
+      crashLog(`startup ${name}`, e);
+    }
+  }
+  handleChatImages();
   registerIpc();
   createWindow();
   configureControlPlane({ getWindow: () => mainWindow });
+  workflows.configureWorkflows({ getBaseUrl, getWindow: () => mainWindow });
   try {
     const info = await startHttpApi(8787);
     console.log('[TecAdRiseBot] Control plane', info);

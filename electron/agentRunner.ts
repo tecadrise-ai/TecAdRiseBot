@@ -1,4 +1,5 @@
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
+import { chatImageUrl, saveChatImage } from './chatImages';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +38,8 @@ export type ChatAttachment = {
   dataBase64: string;
 };
 
-type GenImage = { mimeType: string; dataBase64: string };
+/** filePath/url are set once the image is written to disk, then the chat shows the file instead of inline base64. */
+type GenImage = { mimeType: string; dataBase64: string; filePath?: string; url?: string | null };
 
 type CursorAgent = {
   agentId: string;
@@ -82,7 +84,7 @@ const stopWaiters = new Map<string, () => void>();
 const liveTurns = new Map<string, { assistantMessageId: string; win: BrowserWindow | null }>();
 let modelCatalog: CatalogModel[] = [];
 
-export function dropAgentHandle(agentId: string): void {
+function closeHandle(agentId: string): void {
   const h = handles.get(agentId);
   if (!h) return;
   try {
@@ -91,6 +93,12 @@ export function dropAgentHandle(agentId: string): void {
     /* ignore */
   }
   handles.delete(agentId);
+}
+
+/** Settings changes call this. A busy agent keeps its live handle, closing it mid-run breaks the SDK stream. */
+export function dropAgentHandle(agentId: string): void {
+  if (isAgentBusy(agentId)) return;
+  closeHandle(agentId);
 }
 
 export function dropAllAgentHandles(): void {
@@ -110,34 +118,46 @@ function appRoot(): string {
   return process.env.APP_ROOT || path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 }
 
-export function readSystemPrompt(): string {
-  const p = path.join(appRoot(), 'SYSTEM.md');
-  try {
-    return fs.readFileSync(p, 'utf8');
-  } catch {
-    return 'You are an agent inside TecAdRiseBot.\n';
+/** The packaged app root is a read-only asar, so edited copies live in userData and win over the bundled file. */
+function hostFilePaths(name: string): { read: string[]; write: string } {
+  const bundled = path.join(appRoot(), name);
+  if (!app.isPackaged) return { read: [bundled], write: bundled };
+  const user = path.join(app.getPath('userData'), name);
+  return { read: [user, bundled], write: user };
+}
+
+function readHostFile(name: string): string | null {
+  for (const p of hostFilePaths(name).read) {
+    try {
+      return fs.readFileSync(p, 'utf8');
+    } catch {
+      /* try next */
+    }
   }
+  return null;
+}
+
+function writeHostFile(name: string, text: string): { ok: true } {
+  const p = hostFilePaths(name).write;
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, text.replace(/\r\n/g, '\n'), 'utf8');
+  return { ok: true };
+}
+
+export function readSystemPrompt(): string {
+  return readHostFile('SYSTEM.md') ?? 'You are an agent inside TecAdRiseBot.\n';
 }
 
 export function writeSystemPrompt(text: string): { ok: true } {
-  const p = path.join(appRoot(), 'SYSTEM.md');
-  fs.writeFileSync(p, text.replace(/\r\n/g, '\n'), 'utf8');
-  return { ok: true };
+  return writeHostFile('SYSTEM.md', text);
 }
 
 export function readSystemMemory(): string {
-  const p = path.join(appRoot(), 'MEMORY.md');
-  try {
-    return fs.readFileSync(p, 'utf8');
-  } catch {
-    return '';
-  }
+  return readHostFile('MEMORY.md') ?? '';
 }
 
 export function writeSystemMemory(text: string): { ok: true } {
-  const p = path.join(appRoot(), 'MEMORY.md');
-  fs.writeFileSync(p, text.replace(/\r\n/g, '\n'), 'utf8');
-  return { ok: true };
+  return writeHostFile('MEMORY.md', text);
 }
 
 export function cleanupLegacyControlPlaneFiles(): void {
@@ -224,7 +244,7 @@ function imagesFromUnknown(node: unknown, seen = new Set<string>(), out: GenImag
 function appendImagesToMarkdown(text: string, images: GenImage[]): string {
   let s = String(text || '').trimEnd();
   for (const img of images) {
-    const url = `data:${img.mimeType};base64,${img.dataBase64}`;
+    const url = img.url || `data:${img.mimeType};base64,${img.dataBase64}`;
     if (s.includes(url)) continue;
     s += `\n\n![generated image](${url})\n`;
   }
@@ -232,6 +252,7 @@ function appendImagesToMarkdown(text: string, images: GenImage[]): string {
 }
 
 function saveGeneratedImages(cwd: string, images: GenImage[]): void {
+  images = images.filter((img) => !img.filePath);
   if (!images.length) return;
   const dir = path.join(cwd, 'generated');
   try {
@@ -255,11 +276,11 @@ async function imagesFromArtifacts(h: CursorAgent, cwd: string): Promise<GenImag
     try {
       const buf = await h.downloadArtifact(a.path);
       const b64 = Buffer.from(buf).toString('base64');
-      if (b64) out.push({ mimeType: mimeFromPath(a.path), dataBase64: b64 });
       const destDir = path.join(cwd, 'generated');
       fs.mkdirSync(destDir, { recursive: true });
       const dest = path.join(destDir, path.basename(a.path));
       fs.writeFileSync(dest, Buffer.from(buf));
+      if (b64) out.push({ mimeType: mimeFromPath(a.path), dataBase64: b64, filePath: dest, url: chatImageUrl(dest) });
     } catch {
       /* ignore */
     }
@@ -300,7 +321,7 @@ function offloadLongText(cwd: string, filename: string, body: string): string {
 }
 
 function recentChatBody(role: string, raw: string): string {
-  let body = String(raw || '').replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]');
+  let body = String(raw || '').replace(/!\[[^\]]*]\((?:data|tecimg):[^)]+\)/g, '[image]');
   if (role === 'assistant') {
     const unpacked = unpackAssistantBody(body);
     // Never replay hidden reasoning. A thinking-only/incomplete bubble carries no
@@ -363,7 +384,7 @@ function formatRecentChat(
   );
 }
 
-function userVisibleContent(text: string, attachments: ChatAttachment[]): string {
+function userVisibleContent(text: string, attachments: ChatAttachment[], imageUrls: Map<ChatAttachment, string> = new Map()): string {
   const parts: string[] = [];
   const t = String(text || '').trim();
   if (t) parts.push(t);
@@ -371,7 +392,7 @@ function userVisibleContent(text: string, attachments: ChatAttachment[]): string
     const mime = (att.mimeType || 'application/octet-stream').toLowerCase();
     const name = att.name || 'file';
     if (mime.startsWith('image/') && att.dataBase64) {
-      parts.push(`![${name}](data:${mime};base64,${att.dataBase64})`);
+      parts.push(`![${name}](${imageUrls.get(att) || `data:${mime};base64,${att.dataBase64}`})`);
     } else if (name) {
       parts.push(`Attached: ${name}`);
     }
@@ -487,11 +508,7 @@ export async function cancelAgentRun(agentId: string): Promise<{ ok: true }> {
       db.updateMessageContent(live.assistantMessageId, text);
       db.updateAgent(agentId, { lastSnippet: 'Stopped.' });
     }
-    live.win?.webContents.send('chat:stream-done', {
-      agentId,
-      messageId: live.assistantMessageId,
-      content: text,
-    });
+    broadcastUi('chat:stream-done', { agentId, messageId: live.assistantMessageId, content: text }, live.win);
   }
   liveTurns.delete(agentId);
   if (!hadRun) stopRequested.delete(agentId);
@@ -531,10 +548,10 @@ function mcpServersForAgent(config: Record<string, unknown> | null | undefined, 
   return pinned;
 }
 
-function localAgentOpts(cwd: string) {
+function localAgentOpts(cwd: string, extraDirs: string[] = []) {
   return {
     cwd,
-    dirs: [cwd],
+    dirs: [cwd, ...extraDirs.filter((d) => d && d !== cwd)],
     enableAgentRetries: false,
     settingSources: [] as Array<'project' | 'user' | 'team' | 'mdm' | 'plugins' | 'all'>,
   };
@@ -544,11 +561,12 @@ async function getHandle(
   agent: db.AgentRow,
   apiKey: string,
   cwd: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  extraDirs: string[] = []
 ): Promise<CursorAgent> {
   // Every user message and routine is an independent bounded-context SDK agent.
   const oldAgentId = handles.get(agent.id)?.agentId;
-  dropAgentHandle(agent.id);
+  closeHandle(agent.id);
 
   const { Agent } = await loadCursorSdk();
   if (oldAgentId) {
@@ -567,7 +585,7 @@ async function getHandle(
   }
   const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
   const mcpServers = mcpServersForAgent(agent.config, cwd);
-  const local = localAgentOpts(cwd);
+  const local = localAgentOpts(cwd, extraDirs);
 
   const handle = (await Agent.create({
     apiKey,
@@ -585,7 +603,7 @@ async function getHandle(
 
 async function disposeFreshHandle(agentId: string, cwd: string): Promise<void> {
   const sdkAgentId = handles.get(agentId)?.agentId;
-  dropAgentHandle(agentId);
+  closeHandle(agentId);
   if (!sdkAgentId) return;
   try {
     const { Agent } = await loadCursorSdk();
@@ -598,6 +616,9 @@ async function disposeFreshHandle(agentId: string, cwd: string): Promise<void> {
 export async function registerAgentMcp(agentId: string): Promise<{ ok: boolean; error?: string; note?: string }> {
   const agent = db.getAgent(agentId);
   if (!agent) return { ok: false, error: 'Agent not found' };
+  if (isAgentBusy(agentId)) {
+    return { ok: true, note: 'Saved. The agent is busy, MCP attaches on its next run.' };
+  }
   dropAgentHandle(agentId);
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -667,6 +688,66 @@ export async function listModels(): Promise<CatalogModel[]> {
   }
 }
 
+/** Optional per-turn additions used by step workflows. Plain chat turns pass nothing. */
+export type TurnExtras = {
+  /** Extra MCP servers merged over global + agent MCP for this turn only. */
+  extraMcp?: McpServers;
+  /** Model, mode and effort override for this turn only. */
+  modelOverride?: { model?: string; modelMode?: string; effort?: string };
+  /** Replaces the default [Checklist tool] block. */
+  checklistBlock?: string;
+  /** Appended to the system prompt. */
+  extraSystem?: string;
+  /** Extra folders the SDK agent may read and write. */
+  extraDirs?: string[];
+  /** Merged into the assistant message meta (chat UI reads it). */
+  meta?: Record<string, unknown>;
+  /** Do not seed a todo list from numbered lines in the prompt. */
+  noTodoSeed?: boolean;
+  /** Skip the todo-based auto-continue loop. */
+  noAutoContinue?: boolean;
+  /** Ignore registered augmenters (a runner must not get owner tools). */
+  noAugment?: boolean;
+};
+
+type TurnAugmenter = (agent: db.AgentRow) => TurnExtras | null;
+let turnAugmenter: TurnAugmenter | null = null;
+
+/** Feature modules (workflows) register extras that apply to every turn of matching agents. */
+export function setTurnAugmenter(fn: TurnAugmenter | null): void {
+  turnAugmenter = fn;
+}
+
+function mergeExtras(a: TurnExtras | null | undefined, b: TurnExtras | null | undefined): TurnExtras | undefined {
+  if (!a && !b) return undefined;
+  if (!a) return b ?? undefined;
+  if (!b) return a;
+  return {
+    ...a,
+    ...b,
+    extraMcp: { ...(a.extraMcp || {}), ...(b.extraMcp || {}) },
+    extraSystem: [...new Set([a.extraSystem, b.extraSystem].filter(Boolean))].join('\n\n') || undefined,
+    extraDirs: [...(a.extraDirs || []), ...(b.extraDirs || [])],
+    meta: { ...(a.meta || {}), ...(b.meta || {}) },
+  };
+}
+
+function withExtras(agent: db.AgentRow, extras: TurnExtras | undefined): db.AgentRow {
+  if (!extras) return agent;
+  const config: Record<string, unknown> = { ...(agent.config || {}) };
+  const o = extras.modelOverride;
+  if (o?.modelMode) config.modelMode = o.modelMode;
+  if (o?.effort) config.effort = o.effort;
+  if (extras.extraMcp && Object.keys(extras.extraMcp).length) {
+    const own =
+      config.mcpServers && typeof config.mcpServers === 'object' && !Array.isArray(config.mcpServers)
+        ? (config.mcpServers as Record<string, unknown>)
+        : {};
+    config.mcpServers = { ...own, ...extras.extraMcp };
+  }
+  return { ...agent, model: o?.model || agent.model, config };
+}
+
 type TurnResult = {
   userMessageId: string;
   assistantMessageId: string;
@@ -690,18 +771,34 @@ async function runAgentTurnInner(opts: {
   attachments?: ChatAttachment[];
   seedTodos?: TodoItem[];
   deferNotify?: boolean;
+  extras?: TurnExtras;
 }): Promise<TurnResult> {
-  const agent = db.getAgent(opts.agentId);
-  if (!agent) throw new Error('Agent not found');
+  const baseAgent = db.getAgent(opts.agentId);
+  if (!baseAgent) throw new Error('Agent not found');
+  const extras = opts.extras?.noAugment ? opts.extras : mergeExtras(turnAugmenter?.(baseAgent), opts.extras);
+  const agent = withExtras(baseAgent, extras);
+  const extraDirs = extras?.extraDirs ?? [];
 
   const userMessageId = uuid();
   const assistantMessageId = uuid();
+
+  const imageUrls = new Map<ChatAttachment, string>();
+  for (const att of opts.attachments ?? []) {
+    const mime = (att.mimeType || '').toLowerCase();
+    if (!mime.startsWith('image/') || !att.dataBase64) continue;
+    try {
+      const saved = saveChatImage(path.join(db.agentWorkspacePath(opts.agentId), 'uploads'), att.name || 'image', mime, att.dataBase64);
+      if (saved.url) imageUrls.set(att, saved.url);
+    } catch (e) {
+      console.warn('[TecAdRiseBot] saving attached image failed, keeping it inline', e);
+    }
+  }
 
   db.addMessage({
     id: userMessageId,
     agentId: opts.agentId,
     role: opts.source === 'interbot' ? 'interbot' : 'user',
-    content: userVisibleContent(opts.userText, opts.attachments ?? []),
+    content: userVisibleContent(opts.userText, opts.attachments ?? [], imageUrls),
     meta: opts.source ? JSON.stringify({ source: opts.source }) : null,
   });
 
@@ -710,7 +807,7 @@ async function runAgentTurnInner(opts: {
     agentId: opts.agentId,
     role: 'assistant',
     content: '',
-    meta: null,
+    meta: extras?.meta && Object.keys(extras.meta).length ? JSON.stringify(extras.meta) : null,
   });
 
   const emit = (channel: string, payload: unknown) => {
@@ -721,7 +818,11 @@ async function runAgentTurnInner(opts: {
     agentId: opts.agentId,
     message: db.listMessages(opts.agentId).find((m) => m.id === userMessageId),
   });
-  emit('chat:stream-start', { agentId: opts.agentId, messageId: assistantMessageId });
+  emit('chat:stream-start', {
+    agentId: opts.agentId,
+    messageId: assistantMessageId,
+    meta: extras?.meta && Object.keys(extras.meta).length ? JSON.stringify(extras.meta) : null,
+  });
   claimed.add(opts.agentId);
   liveTurns.set(opts.agentId, { assistantMessageId, win: opts.win });
 
@@ -806,6 +907,7 @@ async function runAgentTurnInner(opts: {
 
   const hostSystemPrompt = [
       systemPrompt,
+      extras?.checklistBlock ||
       '[Checklist tool]\n' +
         'If you need a task list, call the todo tool already in this turn (TodoWrite or updateTodos). ' +
         'Pass { todos: [{ id, content, status }], merge }. merge: false replaces the list. merge: true updates matching ids and keeps the rest.\n' +
@@ -828,6 +930,7 @@ async function runAgentTurnInner(opts: {
       instructions
         ? '[Agent soul]' + '\n' + instructions + '\n[/Agent soul]'
         : '',
+      extras?.extraSystem || '',
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -850,7 +953,7 @@ async function runAgentTurnInner(opts: {
   let customSystemPrompt = true;
   let lastActivity = Date.now();
   try {
-    let handle = await getHandle(agent, apiKey, cwd, hostSystemPrompt);
+    let handle = await getHandle(agent, apiKey, cwd, hostSystemPrompt, extraDirs);
 
     const sendOnce = async (h: CursorAgent) => {
       let turnText = '';
@@ -926,7 +1029,7 @@ async function runAgentTurnInner(opts: {
           todos,
         });
       };
-      const seeded = opts.seedTodos?.length ? opts.seedTodos : parseNumberedTasks(opts.userText);
+      const seeded = opts.seedTodos?.length ? opts.seedTodos : extras?.noTodoSeed ? [] : parseNumberedTasks(opts.userText);
       if (seeded.length >= (opts.seedTodos?.length ? 1 : 2)) applyTodoCall({ todos: seeded, merge: false });
 
       const addImgs = (imgs: GenImage[]) => {
@@ -934,6 +1037,15 @@ async function runAgentTurnInner(opts: {
           const key = `${img.mimeType}:${img.dataBase64.length}:${img.dataBase64.slice(0, 48)}`;
           if (genImages.some((g) => `${g.mimeType}:${g.dataBase64.length}:${g.dataBase64.slice(0, 48)}` === key)) {
             continue;
+          }
+          if (!img.filePath) {
+            try {
+              const saved = saveChatImage(path.join(cwd, 'generated'), 'img', img.mimeType, img.dataBase64);
+              img.filePath = saved.filePath;
+              img.url = saved.url;
+            } catch (e) {
+              console.warn('[TecAdRiseBot] saving generated image failed, keeping it inline', e);
+            }
           }
           genImages.push(img);
         }
@@ -949,7 +1061,7 @@ async function runAgentTurnInner(opts: {
         if (usage) db.patchMessageMeta(assistantMessageId, { usage });
         db.updateAgent(opts.agentId, {
           lastSnippet: (packed.answer || assembled)
-            .replace(/!\[[^\]]*]\(data:[^)]+\)/g, '[image]')
+            .replace(/!\[[^\]]*]\((?:data|tecimg):[^)]+\)/g, '[image]')
             .slice(0, 120),
         });
         published = true;
@@ -1032,7 +1144,7 @@ async function runAgentTurnInner(opts: {
           ? { text: sdkPrompt, images: imageParts }
           : sdkPrompt,
         {
-          local: { ...localAgentOpts(cwd), force: true },
+          local: { ...localAgentOpts(cwd, extraDirs), force: true },
           model: modelSel,
           mcpServers: mcpServersForAgent(agent.config, cwd),
           onDelta: takeDelta,
@@ -1189,7 +1301,7 @@ async function runAgentTurnInner(opts: {
         console.warn('[TecAdRiseBot] custom system prompt unavailable, using bounded inline fallback');
         customSystemPrompt = false;
         systemPromptRejected = false;
-        handle = await getHandle(agent, apiKey, cwd);
+        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs);
         assembled = '';
         usage = null;
         alreadyPublished = await sendOnce(handle);
@@ -1197,7 +1309,7 @@ async function runAgentTurnInner(opts: {
       if (policyBlocked && !stopRequested.has(opts.agentId)) {
         console.warn('[TecAdRiseBot] policy block, retrying once with fresh SDK session', opts.agentId);
         await cancelActive(opts.agentId);
-        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs);
         assembled = '';
         usage = null;
         policyBlocked = false;
@@ -1228,7 +1340,7 @@ async function runAgentTurnInner(opts: {
       } else if (customSystemPrompt && isSystemPromptUnsupported(e)) {
         console.warn('[TecAdRiseBot] custom system prompt unavailable, using bounded inline fallback');
         customSystemPrompt = false;
-        handle = await getHandle(agent, apiKey, cwd);
+        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs);
         assembled = '';
         usage = null;
         systemPromptRejected = false;
@@ -1240,7 +1352,7 @@ async function runAgentTurnInner(opts: {
       } else if (isAnthropicPolicyError(e)) {
         console.warn('[TecAdRiseBot] thrown policy block, retrying once with fresh SDK session', opts.agentId);
         db.updateAgent(opts.agentId, { cursorAgentId: null });
-        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs);
         assembled = '';
         usage = null;
         policyBlocked = false;
@@ -1258,7 +1370,7 @@ async function runAgentTurnInner(opts: {
           await new Promise((r) => setTimeout(r, 2000));
         }
         await cancelActive(opts.agentId);
-        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs);
         assembled = '';
         usage = null;
         const alreadyPublished = await sendOnce(handle);
@@ -1348,19 +1460,21 @@ export async function runAgentTurn(opts: {
   win: BrowserWindow | null;
   source?: 'user' | 'routine' | 'interbot';
   attachments?: ChatAttachment[];
-}): Promise<{ userMessageId: string; assistantMessageId: string }> {
+  extras?: TurnExtras;
+}): Promise<{ userMessageId: string; assistantMessageId: string; stopped?: boolean; failed?: boolean }> {
   const first = (await enqueue(opts.agentId, () =>
     runAgentTurnInner({ ...opts, attachments: opts.attachments ?? [], deferNotify: true })
   )) as TurnResult;
   let last = first;
   for (let n = 1; n <= MAX_AUTO_CONTINUE; n++) {
+    if (opts.extras?.noAutoContinue) break;
     if (last.stopped || last.failed) break;
     const open = (last.todos || []).filter((t) => t.status === 'pending' || t.status === 'inProgress');
     if (!open.length) break;
     // Chat turns may leave user-action items open on purpose, so only retry them after a hang or an empty reply.
     const unattended = opts.source === 'routine';
     if (!unattended && !last.stalled && last.answer) break;
-    if (last.stalled) dropAgentHandle(opts.agentId);
+    if (last.stalled) closeHandle(opts.agentId);
     const cont = last;
     console.log('[TecAdRiseBot] auto-continue', n, opts.agentId, open.length, 'open');
     last = (await enqueue(opts.agentId, () =>
@@ -1372,6 +1486,7 @@ export async function runAgentTurn(opts: {
         attachments: [],
         seedTodos: cont.todos,
         deferNotify: true,
+        extras: opts.extras,
       })
     )) as TurnResult;
   }
@@ -1388,5 +1503,10 @@ export async function runAgentTurn(opts: {
     });
   }
   // Callers read the reply from the last turn, which holds the final answer and todo state.
-  return { userMessageId: first.userMessageId, assistantMessageId: last.assistantMessageId };
+  return {
+    userMessageId: first.userMessageId,
+    assistantMessageId: last.assistantMessageId,
+    stopped: last.stopped,
+    failed: last.failed,
+  };
 }

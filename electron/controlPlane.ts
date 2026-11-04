@@ -4,6 +4,7 @@ import * as db from './db';
 import * as secrets from './secrets';
 import { listModels as sdkListModels, runAgentTurn, isAgentBusy, cancelAgentRun, dropAgentHandle } from './agentRunner';
 import { formatModelLabel, cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
+import { startFromRoutine } from './workflows/service';
 
 export const DEFAULT_API_PORT = 8787;
 export const APP_NAME = 'TecAdRiseBot';
@@ -87,7 +88,7 @@ export function getCatalog() {
       method: 'POST',
       path: '/api/routines',
       summary: 'Create routine',
-      body: '{ agentId, name, cron, prompt, enabled? }',
+      body: '{ agentId, name, cron, prompt, enabled?, forceTodos?, workflowId? }',
     },
     { method: 'PATCH', path: '/api/routines/:id', summary: 'Update routine', body: 'partial' },
     { method: 'DELETE', path: '/api/routines/:id', summary: 'Delete routine' },
@@ -243,6 +244,7 @@ export function createRoutine(input: {
   prompt: string;
   enabled?: number;
   forceTodos?: number;
+  workflowId?: string;
 }) {
   if (!db.getAgent(input.agentId)) throw new Error('Agent not found');
   return db.createRoutine({
@@ -253,12 +255,13 @@ export function createRoutine(input: {
     prompt: input.prompt,
     enabled: input.enabled,
     forceTodos: input.forceTodos,
+    workflowId: input.workflowId,
   });
 }
 
 export function updateRoutine(
   id: string,
-  patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; forceTodos: number }>
+  patch: Partial<{ name: string; cron: string; prompt: string; enabled: number; forceTodos: number; workflowId: string | null }>
 ) {
   return db.updateRoutine(id, patch);
 }
@@ -272,6 +275,7 @@ export async function runRoutineNow(id: string) {
   const r = db.getRoutine(id);
   if (!r) throw new Error('Routine not found');
   db.updateRoutine(id, { lastRunAt: Date.now() });
+  if (r.workflowId) return startFromRoutine(r);
   return sendChat(r.agentId, db.formatRoutineUserText(r), {
     source: 'routine',
   });

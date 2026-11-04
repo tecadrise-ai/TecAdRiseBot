@@ -2,6 +2,7 @@ import http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import * as cp from './controlPlane';
+import * as workflows from './workflows/service';
 
 let server: http.Server | null = null;
 let boundPort = 0;
@@ -79,13 +80,111 @@ function match(
   return params;
 }
 
+/** Built-in MCP servers for step workflows (Streamable HTTP, JSON responses, no SSE). */
+async function handleMcpRoute(req: IncomingMessage, res: ServerResponse, method: string, path: string): Promise<void> {
+  const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
+  let route: workflows.McpRoute | null = null;
+  if (parts.length === 4 && parts[1] === 'run') route = { kind: 'run', runId: parts[2], token: parts[3] };
+  if (parts.length === 4 && parts[1] === 'owner') route = { kind: 'owner', agentId: parts[2], token: parts[3] };
+  if (!route) {
+    notFound(res);
+    return;
+  }
+  if (method === 'GET') {
+    res.writeHead(405, { Allow: 'POST, DELETE' });
+    res.end();
+    return;
+  }
+  if (method === 'DELETE') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+  if (method !== 'POST') {
+    res.writeHead(405, { Allow: 'POST, DELETE' });
+    res.end();
+    return;
+  }
+  const raw = await readBody(req);
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    send(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+    return;
+  }
+  const out = await workflows.handleMcp(route, body);
+  if (!out) {
+    notFound(res);
+    return;
+  }
+  if (!out.replies.length) {
+    res.writeHead(202);
+    res.end();
+    return;
+  }
+  const payload = JSON.stringify(Array.isArray(body) ? out.replies : out.replies[0]);
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(payload),
+    'Cache-Control': 'no-store',
+  });
+  res.end(payload);
+}
+
+const LOCAL_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+function isLocalHostHeader(value: string | undefined): boolean {
+  if (!value) return true;
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(`http://${value}`).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Agents and scripts call this API without an Origin header. Browsers always send one on cross-site
+ * requests, and a rebound DNS name shows up in Host, so both block web pages from driving the bot.
+ */
+function foreignRequestReason(req: IncomingMessage): string | null {
+  if (!isLocalHostHeader(req.headers.host)) return 'Host not allowed';
+  const origin = req.headers.origin;
+  if (origin !== undefined) {
+    let ok = false;
+    try {
+      ok = LOCAL_HOSTNAMES.has(new URL(origin).hostname);
+    } catch {
+      ok = false;
+    }
+    if (!ok) return 'Cross-origin requests are not allowed';
+  }
+  const site = req.headers['sec-fetch-site'];
+  if (site === 'cross-site' || site === 'same-site') return 'Cross-site requests are not allowed';
+  return null;
+}
+
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const host = req.headers.host || `127.0.0.1:${boundPort || cp.getApiPort()}`;
-  const url = new URL(req.url || '/', `http://${host}`);
   const method = (req.method || 'GET').toUpperCase();
+  let url: URL;
+  try {
+    const foreign = foreignRequestReason(req);
+    if (foreign) {
+      send(res, 403, { error: foreign });
+      return;
+    }
+    url = new URL(req.url || '/', `http://127.0.0.1:${boundPort || cp.getApiPort()}`);
+  } catch {
+    badRequest(res, 'Bad request');
+    return;
+  }
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
   try {
+    if (path.startsWith('/mcp/')) {
+      await handleMcpRoute(req, res, method, path);
+      return;
+    }
     if (method === 'GET' && (path === '/api' || path === '/')) {
       send(res, 200, cp.getCatalog());
       return;
@@ -307,6 +406,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
           enabled: typeof body.enabled === 'number' ? body.enabled : undefined,
           forceTodos:
             typeof body.forceTodos === 'number' ? body.forceTodos : body.forceTodos === true ? 1 : undefined,
+          workflowId: typeof body.workflowId === 'string' ? body.workflowId : undefined,
         });
         send(res, 201, { routine });
       } catch (e) {
@@ -327,6 +427,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         if (typeof body.forceTodos === 'number') patch.forceTodos = body.forceTodos;
         else if (body.forceTodos === true) patch.forceTodos = 1;
         else if (body.forceTodos === false) patch.forceTodos = 0;
+        if (typeof body.workflowId === 'string' || body.workflowId === null) {
+          patch.workflowId = (body.workflowId as string | null) || null;
+        }
         const routine = cp.updateRoutine(m.id, patch);
         if (!routine) {
           send(res, 404, { error: 'Routine not found' });
@@ -416,7 +519,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return;
     }
     console.error('httpApi error', e);
-    send(res, 500, { error: msg });
+    if (res.headersSent) res.end();
+    else send(res, 500, { error: msg });
   }
 }
 
@@ -433,7 +537,10 @@ export function startHttpApi(preferredPort?: number): Promise<HttpApiInfo> {
     cp.setApiPort(port);
 
     const s = http.createServer((req, res) => {
-      void handle(req, res);
+      handle(req, res).catch((e) => {
+        console.error('httpApi fatal', e);
+        res.destroy();
+      });
     });
 
     s.on('error', (err: NodeJS.ErrnoException) => {

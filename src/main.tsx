@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/global.css';
 
 const root = document.getElementById('root')!;
@@ -11,7 +12,9 @@ if (typeof window.tecapi === 'undefined') {
 } else {
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StrictMode>
   );
 }

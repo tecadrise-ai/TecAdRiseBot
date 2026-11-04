@@ -705,6 +705,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.composer-target button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .composer-target button.active {
   background: #fff;
   color: #1a1a1a;

@@ -380,13 +380,16 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
           disabled={busy && !targetOwner}
           onClick={() => fileRef.current?.click()}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="5" y="4" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="1.8" />
-            <rect x="9" y="2.5" width="6" height="3.5" rx="1" stroke="currentColor" strokeWidth="1.8" fill="var(--bg, #fff)" />
-            <path d="M9 11h6M9 15h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
-        {owners.length ? (
           <div className="composer-target" role="radiogroup" aria-label="Send to">
             <button
               type="button"
@@ -411,8 +414,18 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
                 {owners.length > 1 ? o.name : 'Owner'}
               </button>
             ))}
+            {owners.length === 0 ? (
+              <button
+                type="button"
+                role="radio"
+                aria-checked={false}
+                disabled
+                title="No workflow owner yet. Give this agent a routine in Step workflow mode, the owner of that workflow appears here."
+              >
+                Owner
+              </button>
+            ) : null}
           </div>
-        ) : null}
         <textarea
           ref={taRef}
           className="composer-input"

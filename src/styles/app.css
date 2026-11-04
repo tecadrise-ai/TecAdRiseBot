@@ -1685,7 +1685,7 @@
   font-size: 12px;
 }
 .wf-overrides-general {
-  grid-template-columns: 110px 1.4fr 1fr 1fr;
+  grid-template-columns: max-content repeat(3, minmax(0, 1fr));
   gap: 8px;
   font-size: 13px;
 }

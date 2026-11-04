@@ -1416,12 +1416,15 @@ async function runAgentTurnInner(opts: {
     if (text && text !== String(cur?.content || '').trim()) {
       db.updateMessageContent(assistantMessageId, text);
     }
+    const finishedAt = Date.now();
+    db.patchMessageMeta(assistantMessageId, { finishedAt });
     emit('chat:stream-done', {
       agentId: opts.agentId,
       messageId: assistantMessageId,
       content: text,
       usage,
       todos,
+      finishedAt,
     });
     if (!opts.deferNotify) {
       maybeNotifyChatDone({

@@ -207,10 +207,12 @@ export default function App() {
           content: string;
           usage?: unknown;
           todos?: TodoItem[];
+          finishedAt?: number;
         };
         if (p.agentId === selectedIdRef.current) {
           const extra: Record<string, unknown> = {};
           if (p.usage) extra.usage = p.usage;
+          if (p.finishedAt) extra.finishedAt = p.finishedAt;
           if (p.todos && p.todos.length) extra.todos = p.todos;
           setMessages((prev) =>
             prev.map((m) =>

@@ -110,7 +110,16 @@ function TodoList({ todos }: { todos: TodoItem[] }) {
 
 function assistantMetaLine(m: ChatMessage): string {
   const bits: string[] = [];
-  if (m.createdAt) bits.push(fmtTs(m.createdAt));
+  let meta: { role?: string; finishedAt?: number; workflow?: { role?: string } } = {};
+  try {
+    meta = m.meta ? JSON.parse(m.meta) || {} : {};
+  } catch {
+    /* ignore */
+  }
+  const wfRole = meta.workflow?.role;
+  const role = meta.role === 'owner' || (wfRole && wfRole !== 'runner') ? 'Owner' : 'Runner';
+  const ts = meta.finishedAt || m.createdAt;
+  if (ts) bits.push(`${role}: ${fmtTs(ts)}`);
   const u = fmtUsage(parseMessageUsage(m.meta));
   if (u) bits.push(u);
   return bits.join(' · ');

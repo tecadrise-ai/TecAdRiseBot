@@ -246,7 +246,7 @@ function registerIpc() {
         win: mainWindow,
         source: 'user',
         attachments: attachments ?? [],
-        ...(modelOverride ? { extras: { modelOverride } } : {}),
+        ...(modelOverride ? { extras: { modelOverride, meta: { role: 'owner' } } } : {}),
       });
     }
   );

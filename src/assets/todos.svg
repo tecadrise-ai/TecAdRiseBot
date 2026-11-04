@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" font-family="Inter, 'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <marker id="td-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#6b6b70" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <style>
+    .card { fill: #ffffff; stroke: #d9d9de; stroke-width: 1; }
+    .title { font-size: 16px; font-weight: 600; fill: #1a1a1a; }
+    .sub { font-size: 13px; fill: #6b6b70; }
+    .lane-t { font-size: 17px; font-weight: 600; }
+    .lane-d { font-size: 13px; fill: #4a4a50; }
+    .link { fill: none; stroke: #6b6b70; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .lbl { font-size: 13px; fill: #3a3a3f; }
+    .top { font-size: 15px; fill: #6b6b70; }
+    [data-tip] { cursor: help; }
+    [data-tip]:hover rect { stroke: #1d4ed8; stroke-width: 1.5; }
+  </style>
+
+  <rect width="1200" height="520" fill="#f6f6f7"/>
+  <text class="top" x="40" y="34">Tasks live in the routine Prompt. The agent turns that list into Cursor SDK todo tasks.</text>
+
+  <g data-tip="You write the tasks or steps in this agent's Routines tab, in the Prompt field. Task mode must be updateTodos. Numbered lines (1. 2. 3.) work best.">
+    <rect x="30" y="56" width="1140" height="120" rx="14" fill="#fdeadf"/>
+    <text class="lane-t" x="50" y="108" fill="#9a3412">Routine</text>
+    <text class="lane-d" x="50" y="130">Prompt holds the tasks</text>
+    <text class="lane-d" x="50" y="148">You write them here</text>
+  </g>
+  <g data-tip="The agent reads the routine Prompt, then must call the Cursor SDK todo tool (TodoWrite or updateTodos) to turn those steps into todo tasks. The app does not build the list for it.">
+    <rect x="30" y="196" width="1140" height="140" rx="14" fill="#ece9fb"/>
+    <text class="lane-t" x="50" y="256" fill="#4c3f91">Agent</text>
+    <text class="lane-d" x="50" y="278">Reads the Prompt list</text>
+    <text class="lane-d" x="50" y="296">Translates it to todos</text>
+  </g>
+  <g data-tip="The app shows the todo list under the chat bubble and starts extra turns while items are still open. Max 3 extra turns. No owner review. No hard checks.">
+    <rect x="30" y="356" width="1140" height="140" rx="14" fill="#e9ebef"/>
+    <text class="lane-t" x="50" y="416" fill="#2f3440">App</text>
+    <text class="lane-d" x="50" y="438">Shows Task list in chat</text>
+    <text class="lane-d" x="50" y="456">Auto-continues if open</text>
+  </g>
+
+  <path class="link" d="M330 148 V229" marker-end="url(#td-ah)"/>
+  <text class="lbl" x="340" y="194">translate</text>
+  <path class="link" d="M430 266 H466" marker-end="url(#td-ah)"/>
+  <path class="link" d="M670 266 H706" marker-end="url(#td-ah)"/>
+  <path class="link" d="M330 298 V389" marker-end="url(#td-ah)"/>
+  <path class="link" d="M430 426 H466" marker-end="url(#td-ah)"/>
+  <path class="link" d="M670 426 H706" marker-end="url(#td-ah)"/>
+  <path class="link" d="M570 394 V303" marker-end="url(#td-ah)"/>
+  <text class="lbl" x="580" y="352">still open: another turn</text>
+
+  <g data-tip="The task list is the routine Prompt: the steps you typed in Agent settings, Routines. That text is what the agent receives when the routine fires.">
+    <rect class="card" x="230" y="84" width="200" height="64" rx="12"/>
+    <text class="title" x="248" y="112">Routine Prompt</text><text class="sub" x="248" y="132">tasks / steps you wrote</text>
+  </g>
+  <g data-tip="The agent takes the Prompt list and calls TodoWrite or updateTodos with { todos: [{ id, content, status }], merge }. That is the translation from prompt steps into todo tasks.">
+    <rect class="card" x="230" y="234" width="200" height="64" rx="12"/>
+    <text class="title" x="248" y="262">updateTodos</text><text class="sub" x="248" y="282">Prompt list -&gt; todo tasks</text>
+  </g>
+  <g data-tip="Work the current inProgress item in the agent workspace. Only one inProgress at a time.">
+    <rect class="card" x="470" y="234" width="200" height="64" rx="12"/>
+    <text class="title" x="488" y="262">Work</text><text class="sub" x="488" y="282">one inProgress item</text>
+  </g>
+  <g data-tip="Call the todo tool again and set that item to completed or cancelled. Then pick the next pending item from the same list.">
+    <rect class="card" x="710" y="234" width="200" height="64" rx="12"/>
+    <text class="title" x="728" y="262">Mark done</text><text class="sub" x="728" y="282">completed or cancelled</text>
+  </g>
+  <g data-tip="The live Task list under the assistant bubble. This is the translated todo list, not the raw Prompt. Saved on the message.">
+    <rect class="card" x="230" y="394" width="200" height="64" rx="12"/>
+    <text class="title" x="248" y="422">Task list</text><text class="sub" x="248" y="442">under the chat bubble</text>
+  </g>
+  <g data-tip="If any item is still pending or inProgress when the turn ends, the app starts another turn with the same todo list. Max 3 extra turns. Step workflows turn this off.">
+    <rect class="card" x="470" y="394" width="200" height="64" rx="12"/>
+    <text class="title" x="488" y="422">Auto-continue</text><text class="sub" x="488" y="442">open items, max 3 extra</text>
+  </g>
+  <g data-tip="All todo tasks completed or cancelled, or the extra-turn limit is reached. No owner, no hard checks.">
+    <rect class="card" x="710" y="394" width="200" height="64" rx="12"/>
+    <text class="title" x="728" y="422">Done</text><text class="sub" x="728" y="442">or extra-turn limit</text>
+  </g>
+</svg>

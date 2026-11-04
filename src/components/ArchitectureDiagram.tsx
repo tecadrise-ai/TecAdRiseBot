@@ -113,7 +113,7 @@ export function ArchitectureDiagram({
       />
       {tip ? (
         <div
-          className={`arch-tip ${tip.x > (boxRef.current?.clientWidth ?? 0) / 2 ? 'left' : ''}`}
+          className={`arch-tip ${tip.x > (boxRef.current?.clientWidth ?? 0) / 2 ? 'left' : ''} ${tip.y > (boxRef.current?.clientHeight ?? 0) * 0.55 ? 'up' : ''}`}
           style={{ left: tip.x, top: tip.y }}
         >
           {tip.text}

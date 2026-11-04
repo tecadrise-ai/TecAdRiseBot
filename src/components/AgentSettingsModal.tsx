@@ -23,16 +23,19 @@ import {
   type ModelMode,
 } from '../lib/modelOptions';
 
+type SettingsTab = 'general' | 'routines' | 'workflows' | 'mcp';
+
 type Props = {
   open: boolean;
   agent: Agent | null;
+  initialTab?: SettingsTab;
   onClose: () => void;
   onSaved: () => void;
   onSessionCleared?: (agentId: string) => void;
 };
 
-export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCleared }: Props) {
-  const [tab, setTab] = useState<'general' | 'routines' | 'workflows' | 'mcp'>('general');
+export function AgentSettingsModal({ open, agent, initialTab = 'general', onClose, onSaved, onSessionCleared }: Props) {
+  const [tab, setTab] = useState<SettingsTab>('general');
   const [name, setName] = useState('');
   const [color, setColor] = useState('#4C78FF');
   const [toastEnabled, setToastEnabled] = useState(true);
@@ -92,7 +95,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
 
   useEffect(() => {
     if (!open || !agent) return;
-    setTab('general');
+    setTab(initialTab);
     setName(agent.name);
     setColor(agent.color);
     setToastEnabled(readToastEnabled(agent.config));
@@ -119,7 +122,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setEditingId(null);
     void window.tecapi.models.list().then(setModels).catch(() => setModels([]));
     void refreshRoutines();
-  }, [open, agent?.id]);
+  }, [open, agent?.id, initialTab]);
 
   if (!open || !agent) return null;
 

@@ -1785,6 +1785,14 @@
   transform: translateX(-100%);
   margin: 14px 0 0 -14px;
 }
+.arch-tip.up {
+  margin-top: -8px;
+  transform: translateY(-100%);
+}
+.arch-tip.left.up {
+  margin: -8px 0 0 -14px;
+  transform: translate(-100%, -100%);
+}
 .arch-help {
   position: absolute;
   right: 10px;
@@ -1800,6 +1808,9 @@
 }
 .arch-doc {
   margin-top: 12px;
+}
+.arch-end-space {
+  height: 160px;
 }
 .arch-sub {
   margin: 24px 0 0;

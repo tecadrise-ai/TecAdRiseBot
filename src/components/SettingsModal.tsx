@@ -4,6 +4,7 @@ import { ModalBackdrop } from './ModalBackdrop';
 import { ArchitectureDiagram } from './ArchitectureDiagram';
 import { MarkdownBody } from './MarkdownBody';
 import workflowsSvg from '../assets/workflows.svg?raw';
+import todosSvg from '../assets/todos.svg?raw';
 import { EMPTY_MCP_JSON } from '../lib/mcpConfig';
 import { fmtTok } from '../lib/usage';
 
@@ -601,13 +602,21 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                 ) : (
                   <>
                     <ArchitectureDiagram onOpenDoc={openArchDoc} />
-                    <h3 className="arch-sub">Workflows</h3>
+                    <h3 className="arch-sub">Step Workflows</h3>
                     <ArchitectureDiagram
                       svg={workflowsSvg}
                       width={1200}
                       height={600}
                       label="How step workflows work: runner, app checks, owner review and fix"
                     />
+                    <h3 className="arch-sub">updateTodos Workflows</h3>
+                    <ArchitectureDiagram
+                      svg={todosSvg}
+                      width={1200}
+                      height={520}
+                      label="How updateTodos workflows work: routine Prompt list, agent translates to todos, auto-continue"
+                    />
+                    <div className="arch-end-space" />
                   </>
                 )}
               </section>

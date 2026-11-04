@@ -310,7 +310,11 @@ export default function App() {
     await window.tecapi.chat.stop(selectedId);
   }, [selectedId]);
 
-  const openAgentSettings = useCallback(() => setAgentSettingsOpen(true), []);
+  const [agentSettingsTab, setAgentSettingsTab] = useState<'general' | 'routines' | 'workflows' | 'mcp'>('general');
+  const openAgentSettings = useCallback((tab: 'general' | 'routines' | 'workflows' | 'mcp' = 'general') => {
+    setAgentSettingsTab(tab);
+    setAgentSettingsOpen(true);
+  }, []);
 
   const needWorkflowRun = useCallback((runId: string) => {
     if (wfRequested.current.has(runId)) return;
@@ -387,7 +391,11 @@ export default function App() {
       <AgentSettingsModal
         open={agentSettingsOpen}
         agent={selected}
-        onClose={() => setAgentSettingsOpen(false)}
+        initialTab={agentSettingsTab}
+        onClose={() => {
+          setAgentSettingsOpen(false);
+          setAgentSettingsTab('general');
+        }}
         onSaved={() => {
           void refreshAgents();
           void refreshLeds();

@@ -27,7 +27,7 @@ type Props = {
   onNeedWorkflowRun?: (runId: string) => void;
   onSend: (text: string, attachments: PendingAttachment[], role?: ChatRole) => Promise<void>;
   onStop: () => void | Promise<void>;
-  onOpenAgentSettings: () => void;
+  onOpenAgentSettings: (tab?: 'routines' | 'workflows') => void;
   onRename?: (name: string) => Promise<void>;
   ownerAgent?: Agent | null;
 };
@@ -543,6 +543,42 @@ export function ChatView({
           <button
             type="button"
             className="icon-btn"
+            onClick={() => onOpenAgentSettings('workflows')}
+            title="Workflows"
+            aria-label="Workflows"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.8" />
+              <path
+                d="M7 9h6M7 12h10M7 15h8"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <path
+                d="M16 8l1.5 1.5 3-3.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => onOpenAgentSettings('routines')}
+            title="Routines"
+            aria-label="Routines"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M12 8v4.2L15 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
             onClick={() => void window.tecapi.agents.openWorkspace(agent.id)}
             title="Open agent workspace"
             aria-label="Open agent workspace"
@@ -559,7 +595,7 @@ export function ChatView({
           <button
             type="button"
             className="icon-btn"
-            onClick={onOpenAgentSettings}
+            onClick={() => onOpenAgentSettings()}
             title="Agent settings"
             aria-label="Agent settings"
           >
@@ -665,7 +701,7 @@ export function ChatView({
         busy={busy}
         role={effectiveRole}
         onRole={setRole}
-        onPickOwner={onOpenAgentSettings}
+        onPickOwner={() => onOpenAgentSettings()}
         onSend={onSend}
         onStop={onStop}
       />

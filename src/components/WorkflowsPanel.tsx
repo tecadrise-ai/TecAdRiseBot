@@ -106,7 +106,7 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
       <div className="hint" style={{ margin: 0 }}>
         Workflows defined by {agent.name}. A Runner agent runs a workflow from its Routines tab (Task mode Step
         workflow) and only ever sees its current step. The Runner&apos;s Owner agent, set in the Runner&apos;s General
-        tab, reviews and fixes the steps but never runs workflows.
+        tab, reviews and fixes the steps but never runs workflows. See Settings/Architecture for more info.
       </div>
 
       {(

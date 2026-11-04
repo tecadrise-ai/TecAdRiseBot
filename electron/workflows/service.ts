@@ -15,7 +15,8 @@ import {
 } from './prompts';
 import * as engine from '../../src/lib/workflow/engine';
 import { handleMcpMessage, MAP, S, STR, type JsonRpcMessage, type JsonRpcReply, type McpTool } from '../../src/lib/workflow/mcpProtocol';
-import type { Workflow, WorkflowRun } from '../../src/lib/workflow/types';
+import type { RoleOverride, Workflow, WorkflowRun } from '../../src/lib/workflow/types';
+import { normalizeSettings } from '../../src/lib/workflow/definition';
 import { isRunActive } from '../../src/lib/workflow/types';
 import { isAgentBusy, runAgentTurn, setTurnAugmenter, type TurnExtras } from '../agentRunner';
 
@@ -586,6 +587,13 @@ function dispatch(run: WorkflowRun): void {
   }
 }
 
+/** The runner agent's optional owner settings (General tab) win over the workflow's owner settings. */
+function ownerOverride(run: WorkflowRun, wf: Workflow | null): RoleOverride | undefined {
+  const fromRunner = normalizeSettings({ owner: db.getAgent(run.runnerAgentId)?.config?.workflowOwnerOverride }).owner;
+  const base = wf?.settings.owner;
+  return base || fromRunner ? { ...base, ...fromRunner } : undefined;
+}
+
 async function runTurn(run: WorkflowRun, role: 'runner' | 'review' | 'fix', wf: Workflow | null): Promise<void> {
   const agentId = role === 'runner' ? run.runnerAgentId : run.ownerAgentId;
   const before = fingerprint(run);
@@ -612,7 +620,7 @@ async function runTurn(run: WorkflowRun, role: 'runner' | 'review' | 'fix', wf: 
     userText = role === 'review' ? ownerReviewPrompt(run, runnerName, runnerWs) : ownerFixPrompt(run, runnerName, runnerWs);
     extras = {
       ...ownerExtras(run.ownerAgentId),
-      modelOverride: wf?.settings.owner,
+      modelOverride: ownerOverride(run, wf),
       extraDirs: [runnerWs],
       meta: { workflow: { runId: run.id, role } },
       noTodoSeed: true,

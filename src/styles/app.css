@@ -1684,6 +1684,14 @@
   align-items: center;
   font-size: 12px;
 }
+.wf-overrides-general {
+  grid-template-columns: 110px 1.4fr 1fr 1fr;
+  gap: 8px;
+  font-size: 13px;
+}
+.wf-overrides-general select {
+  padding: 8px 10px;
+}
 .wf-overrides select,
 .wf-overrides input {
   border: 1px solid var(--border-strong);

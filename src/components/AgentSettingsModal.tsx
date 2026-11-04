@@ -3,6 +3,8 @@ import type { Agent, Routine, Workflow } from '../types';
 import { ModalBackdrop } from './ModalBackdrop';
 import { TaskModeFields, type TaskMode } from './TaskModeFields';
 import { WorkflowsPanel } from './WorkflowsPanel';
+import type { RoleOverride } from '../lib/workflow/types';
+import { normalizeSettings } from '../lib/workflow/definition';
 import { ScheduleBuilder } from './ScheduleBuilder';
 import { AGENT_BADGE_COLORS } from '../lib/agentColors';
 import { DEFAULT_SCHEDULE, decodeSchedule, describeSchedule, encodeSchedule, type ScheduleDraft } from '../lib/schedule';
@@ -37,6 +39,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
   const [model, setModel] = useState('');
   const [modelMode, setModelMode] = useState<ModelMode>('usual');
   const [effort, setEffort] = useState('medium');
+  const [ownerOv, setOwnerOv] = useState<RoleOverride>({});
   const [lastMessages, setLastMessages] = useState(DEFAULT_LAST_MESSAGES);
   const [soul, setSoul] = useState('');
   const [mcpJson, setMcpJson] = useState('{\n}\n');
@@ -94,6 +97,7 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
     setModel(baseModelId(agent.model));
     setModelMode(readModelMode(agent.config, agent.model));
     setEffort(readEffort(agent.config));
+    setOwnerOv(normalizeSettings({ owner: agent.config?.workflowOwnerOverride }).owner ?? {});
     setLastMessages(readLastMessages(agent.config));
     setSoul(resolveAgentSoul(agent.instructions));
     setMcpJson(mcpJsonFromConfig(agent.config));
@@ -112,18 +116,42 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
 
   if (!open || !agent) return null;
 
+  const ownerEfforts = effortParam(models.find((m) => m.id === ownerOv.model)).values;
+
+  function setOwnerField(key: keyof RoleOverride, value: string) {
+    setOwnerOv((prev) => {
+      const next: RoleOverride = { ...prev };
+      if (value) next[key] = value;
+      else delete next[key];
+      if (key === 'model') delete next.effort;
+      return next;
+    });
+  }
+
   async function saveGeneral() {
     setSaving(true);
     setStatus('');
     try {
-      const { resumeSession: _oldResume, promptProtocolVersion: _oldProtocol, ...keptConfig } =
-        agent!.config || {};
+      const {
+        resumeSession: _oldResume,
+        promptProtocolVersion: _oldProtocol,
+        workflowOwnerOverride: _oldOwner,
+        ...keptConfig
+      } = agent!.config || {};
+      const ownerOverride = normalizeSettings({ owner: ownerOv }).owner;
       await window.tecapi.agents.update(agent!.id, {
         name: name.trim() || agent!.name,
         model: baseModelId(model.trim() || agent!.model),
         color,
         instructions: soul.trim() ? soul : null,
-        config: { ...keptConfig, modelMode, effort, lastMessages, toastEnabled },
+        config: {
+          ...keptConfig,
+          modelMode,
+          effort,
+          lastMessages,
+          toastEnabled,
+          ...(ownerOverride ? { workflowOwnerOverride: ownerOverride } : {}),
+        },
       });
       setStatus('Saved.');
       onSaved();
@@ -309,52 +337,72 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   </label>
                 </div>
               </div>
-              <label className="field">
-                <span>Model</span>
-                <select value={model} onChange={(e) => setModel(e.target.value)}>
-                  {dropdownModels(models).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.displayName || m.id}
-                    </option>
-                  ))}
-                  {!dropdownModels(models).find((m) => m.id === model) && model ? (
-                    <option value={model}>{model}</option>
-                  ) : null}
-                </select>
-              </label>
               <div className="field">
-                <span>Mode</span>
-                <div className="seg-row">
-                  <button
-                    type="button"
-                    className={`seg${modelMode === 'usual' ? ' active' : ''}`}
-                    onClick={() => setModelMode('usual')}
-                  >
-                    Usual
-                  </button>
-                  <button
-                    type="button"
-                    className={`seg${modelMode === 'fast' ? ' active' : ''}`}
-                    onClick={() => setModelMode('fast')}
-                  >
-                    Fast
-                  </button>
+                <span>Model, mode and effort</span>
+                <div className="wf-overrides wf-overrides-general">
+                  <span>Runner</span>
+                  <select value={model} onChange={(e) => setModel(e.target.value)}>
+                    {dropdownModels(models).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.displayName || m.id}
+                      </option>
+                    ))}
+                    {!dropdownModels(models).find((m) => m.id === model) && model ? (
+                      <option value={model}>{model}</option>
+                    ) : null}
+                  </select>
+                  <select value={modelMode} onChange={(e) => setModelMode(e.target.value as ModelMode)}>
+                    <option value="usual">Usual</option>
+                    <option value="fast">Fast</option>
+                  </select>
+                  <select value={effort} onChange={(e) => setEffort(e.target.value)}>
+                    {effortParam(models.find((m) => m.id === model)).values.map((v) => (
+                      <option key={v.value} value={v.value}>
+                        {v.displayName || v.value}
+                      </option>
+                    ))}
+                    {!effortParam(models.find((m) => m.id === model)).values.some((v) => v.value === effort) ? (
+                      <option value={effort}>{effort}</option>
+                    ) : null}
+                  </select>
+
+                  <span>
+                    Owner <span className="muted">(optional)</span>
+                  </span>
+                  <select value={ownerOv.model || ''} onChange={(e) => setOwnerField('model', e.target.value)}>
+                    <option value="">Owner agent default</option>
+                    {dropdownModels(models).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.displayName || m.id}
+                      </option>
+                    ))}
+                    {ownerOv.model && !dropdownModels(models).some((m) => m.id === ownerOv.model) ? (
+                      <option value={ownerOv.model}>{ownerOv.model}</option>
+                    ) : null}
+                  </select>
+                  <select value={ownerOv.modelMode || ''} onChange={(e) => setOwnerField('modelMode', e.target.value)}>
+                    <option value="">Owner agent default</option>
+                    <option value="usual">Usual</option>
+                    <option value="fast">Fast</option>
+                  </select>
+                  <select value={ownerOv.effort || ''} onChange={(e) => setOwnerField('effort', e.target.value)}>
+                    <option value="">Owner agent default</option>
+                    {ownerEfforts.map((v) => (
+                      <option key={v.value} value={v.value}>
+                        {v.displayName || v.value}
+                      </option>
+                    ))}
+                    {ownerOv.effort && !ownerEfforts.some((v) => v.value === ownerOv.effort) ? (
+                      <option value={ownerOv.effort}>{ownerOv.effort}</option>
+                    ) : null}
+                  </select>
                 </div>
+                <span className="hint">
+                  Runner is this agent, used for chats, routines and workflow steps. Owner applies only when this agent
+                  runs a Step workflow: the workflow owner agent reviews and fixes steps with these settings. Default
+                  is usual + medium. Fast, high, and max cost more.
+                </span>
               </div>
-              <label className="field">
-                <span>Effort</span>
-                <select value={effort} onChange={(e) => setEffort(e.target.value)}>
-                  {effortParam(models.find((m) => m.id === model)).values.map((v) => (
-                    <option key={v.value} value={v.value}>
-                      {v.displayName || v.value}
-                    </option>
-                  ))}
-                  {!effortParam(models.find((m) => m.id === model)).values.some((v) => v.value === effort) ? (
-                    <option value={effort}>{effort}</option>
-                  ) : null}
-                </select>
-                <span className="hint">Default is usual + medium. Fast, high, and max cost more.</span>
-              </label>
               <label className="field">
                 <span>Last messages</span>
                 <input

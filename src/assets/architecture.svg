@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" font-family="Inter, 'Segoe UI', system-ui, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" font-family="Inter, 'Segoe UI', system-ui, sans-serif">
   <style>
     .card { fill: #ffffff; stroke: #e3e3e6; stroke-width: 1; }
     .title { font-size: 17px; font-weight: 600; fill: #1a1a1a; }
@@ -17,7 +17,7 @@
     [data-tip]:hover rect { stroke: #1d4ed8; stroke-width: 1.5; }
   </style>
 
-  <rect width="1200" height="630" fill="#f6f6f7"/>
+  <rect width="1200" height="680" fill="#f6f6f7"/>
 
   <g transform="translate(40 28)">
     <rect x="0" y="-11" width="12" height="12" rx="3" fill="#3b6fe0"/><text class="legend" x="20" y="0">App-wide</text>
@@ -42,7 +42,7 @@
   <path class="arrow" d="M348 342 H392 M384 334 L393 342 L384 350"/>
 
   <text class="col" x="600" y="72">Gets every turn ~3.8k tokens + message</text>
-  <rect x="410" y="85" width="380" height="520" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.6"/>
+  <rect x="410" y="85" width="380" height="566" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.6"/>
   <g data-tip="One agent runs one turn at a time. Each agent has its own chat, settings, Soul, routines and workspace.">
     <rect x="420" y="95" width="200" height="30" fill="transparent"/>
     <text x="426" y="117" class="title">Agent <tspan class="sub" font-weight="400">one turn at a time</tspan></text>
@@ -69,22 +69,25 @@
     <g data-tip="This agent's sticky rules. Agent settings, General, Soul. The agent may update it itself. Tokens depend on its length.">
       <rect x="426" y="363" width="348" height="38" rx="8"/><text class="lname" x="440" y="387">Soul</text><text class="ldesc" x="760" y="387">sticky rules · ~100 tok</text>
     </g>
-    <g data-tip="Model, mode and effort from Agent settings, General. MCP servers: common MCP from Settings plus this agent's own MCP JSON. Tokens are for the [This turn] block. MCP tool definitions are not counted.">
-      <rect x="426" y="409" width="348" height="38" rx="8"/><text class="lname" x="440" y="433">Model, MCP</text><text class="ldesc" x="760" y="433">turn info · ~120 tok</text>
+    <g data-tip="Model, mode and effort from Agent settings, General, plus the [This turn] block: agent name, workspace path, model.">
+      <rect x="426" y="409" width="348" height="38" rx="8"/><text class="lname" x="440" y="433">Model</text><text class="ldesc" x="760" y="433">turn info · ~120 tok</text>
+    </g>
+    <g data-tip="Global MCP: servers every agent gets (Settings, MCP), ships with Playwright and AgentMail. Agent MCP: this agent's own MCP JSON (Agent settings, MCP), merged on top. Workflow turns also add the workflow MCP tools. Tool definitions cost extra tokens, not counted here.">
+      <rect x="426" y="455" width="348" height="38" rx="8"/><text class="lname" x="440" y="479">Global/Agent MCP</text><text class="ldesc" x="760" y="479">servers · tools</text>
     </g>
   </g>
   <g class="orange">
     <g data-tip="The last N visible messages of this chat. Agent settings, General, Last messages (default 5). Tokens depend on message length.">
-      <rect x="426" y="455" width="348" height="38" rx="8"/><text class="lname" x="440" y="479">Recent chat</text><text class="ldesc" x="760" y="479">last N · ~1k tok</text>
+      <rect x="426" y="501" width="348" height="38" rx="8"/><text class="lname" x="440" y="525">Recent chat</text><text class="ldesc" x="760" y="525">last N · ~1k tok</text>
     </g>
     <g data-tip="The message that started this turn, attached files, and in workflow turns the step rules for the current step.">
-      <rect x="426" y="501" width="348" height="38" rx="8"/><text class="lname" x="440" y="525">Message</text><text class="ldesc" x="760" y="525">varies</text>
+      <rect x="426" y="547" width="348" height="38" rx="8"/><text class="lname" x="440" y="571">Message</text><text class="ldesc" x="760" y="571">varies</text>
     </g>
   </g>
-  <line x1="426" y1="557" x2="774" y2="557" stroke="#e3e3e6"/>
+  <line x1="426" y1="603" x2="774" y2="603" stroke="#e3e3e6"/>
   <g data-tip="Every turn runs through the Cursor TypeScript SDK on this PC, with the agent workspace as working folder.">
-    <rect x="420" y="565" width="200" height="28" fill="transparent"/>
-    <text class="sub" x="426" y="584">Cursor SDK on this PC</text>
+    <rect x="420" y="611" width="200" height="28" fill="transparent"/>
+    <text class="sub" x="426" y="630">Cursor SDK on this PC</text>
   </g>
 
   <path class="arrow" d="M808 342 H852 M844 334 L853 342 L844 350"/>

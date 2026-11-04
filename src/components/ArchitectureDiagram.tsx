@@ -20,7 +20,7 @@ type Props = {
 export function ArchitectureDiagram({
   svg = architectureSvg,
   width: W = 1200,
-  height: H = 630,
+  height: H = 680,
   label = 'How agents work: what starts a turn, what the agent gets every turn, and where it works',
   onOpenDoc,
 }: Props) {

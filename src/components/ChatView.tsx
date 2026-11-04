@@ -148,22 +148,64 @@ type ComposerProps = {
   agentId: string;
   agentName: string;
   busy: boolean;
-  onSend: (text: string, attachments: PendingAttachment[]) => Promise<void>;
+  onSend: (text: string, attachments: PendingAttachment[], targetAgentId?: string) => Promise<void>;
   onStop: () => void | Promise<void>;
 };
+
+type OwnerTarget = { id: string; name: string };
+
+/** Owner agents of the workflows this agent runs (routines in Step workflow mode and recent runs). */
+async function loadOwnerTargets(agentId: string): Promise<OwnerTarget[]> {
+  const [routines, workflows, runs, agents] = await Promise.all([
+    window.tecapi.routines.list(),
+    window.tecapi.workflows.list(),
+    window.tecapi.workflows.runs({ agentId, limit: 20 }),
+    window.tecapi.agents.list(),
+  ]);
+  const ids = new Set<string>();
+  for (const r of routines) {
+    if (r.agentId !== agentId || !r.workflowId) continue;
+    const wf = workflows.find((w) => w.id === r.workflowId);
+    if (wf) ids.add(wf.ownerAgentId);
+  }
+  for (const run of runs) if (run.runnerAgentId === agentId) ids.add(run.ownerAgentId);
+  ids.delete(agentId);
+  return agents.filter((a) => ids.has(a.id)).map((a) => ({ id: a.id, name: a.name }));
+}
 
 const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onStop }: ComposerProps) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [sendError, setSendError] = useState('');
+  const [sendNote, setSendNote] = useState('');
+  const [owners, setOwners] = useState<OwnerTarget[]>([]);
+  /** Empty means the runner, this agent. */
+  const [target, setTarget] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setOwners([]);
+    setTarget('');
+    loadOwnerTargets(agentId)
+      .then((list) => {
+        if (alive) setOwners(list);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [agentId]);
+
+  const targetOwner = owners.find((o) => o.id === target) ?? null;
 
   useEffect(() => {
     setDraft('');
     setPending([]);
     setSendError('');
+    setSendNote('');
     const el = taRef.current;
     if (el) {
       el.style.height = 'auto';
@@ -195,13 +237,15 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
     const text = draft.trim();
     if ((!text && pending.length === 0) || sending) return;
     const attachments = pending;
-    const mustStop = busy;
+    const owner = targetOwner;
+    const mustStop = busy && !owner;
     setDraft('');
     setPending([]);
     const el = taRef.current;
     if (el) el.style.height = 'auto';
     setSending(true);
     setSendError('');
+    setSendNote('');
     const restore = (e: unknown) => {
       setSendError(`Message not sent: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': /, '') : String(e)}`);
       setDraft((cur) => cur || text);
@@ -209,7 +253,12 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
     };
     try {
       if (mustStop) await onStop();
-      onSend(text, attachments).catch(restore);
+      if (owner) {
+        setSendNote(`Sent to owner ${owner.name}. The reply appears in its chat.`);
+        onSend(`[Message from the chat of runner agent ${agentName}]\n\n${text}`, attachments, owner.id).catch(restore);
+      } else {
+        onSend(text, attachments).catch(restore);
+      }
     } catch (e) {
       restore(e);
     } finally {
@@ -221,6 +270,7 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
   return (
     <div className="composer-wrap">
       {sendError ? <div className="composer-error">{sendError}</div> : null}
+      {!sendError && sendNote ? <div className="composer-note">{sendNote}</div> : null}
       {pending.length > 0 && (
         <div className="attach-chips" aria-label="Pending attachments">
           {pending.map((p) => (
@@ -261,15 +311,47 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
           type="button"
           className="composer-icon"
           title="Attach file"
-          disabled={busy}
+          aria-label="Attach file"
+          disabled={busy && !targetOwner}
           onClick={() => fileRef.current?.click()}
         >
-          +
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="5" y="4" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="1.8" />
+            <rect x="9" y="2.5" width="6" height="3.5" rx="1" stroke="currentColor" strokeWidth="1.8" fill="var(--bg, #fff)" />
+            <path d="M9 11h6M9 15h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
         </button>
+        {owners.length ? (
+          <div className="composer-target" role="radiogroup" aria-label="Send to">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!targetOwner}
+              className={!targetOwner ? 'active' : ''}
+              title={`Send to runner ${agentName}`}
+              onClick={() => setTarget('')}
+            >
+              Runner
+            </button>
+            {owners.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                role="radio"
+                aria-checked={target === o.id}
+                className={target === o.id ? 'active' : ''}
+                title={`Send to workflow owner ${o.name}`}
+                onClick={() => setTarget(o.id)}
+              >
+                {owners.length > 1 ? o.name : 'Owner'}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <textarea
           ref={taRef}
           className="composer-input"
-          placeholder={`Message ${agentName}`}
+          placeholder={targetOwner ? `Message owner ${targetOwner.name}` : `Message ${agentName}`}
           value={draft}
           rows={1}
           onChange={(e) => {

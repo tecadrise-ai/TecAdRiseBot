@@ -260,11 +260,12 @@ export default function App() {
 
   const send = useCallback(async (
     text: string,
-    attachments: Array<{ name: string; mimeType: string; dataBase64: string }> = []
+    attachments: Array<{ name: string; mimeType: string; dataBase64: string }> = [],
+    targetAgentId?: string
   ) => {
     if (!selectedId) return;
     await window.tecapi.chat.send(
-      selectedId,
+      targetAgentId || selectedId,
       text,
       attachments.map(({ name, mimeType, dataBase64 }) => ({ name, mimeType, dataBase64 }))
     );

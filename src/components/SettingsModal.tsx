@@ -118,7 +118,19 @@ type Props = {
 
 export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('general');
-  const [archDoc, setArchDoc] = useState<string | null>(null);
+  const [archDoc, setArchDoc] = useState<{ name: string; text: string } | null>(null);
+
+  function openArchDoc(name: string) {
+    const read =
+      name === 'SYSTEM.md'
+        ? window.tecapi.settings.getSystemPrompt()
+        : name === 'MEMORY.md'
+          ? window.tecapi.settings.getSystemMemory()
+          : window.tecapi.app.readArchitecture();
+    read
+      .then((t) => setArchDoc({ name, text: t || `${name} is empty.` }))
+      .catch((err) => setArchDoc({ name, text: `Could not read ${name}: ${String(err)}` }));
+  }
   const [apiKey, setApiKey] = useState('');
   const [accountName, setAccountName] = useState(settings?.accountName ?? '');
   const [models, setModels] = useState<{ id: string; displayName: string }[]>([]);
@@ -577,24 +589,18 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                     className="arch-title-link"
                     onClick={(e) => {
                       e.preventDefault();
-                      if (archDoc !== null) {
-                        setArchDoc(null);
-                        return;
-                      }
-                      window.tecapi.app
-                        .readArchitecture()
-                        .then((t) => setArchDoc(t || 'ARCHITECTURE.md not found.'))
-                        .catch((err) => setArchDoc(`Could not read ARCHITECTURE.md: ${String(err)}`));
+                      if (archDoc !== null) setArchDoc(null);
+                      else openArchDoc('ARCHITECTURE.md');
                     }}
                   >
-                    {archDoc !== null ? 'Back to diagram' : 'See ARCHITECTURE.md'}
+                    {archDoc !== null ? `Back to diagram (${archDoc.name})` : 'See ARCHITECTURE.md'}
                   </a>
                 </h2>
                 {archDoc !== null ? (
-                  <MarkdownBody className="arch-doc" text={archDoc} />
+                  <MarkdownBody className="arch-doc" text={archDoc.text} />
                 ) : (
                   <>
-                    <ArchitectureDiagram />
+                    <ArchitectureDiagram onOpenDoc={openArchDoc} />
                     <h3 className="arch-sub">Workflows</h3>
                     <ArchitectureDiagram
                       svg={workflowsSvg}

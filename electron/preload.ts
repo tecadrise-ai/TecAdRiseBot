@@ -183,7 +183,8 @@ const api = {
   },
   app: {
     openPath: (p: string) => ipcRenderer.invoke('app:openPath', p),
-    readArchitecture: (): Promise<string> => ipcRenderer.invoke('app:readArchitecture'),    openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+    readArchitecture: (): Promise<string> => ipcRenderer.invoke('app:readArchitecture'),
+    openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   },
   on: (channel: string, listener: (...args: unknown[]) => void) => {
     const allowed = [

@@ -12,6 +12,8 @@
     .orange rect { fill: #fbdccc; } .orange text { fill: #9a3412; }
     .legend { font-size: 14px; fill: #3a3a3f; }
     [data-tip] { cursor: help; }
+    [data-doc] { cursor: pointer; }
+    [data-doc]:hover .lname { text-decoration: underline; }
     [data-tip]:hover rect { stroke: #1d4ed8; stroke-width: 1.5; }
   </style>
 
@@ -47,13 +49,13 @@
   </g>
 
   <g class="blue">
-    <g data-tip="App-wide system prompt for every agent. Edit in Settings, System prompt.">
+    <g data-tip="App-wide system prompt for every agent. Edit in Settings, System prompt. Click to open." data-doc="SYSTEM.md">
       <rect x="426" y="133" width="348" height="38" rx="8"/><text class="lname" x="440" y="157">SYSTEM.md</text><text class="ldesc" x="760" y="157">rules · ~1,040 tok</text>
     </g>
-    <g data-tip="App-wide memory rules: shared memory folder plus private memory.md. Edit in Settings, System memory.">
+    <g data-tip="App-wide memory rules: shared memory folder plus private memory.md. Edit in Settings, System memory. Click to open." data-doc="MEMORY.md">
       <rect x="426" y="179" width="348" height="38" rx="8"/><text class="lname" x="440" y="203">MEMORY.md</text><text class="ldesc" x="760" y="203">memory rules · ~300 tok</text>
     </g>
-    <g data-tip="Short description of how the app, roles and workflows work. Sent to every agent every turn.">
+    <g data-tip="Short description of how the app, roles and workflows work. Sent to every agent every turn. Click to open." data-doc="ARCHITECTURE.md">
       <rect x="426" y="225" width="348" height="38" rx="8"/><text class="lname" x="440" y="249">ARCHITECTURE.md</text><text class="ldesc" x="760" y="249">app map · ~540 tok</text>
     </g>
     <g data-tip="How to use the updateTodos / TodoWrite checklist tool. In workflow runner turns it is replaced by the step rules.">

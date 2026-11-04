@@ -12,6 +12,8 @@ type Props = {
   width?: number;
   height?: number;
   label?: string;
+  /** Called with the file name of an item marked data-doc when it is clicked (not dragged). */
+  onOpenDoc?: (name: string) => void;
 };
 
 /** Ctrl + wheel zooms at the cursor, left drag pans, double click fits, hover shows item details. */
@@ -20,6 +22,7 @@ export function ArchitectureDiagram({
   width: W = 1200,
   height: H = 630,
   label = 'How agents work: what starts a turn, what the agent gets every turn, and where it works',
+  onOpenDoc,
 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
@@ -90,9 +93,14 @@ export function ArchitectureDiagram({
         }
         setView((v) => ({ ...v, x: d.x + e.clientX - d.px, y: d.y + e.clientY - d.py }));
       }}
-      onPointerUp={() => {
+      onPointerUp={(e) => {
+        const d = drag.current;
         drag.current = null;
         setDragging(false);
+        if (!d || !onOpenDoc || Math.hypot(e.clientX - d.px, e.clientY - d.py) > 4) return;
+        const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-doc]');
+        const name = hit?.getAttribute('data-doc');
+        if (name) onOpenDoc(name);
       }}
       onPointerLeave={() => setTip(null)}
     >

@@ -219,6 +219,10 @@ function EditableName({ name, onRename }: { name: string; onRename?: (name: stri
 
 type OwnerTarget = { id: string; name: string };
 
+const SELF_OWNER = 'self';
+const SELF_OWNER_PREFIX =
+  '[Workflow owner role] Act as the workflow owner: use your workflow tools to create, edit, review or fix workflows.';
+
 /** Owner agents of the workflows this agent runs (routines in Step workflow mode and recent runs). */
 async function loadOwnerTargets(agentId: string): Promise<OwnerTarget[]> {
   const [routines, workflows, runs, agents] = await Promise.all([
@@ -265,6 +269,8 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
   }, [agentId]);
 
   const targetOwner = owners.find((o) => o.id === target) ?? null;
+  /** No other owner: the Owner role is this agent itself, working with its workflow tools. */
+  const selfOwner = target === SELF_OWNER;
 
   useEffect(() => {
     setDraft('');
@@ -321,6 +327,8 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
       if (owner) {
         setSendNote(`Sent to owner ${owner.name}. The reply appears in its chat.`);
         onSend(`[Message from the chat of runner agent ${agentName}]\n\n${text}`, attachments, owner.id).catch(restore);
+      } else if (selfOwner) {
+        onSend(`${SELF_OWNER_PREFIX}\n\n${text}`, attachments).catch(restore);
       } else {
         onSend(text, attachments).catch(restore);
       }
@@ -394,8 +402,8 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
             <button
               type="button"
               role="radio"
-              aria-checked={!targetOwner}
-              className={!targetOwner ? 'active' : ''}
+              aria-checked={!targetOwner && !selfOwner}
+              className={!targetOwner && !selfOwner ? 'active' : ''}
               title={`Send to runner ${agentName}`}
               onClick={() => setTarget('')}
             >
@@ -418,9 +426,10 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
               <button
                 type="button"
                 role="radio"
-                aria-checked={false}
-                disabled
-                title="No workflow owner yet. Give this agent a routine in Step workflow mode, the owner of that workflow appears here."
+                aria-checked={selfOwner}
+                className={selfOwner ? 'active' : ''}
+                title={`${agentName} as workflow owner: create, edit, review or fix workflows`}
+                onClick={() => setTarget(SELF_OWNER)}
               >
                 Owner
               </button>
@@ -429,7 +438,13 @@ const Composer = memo(function Composer({ agentId, agentName, busy, onSend, onSt
         <textarea
           ref={taRef}
           className="composer-input"
-          placeholder={targetOwner ? `Message owner ${targetOwner.name}` : `Message ${agentName}`}
+          placeholder={
+            targetOwner
+              ? `Message owner ${targetOwner.name}`
+              : selfOwner
+                ? `Message ${agentName} as workflow owner`
+                : `Message ${agentName}`
+          }
           value={draft}
           rows={1}
           onChange={(e) => {

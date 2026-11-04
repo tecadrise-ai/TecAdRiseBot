@@ -39,7 +39,7 @@ export function TaskModeFields({ agentId, mode, workflowId, workflows, onMode, o
             ) : null}
           </select>
           {usable.length === 0 ? (
-            <span className="hint">No workflows yet. Enable Workflow owner on another agent and create one there.</span>
+            <span className="hint">No workflows yet. Create one in another agent's Workflows tab, that agent is its owner.</span>
           ) : null}
         </label>
       ) : null}

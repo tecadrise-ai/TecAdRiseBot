@@ -41,11 +41,9 @@ let pumpAgain = false;
 export function configureWorkflows(opts: { getBaseUrl: () => string; getWindow: () => BrowserWindow | null }): void {
   getBaseUrl = opts.getBaseUrl;
   getWindow = opts.getWindow;
-  setTurnAugmenter((agent) => (isWorkflowOwner(agent) ? ownerExtras(agent.id) : null));
-}
-
-export function isWorkflowOwner(agent: db.AgentRow): boolean {
-  return agent.config?.workflowOwner === true;
+  // Every agent is the owner of its own workflows. The owner tools only touch workflows and runs owned by the
+  // calling agent, so a runner can never edit the workflow it runs.
+  setTurnAugmenter((agent) => ownerExtras(agent.id));
 }
 
 function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {

@@ -12,7 +12,6 @@ type Props = {
 };
 
 export function WorkflowsPanel({ agent, onSaved }: Props) {
-  const [ownerOn, setOwnerOn] = useState(agent.config?.workflowOwner === true);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
@@ -35,7 +34,6 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
   }
 
   useEffect(() => {
-    setOwnerOn(agent.config?.workflowOwner === true);
     setEditId(null);
     setStatus('');
     const reload = () =>
@@ -53,17 +51,6 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
     ];
     return () => offs.forEach((off) => off());
   }, [agent.id]);
-
-  async function toggleOwner(on: boolean) {
-    setOwnerOn(on);
-    try {
-      await window.tecapi.agents.update(agent.id, { config: { ...(agent.config || {}), workflowOwner: on } });
-      onSaved();
-    } catch (e) {
-      setOwnerOn(!on);
-      setStatus(e instanceof Error ? e.message : String(e));
-    }
-  }
 
   function edit(wf: Workflow | null) {
     setStatus('');
@@ -136,17 +123,13 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
 
   return (
     <div className="wf-panel">
-      <label className="check-row">
-        <input type="checkbox" checked={ownerOn} onChange={(e) => void toggleOwner(e.target.checked)} />
-        <span>Workflow owner</span>
-      </label>
       <div className="hint" style={{ margin: 0 }}>
-        A workflow owner gets tools to create and edit workflows, reviews steps marked for review, and fixes
-        broken steps. Runner agents only ever see their current step. Pick a workflow for a runner in its
-        Routines tab with Task mode Step workflow.
+        {agent.name} is the owner of the workflows below. It creates and edits them, reviews steps marked for
+        review, and fixes broken steps. Runner agents only ever see their current step. Pick a workflow for a
+        runner in its Routines tab with Task mode Step workflow.
       </div>
 
-      {ownerOn ? (
+      {(
         <>
           <div className="routines-toolbar">
             <div className="routines-title">Workflows owned by {agent.name}</div>
@@ -239,7 +222,7 @@ export function WorkflowsPanel({ agent, onSaved }: Props) {
             </div>
           )}
         </>
-      ) : null}
+      )}
 
       {status ? <p className="status">{status}</p> : null}
 

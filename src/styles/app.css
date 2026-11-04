@@ -1801,6 +1801,11 @@
 .arch-doc {
   margin-top: 12px;
 }
+.arch-sub {
+  margin: 24px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+}
 .arch-title-link:hover {
   text-decoration: underline;
 }

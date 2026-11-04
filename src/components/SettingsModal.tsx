@@ -3,6 +3,7 @@ import type { AppSettings } from '../types';
 import { ModalBackdrop } from './ModalBackdrop';
 import { ArchitectureDiagram } from './ArchitectureDiagram';
 import { MarkdownBody } from './MarkdownBody';
+import workflowsSvg from '../assets/workflows.svg?raw';
 import { EMPTY_MCP_JSON } from '../lib/mcpConfig';
 import { fmtTok } from '../lib/usage';
 
@@ -589,7 +590,20 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                     {archDoc !== null ? 'Back to diagram' : 'See ARCHITECTURE.md'}
                   </a>
                 </h2>
-                {archDoc !== null ? <MarkdownBody className="arch-doc" text={archDoc} /> : <ArchitectureDiagram />}
+                {archDoc !== null ? (
+                  <MarkdownBody className="arch-doc" text={archDoc} />
+                ) : (
+                  <>
+                    <ArchitectureDiagram />
+                    <h3 className="arch-sub">Workflows</h3>
+                    <ArchitectureDiagram
+                      svg={workflowsSvg}
+                      width={1200}
+                      height={600}
+                      label="How step workflows work: runner, app checks, owner review and fix"
+                    />
+                  </>
+                )}
               </section>
             )}
 

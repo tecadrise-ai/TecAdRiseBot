@@ -1,15 +1,26 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
-import diagramSvg from '../assets/architecture.svg?raw';
+import architectureSvg from '../assets/architecture.svg?raw';
 
-const W = 1200;
-const H = 630;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 6;
 
-type View = { x: number; y: number; scale: number };type Tip = { text: string; x: number; y: number } | null;
+type View = { x: number; y: number; scale: number };
+type Tip = { text: string; x: number; y: number } | null;
+
+type Props = {
+  svg?: string;
+  width?: number;
+  height?: number;
+  label?: string;
+};
 
 /** Ctrl + wheel zooms at the cursor, left drag pans, double click fits, hover shows item details. */
-export function ArchitectureDiagram() {
+export function ArchitectureDiagram({
+  svg = architectureSvg,
+  width: W = 1200,
+  height: H = 630,
+  label = 'How agents work: what starts a turn, what the agent gets every turn, and where it works',
+}: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
   const [tip, setTip] = useState<Tip>(null);
@@ -20,7 +31,7 @@ export function ArchitectureDiagram() {
     if (!el) return;
     const scale = Math.min(el.clientWidth / W, el.clientHeight / H);
     setView({ scale, x: (el.clientWidth - W * scale) / 2, y: (el.clientHeight - H * scale) / 2 });
-  }, []);
+  }, [W, H]);
 
   useEffect(() => {
     fit();
@@ -62,6 +73,7 @@ export function ArchitectureDiagram() {
     <div
       ref={boxRef}
       className={`arch-canvas ${dragging ? 'dragging' : ''}`}
+      style={{ aspectRatio: `${W} / ${H}` }}
       onDoubleClick={fit}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
@@ -87,9 +99,9 @@ export function ArchitectureDiagram() {
       <div
         className="arch-svg"
         role="img"
-        aria-label="How agents work: what starts a turn, what the agent gets every turn, and where it works"
+        aria-label={label}
         style={{ left: view.x, top: view.y, width: W * view.scale, height: H * view.scale }}
-        dangerouslySetInnerHTML={{ __html: diagramSvg }}
+        dangerouslySetInnerHTML={{ __html: svg }}
       />
       {tip ? (
         <div

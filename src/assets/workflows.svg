@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" font-family="Inter, 'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <marker id="wf-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#6b6b70" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <style>
+    .card { fill: #ffffff; stroke: #d9d9de; stroke-width: 1; }
+    .title { font-size: 16px; font-weight: 600; fill: #1a1a1a; }
+    .sub { font-size: 13px; fill: #6b6b70; }
+    .lane-t { font-size: 17px; font-weight: 600; }
+    .lane-d { font-size: 13px; fill: #4a4a50; }
+    .link { fill: none; stroke: #6b6b70; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .lbl { font-size: 13px; fill: #3a3a3f; }
+    .top { font-size: 15px; fill: #6b6b70; }
+    [data-tip] { cursor: help; }
+    [data-tip]:hover rect { stroke: #1d4ed8; stroke-width: 1.5; }
+  </style>
+
+  <rect width="1200" height="600" fill="#f6f6f7"/>
+  <text class="top" x="40" y="34">Step workflow: one step at a time, the app decides whose turn it is</text>
+
+  <g data-tip="Runner: the agent whose routine started the run (Task mode Step workflow). It only ever sees the current step. It cannot see later steps, approve its own work or edit the workflow. It reaches the owner only through step_fail.">
+    <rect x="30" y="80" width="1140" height="140" rx="14" fill="#ece9fb"/>
+    <text class="lane-t" x="50" y="140" fill="#4c3f91">Runner</text>
+    <text class="lane-d" x="50" y="162">Runs the workflow</text>
+    <text class="lane-d" x="50" y="180">Sees only the current step</text>
+  </g>
+  <g data-tip="App: the workflow service. Starts runner, review and fix turns, runs the hard checks in the runner workspace, counts tries and blocks a stuck run.">
+    <rect x="30" y="240" width="1140" height="140" rx="14" fill="#e9ebef"/>
+    <text class="lane-t" x="50" y="300" fill="#2f3440">App</text>
+    <text class="lane-d" x="50" y="322">Hard checks, tries</text>
+    <text class="lane-d" x="50" y="340">Decides whose turn</text>
+  </g>
+  <g data-tip="Owner: the runner's Owner agent, otherwise the agent that created the workflow. It may be the same agent with the Owner model settings. Never runs workflows. Reviews and fixes only inside turns the app starts for it.">
+    <rect x="30" y="400" width="1140" height="140" rx="14" fill="#fdeadf"/>
+    <text class="lane-t" x="50" y="460" fill="#9a3412">Owner</text>
+    <text class="lane-d" x="50" y="482">Never runs workflows</text>
+    <text class="lane-d" x="50" y="500">Reviews and fixes steps</text>
+  </g>
+
+  <path class="link" d="M1050 278 V62 H330 V114" marker-end="url(#wf-ah)"/>
+  <text class="lbl" x="690" y="56" text-anchor="middle">next step</text>
+  <path class="link" d="M430 150 H466" marker-end="url(#wf-ah)"/>
+  <path class="link" d="M670 150 H706" marker-end="url(#wf-ah)"/>
+  <path class="link" d="M810 182 V274" marker-end="url(#wf-ah)"/>
+  <path class="link" d="M910 310 H946" marker-end="url(#wf-ah)"/>
+  <text class="lbl" x="928" y="300" text-anchor="middle">pass</text>
+  <path class="link" d="M710 310 H640 V186" marker-end="url(#wf-ah)"/>
+  <text class="lbl" x="675" y="300" text-anchor="middle">fail</text>
+  <path class="link" d="M1050 502 V522 H690 V310"/>
+  <text class="lbl" x="870" y="516" text-anchor="middle">reject + reason: redo</text>
+  <path class="link" d="M810 342 V470 H946" marker-end="url(#wf-ah)"/>
+  <text class="lbl" x="878" y="462" text-anchor="middle">review on</text>
+  <path class="link" d="M1050 438 V346" marker-end="url(#wf-ah)"/>
+  <text class="lbl" x="1060" y="395">pass</text>
+  <path class="link" d="M500 182 V434" marker-end="url(#wf-ah)"/>
+  <text class="lbl" x="508" y="298">step_fail or</text>
+  <text class="lbl" x="508" y="314">no tries left</text>
+  <path class="link" d="M470 470 H330 V186" marker-end="url(#wf-ah)"/>
+  <text class="lbl" x="400" y="462" text-anchor="middle">restart step</text>
+
+  <g data-tip="step_current returns the ONE step the runner may work on. Safe to call again after context loss.">
+    <rect class="card" x="230" y="118" width="200" height="64" rx="12"/>
+    <text class="title" x="248" y="146">step_current</text><text class="sub" x="248" y="166">get the one open step</text>
+  </g>
+  <g data-tip="The runner does exactly this step in its own workspace until done_when is true. Never works ahead.">
+    <rect class="card" x="470" y="118" width="200" height="64" rx="12"/>
+    <text class="title" x="488" y="146">Work</text><text class="sub" x="488" y="166">in own workspace</text>
+  </g>
+  <g data-tip="step_done reports the step with concrete evidence: files, values, outputs. Then the app checks it.">
+    <rect class="card" x="710" y="118" width="200" height="64" rx="12"/>
+    <text class="title" x="728" y="146">step_done</text><text class="sub" x="728" y="166">with evidence</text>
+  </g>
+  <g data-tip="Hard checks from the step definition: file_exists, file_contains, output_matches, command. A failed check sends the step back to the runner and uses one try (max_attempts, default 3).">
+    <rect class="card" x="710" y="278" width="200" height="64" rx="12"/>
+    <text class="title" x="728" y="306">Hard checks</text><text class="sub" x="728" y="326">files, outputs, command</text>
+  </g>
+  <g data-tip="The next step opens for the runner. After the last step the run is done.">
+    <rect class="card" x="950" y="278" width="200" height="64" rx="12"/>
+    <text class="title" x="968" y="306">Next step</text><text class="sub" x="968" y="326">or run done</text>
+  </g>
+  <g data-tip="Only when the step has validate = owner (Owner review On in the table). The runner waits. The owner reads the runner files itself and calls review_verdict: pass, or reject with what to fix. A reject uses one try.">
+    <rect class="card" x="950" y="438" width="200" height="64" rx="12"/>
+    <text class="title" x="968" y="466">Review</text><text class="sub" x="968" y="486">pass or reject</text>
+  </g>
+  <g data-tip="Started when the runner calls step_fail or the step has no tries left. The owner calls fix_step (patch the step, also saved as a new workflow version), retry_step (try again unchanged) or abort_run. Max 3 fixes per run.">
+    <rect class="card" x="470" y="438" width="200" height="64" rx="12"/>
+    <text class="title" x="488" y="466">Fix</text><text class="sub" x="488" y="486">fix, retry or abort</text>
+  </g>
+
+  <g data-tip="A run is blocked after 3 owner fixes, 3 runner turns or 2 owner turns without progress, or when you press Stop. Use Retry step, Skip step or Abort run on the workflow card.">
+    <rect x="30" y="556" width="1140" height="32" rx="10" fill="#ffffff" stroke="#d9d9de"/>
+    <text class="lbl" x="50" y="577">Stuck run (fix limit, idle turns, Stop): blocked until you press Retry, Skip or Abort on the workflow card</text>
+  </g>
+</svg>

@@ -24,9 +24,10 @@ type Props = {
   agentRunning?: boolean;
   workflowRuns?: Record<string, WorkflowRunView>;
   onNeedWorkflowRun?: (runId: string) => void;
-  onSend: (text: string, attachments: PendingAttachment[]) => Promise<void>;
+  onSend: (text: string, attachments: PendingAttachment[], targetAgentId?: string) => Promise<void>;
   onStop: () => void | Promise<void>;
   onOpenAgentSettings: () => void;
+  onRename?: (name: string) => Promise<void>;
 };
 
 const TODO_MARK: Record<TodoStatus, string> = {
@@ -151,6 +152,70 @@ type ComposerProps = {
   onSend: (text: string, attachments: PendingAttachment[], targetAgentId?: string) => Promise<void>;
   onStop: () => void | Promise<void>;
 };
+
+function EditableName({ name, onRename }: { name: string; onRename?: (name: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [saving, setSaving] = useState(false);
+
+  async function commit() {
+    const next = value.trim();
+    if (!next || next === name || !onRename) {
+      setValue(name);
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onRename(next);
+      setEditing(false);
+    } catch (e) {
+      window.alert(`Could not rename: ${e instanceof Error ? e.message : String(e)}`);
+      setValue(name);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="title-name title-name-btn"
+        title="Click to rename"
+        onClick={() => {
+          setValue(name);
+          setEditing(true);
+        }}
+      >
+        {name}
+      </button>
+    );
+  }
+  return (
+    <input
+      className="title-name title-name-input"
+      value={value}
+      autoFocus
+      disabled={saving}
+      maxLength={60}
+      aria-label="Agent name"
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => void commit()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void commit();
+        } else if (e.key === 'Escape') {
+          setValue(name);
+          setEditing(false);
+        }
+      }}
+    />
+  );
+}
 
 type OwnerTarget = { id: string; name: string };
 
@@ -419,6 +484,7 @@ export function ChatView({
   onSend,
   onStop,
   onOpenAgentSettings,
+  onRename,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   /** Follow new output only while the user is at the bottom, so reading older messages is not interrupted. */
@@ -469,7 +535,7 @@ export function ChatView({
             {agent.name.slice(0, 2).toUpperCase()}
           </div>
           <div>
-            <div className="title-name">{agent.name}</div>
+            <EditableName key={agent.id} name={agent.name} onRename={onRename} />
             <div className="title-sub">{formatModelLabel(agent.model, agent.config)}</div>
           </div>
         </div>

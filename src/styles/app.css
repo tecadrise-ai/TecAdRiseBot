@@ -280,6 +280,30 @@
 .title-name {
   font-weight: 600;
 }
+.title-name-btn,
+.title-name-input {
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  margin: -2px -6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+.title-name-btn {
+  cursor: text;
+  text-align: left;
+}
+.title-name-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.title-name-input {
+  border-color: var(--border-strong);
+  background: #fff;
+  outline: none;
+  min-width: 180px;
+}
 .title-sub {
   font-size: 12px;
   color: var(--text-secondary);

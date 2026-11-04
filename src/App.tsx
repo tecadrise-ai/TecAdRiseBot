@@ -271,6 +271,12 @@ export default function App() {
     );
   }, [selectedId]);
 
+  const renameSelected = useCallback(async (name: string) => {
+    if (!selectedId) return;
+    await window.tecapi.agents.update(selectedId, { name });
+    await refreshAgents();
+  }, [selectedId, refreshAgents]);
+
   const stop = useCallback(async () => {
     if (!selectedId) return;
     liveRuns.current.delete(selectedId);
@@ -355,6 +361,7 @@ export default function App() {
         onSend={send}
         onStop={stop}
         onOpenAgentSettings={openAgentSettings}
+        onRename={renameSelected}
       />
       <AgentSettingsModal
         open={agentSettingsOpen}

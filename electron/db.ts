@@ -77,12 +77,22 @@ export function flushPersist(): void {
 }
 
 function wasmDir(): string {
+  const candidates: string[] = [];
   try {
-    const pkg = path.dirname(require.resolve('sql.js/package.json'));
-    return path.join(pkg, 'dist');
+    // sql.js exports do not include ./package.json, so resolve the JS entry (dist/sql-wasm.js).
+    candidates.push(path.dirname(require.resolve('sql.js')));
   } catch {
-    return path.join(process.cwd(), 'node_modules', 'sql.js', 'dist');
+    /* fall through */
   }
+  const appRoot = process.env.APP_ROOT || path.join(__dirname, '..');
+  candidates.push(path.join(appRoot, 'node_modules', 'sql.js', 'dist'));
+  candidates.push(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'sql.js', 'dist'));
+  for (const dir of candidates) {
+    if (dir && fs.existsSync(path.join(dir, 'sql-wasm.wasm'))) return dir;
+  }
+  throw new Error(
+    'sql-wasm.wasm not found. Expected next to sql.js in node_modules/sql.js/dist.'
+  );
 }
 
 function tableColumns(table: string): Set<string> {

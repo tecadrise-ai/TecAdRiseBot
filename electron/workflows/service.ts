@@ -17,6 +17,7 @@ import * as engine from '../../src/lib/workflow/engine';
 import { handleMcpMessage, MAP, S, STR, type JsonRpcMessage, type JsonRpcReply, type McpTool } from '../../src/lib/workflow/mcpProtocol';
 import type { RoleOverride, Workflow, WorkflowRun } from '../../src/lib/workflow/types';
 import { normalizeSettings } from '../../src/lib/workflow/definition';
+import { baseModelId, readEffort, readModelMode } from '../../src/lib/modelOptions';
 import { isRunActive } from '../../src/lib/workflow/types';
 import { isAgentBusy, runAgentTurn, setTurnAugmenter, type TurnExtras } from '../agentRunner';
 
@@ -585,11 +586,21 @@ function dispatch(run: WorkflowRun): void {
   }
 }
 
-/** The runner agent's optional owner settings (General tab) win over the workflow's owner settings. */
+/**
+ * Owner turns run with the runner agent's model, mode and effort, then the workflow's owner settings, then the
+ * runner's own Owner overrides (General tab), each field overriding the previous one.
+ */
 function ownerOverride(run: WorkflowRun, wf: Workflow | null): RoleOverride | undefined {
-  const fromRunner = normalizeSettings({ owner: db.getAgent(run.runnerAgentId)?.config?.workflowOwnerOverride }).owner;
-  const base = wf?.settings.owner;
-  return base || fromRunner ? { ...base, ...fromRunner } : undefined;
+  const runner = db.getAgent(run.runnerAgentId);
+  if (!runner) return wf?.settings.owner;
+  const model = baseModelId(runner.model);
+  const sameAsRunner: RoleOverride = {
+    model,
+    modelMode: readModelMode(runner.config, runner.model),
+    effort: readEffort(runner.config),
+  };
+  const fromRunner = normalizeSettings({ owner: runner.config?.workflowOwnerOverride }).owner;
+  return { ...sameAsRunner, ...wf?.settings.owner, ...fromRunner };
 }
 
 async function runTurn(run: WorkflowRun, role: 'runner' | 'review' | 'fix', wf: Workflow | null): Promise<void> {

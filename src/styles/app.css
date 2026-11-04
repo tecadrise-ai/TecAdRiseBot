@@ -1686,11 +1686,18 @@
 }
 .wf-overrides-general {
   grid-template-columns: max-content repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  column-gap: 10px;
+  row-gap: 10px;
   font-size: 13px;
 }
+.wf-overrides-general > span {
+  font-weight: 400;
+  color: var(--text-secondary);
+  padding-right: 6px;
+}
 .wf-overrides-general select {
-  padding: 8px 10px;
+  padding: 9px 11px;
+  border-radius: 10px;
 }
 .wf-overrides select,
 .wf-overrides input {

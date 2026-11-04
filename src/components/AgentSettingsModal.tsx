@@ -116,14 +116,18 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
 
   if (!open || !agent) return null;
 
-  const ownerEfforts = effortParam(models.find((m) => m.id === ownerOv.model)).values;
+  // Owner follows the Runner settings; a field is stored only when it differs from the Runner.
+  const runnerValues: Required<RoleOverride> = { model, modelMode, effort };
+  const ownerModel = ownerOv.model || model;
+  const ownerMode = ownerOv.modelMode || modelMode;
+  const ownerEffort = ownerOv.effort || effort;
+  const ownerEfforts = effortParam(models.find((m) => m.id === ownerModel)).values;
 
   function setOwnerField(key: keyof RoleOverride, value: string) {
     setOwnerOv((prev) => {
       const next: RoleOverride = { ...prev };
-      if (value) next[key] = value;
+      if (value && value !== runnerValues[key]) next[key] = value;
       else delete next[key];
-      if (key === 'model') delete next.effort;
       return next;
     });
   }
@@ -138,7 +142,13 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
         workflowOwnerOverride: _oldOwner,
         ...keptConfig
       } = agent!.config || {};
-      const ownerOverride = normalizeSettings({ owner: ownerOv }).owner;
+      const ownerOverride = normalizeSettings({
+        owner: {
+          model: ownerOv.model !== model ? ownerOv.model : undefined,
+          modelMode: ownerOv.modelMode !== modelMode ? ownerOv.modelMode : undefined,
+          effort: ownerOv.effort !== effort ? ownerOv.effort : undefined,
+        },
+      }).owner;
       await window.tecapi.agents.update(agent!.id, {
         name: name.trim() || agent!.name,
         model: baseModelId(model.trim() || agent!.model),
@@ -369,38 +379,35 @@ export function AgentSettingsModal({ open, agent, onClose, onSaved, onSessionCle
                   <span>
                     Owner <span className="muted">(optional)</span>
                   </span>
-                  <select value={ownerOv.model || ''} onChange={(e) => setOwnerField('model', e.target.value)}>
-                    <option value="">Owner agent default</option>
+                  <select value={ownerModel} onChange={(e) => setOwnerField('model', e.target.value)}>
                     {dropdownModels(models).map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.displayName || m.id}
                       </option>
                     ))}
-                    {ownerOv.model && !dropdownModels(models).some((m) => m.id === ownerOv.model) ? (
-                      <option value={ownerOv.model}>{ownerOv.model}</option>
+                    {ownerModel && !dropdownModels(models).some((m) => m.id === ownerModel) ? (
+                      <option value={ownerModel}>{ownerModel}</option>
                     ) : null}
                   </select>
-                  <select value={ownerOv.modelMode || ''} onChange={(e) => setOwnerField('modelMode', e.target.value)}>
-                    <option value="">Owner agent default</option>
+                  <select value={ownerMode} onChange={(e) => setOwnerField('modelMode', e.target.value)}>
                     <option value="usual">Usual</option>
                     <option value="fast">Fast</option>
                   </select>
-                  <select value={ownerOv.effort || ''} onChange={(e) => setOwnerField('effort', e.target.value)}>
-                    <option value="">Owner agent default</option>
+                  <select value={ownerEffort} onChange={(e) => setOwnerField('effort', e.target.value)}>
                     {ownerEfforts.map((v) => (
                       <option key={v.value} value={v.value}>
                         {v.displayName || v.value}
                       </option>
                     ))}
-                    {ownerOv.effort && !ownerEfforts.some((v) => v.value === ownerOv.effort) ? (
-                      <option value={ownerOv.effort}>{ownerOv.effort}</option>
+                    {!ownerEfforts.some((v) => v.value === ownerEffort) ? (
+                      <option value={ownerEffort}>{ownerEffort}</option>
                     ) : null}
                   </select>
                 </div>
                 <span className="hint">
-                  Runner is this agent, used for chats, routines and workflow steps. Owner applies only when this agent
-                  runs a Step workflow: the workflow owner agent reviews and fixes steps with these settings. Default
-                  is usual + medium. Fast, high, and max cost more.
+                  Runner is this agent, used for chats, routines and workflow steps. Owner reviews and fixes steps when
+                  this agent runs a Step workflow and uses the Runner settings unless changed. Fast, high, and max cost
+                  more.
                 </span>
               </div>
               <label className="field">

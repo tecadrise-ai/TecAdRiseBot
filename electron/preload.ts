@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { Workflow, WorkflowRun, WorkflowSettings } from '../src/lib/workflow/types';
+import type { Workflow, WorkflowRun } from '../src/lib/workflow/types';
 
 export type Agent = {
   id: string;
@@ -43,7 +43,6 @@ type RoutineInput = {
   prompt: string;
   forceTodos?: number;
   workflowId?: string | null;
-  workflowSettings?: WorkflowSettings | null;
 };
 
 type RoutinePatch = Partial<{
@@ -53,7 +52,6 @@ type RoutinePatch = Partial<{
   enabled: number;
   forceTodos: number;
   workflowId: string | null;
-  workflowSettings: WorkflowSettings | null;
 }>;
 
 type WorkflowRunView = Omit<WorkflowRun, 'token'> & { runnerName: string; ownerName: string; inFlight: string | null };

@@ -105,8 +105,12 @@
     <rect class="card" x="870" y="350" width="290" height="80" rx="12"/>
     <text class="title" x="890" y="382">Workflows</text><text class="sub" x="890" y="408">Runner runs, Owner fixes</text>
   </g>
-  <g data-tip="http://127.0.0.1:8787, local only. Agents read live state, change their own settings, message peers and manage routines.">
+  <g data-tip="http://127.0.0.1:8787, local only. Agents read live state, change their own settings, message peers and manage routines. An external LLM can start a turn here: POST /api/routines/:id/run or POST /api/agents/:id/messages.">
     <rect class="card" x="870" y="446" width="290" height="80" rx="12"/>
     <text class="title" x="890" y="478">Local API</text><text class="sub" x="890" y="504">Agents, routines</text>
+  </g>
+  <g data-tip="Any local process or external LLM on this PC can call 127.0.0.1:8787 to send chat, run a routine, or read agent state. The schedule in Routines is not required.">
+    <path class="arrow" d="M1015 578 V544 M1007 552 L1015 544 L1023 552"/>
+    <text class="col" x="1015" y="602">External LLM</text>
   </g>
 </svg>

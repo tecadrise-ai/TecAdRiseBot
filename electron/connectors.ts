@@ -11,6 +11,21 @@ const AGENTMAIL_MCP_URL = 'https://mcp.agentmail.to/mcp';
 const AGENTMAIL_ENV = 'AGENTMAIL_API_KEY';
 const CONTEXT_MCP_URL = 'https://mcp.context.dev/mcp';
 const CONTEXT_ENV = 'CONTEXT_DEV_API_KEY';
+const ELEVENLABS_ENV = 'ELEVENLABS_API_KEY';
+const ELEVENLABS_MCP_URL = 'https://api.elevenlabs.io/v1/mcp';
+const ELEVENLABS_AS_META = 'https://api.us.elevenlabs.io/.well-known/oauth-authorization-server';
+const ELEVENLABS_CALLBACK_PORT = 18769;
+const ELEVENLABS_CLIENT_ID =
+  'https://raw.githubusercontent.com/tecadrise-ai/TecAdRiseBot/master/oauth/elevenlabs-client.json';
+const ELEVENLABS_SCOPES = [
+  'convai_read',
+  'convai_write',
+  'text_to_speech',
+  'speech_history_read',
+  'flows',
+  'image_video_generation',
+  'voice_generation',
+].join(' ');
 const GITHUB_ENV = 'GITHUB_PERSONAL_ACCESS_TOKEN';
 const GITHUB_ENV_ALT = 'GITHUB_TOKEN';
 const GLOBAL_MCP_SETTING = 'mcp_servers_json';
@@ -60,6 +75,14 @@ export type ZohoGrant = {
 export type TregGrant = { token: string; org: string };
 export type AgentmailGrant = { apiKey: string };
 export type ContextGrant = { apiKey: string };
+export type ElevenlabsGrant = {
+  clientId: string;
+  redirectUri: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  tokenEndpoint: string;
+};
 export type GithubGrant = {
   clientId?: string;
   clientSecret?: string;
@@ -73,6 +96,7 @@ type Store = {
   treg?: TregGrant;
   agentmail?: AgentmailGrant;
   context?: ContextGrant;
+  elevenlabs?: ElevenlabsGrant;
   github?: GithubGrant;
 };
 
@@ -305,6 +329,11 @@ export function listConnectors(): ConnectorRow[] {
       hasToken: Boolean(context?.apiKey),
     },
     {
+      id: 'elevenlabs',
+      name: 'ElevenLabs',
+      connected: Boolean(s.elevenlabs?.refreshToken || s.elevenlabs?.accessToken),
+    },
+    {
       id: 'github',
       name: 'GitHub',
       connected: Boolean(s.github?.accessToken),
@@ -473,10 +502,21 @@ export function absorbConnectorMcp(servers: McpServers): { servers: McpServers; 
   const ctx = absorbContextFromServers(cur);
   cur = ctx.servers;
   if (ctx.moved) notes.push('Context.dev');
+  const el = absorbElevenlabsFromServers(cur);
+  cur = el.servers;
+  if (el.moved) notes.push('ElevenLabs');
   const gh = absorbGithubFromServers(cur);
   cur = gh.servers;
   if (gh.moved) notes.push('GitHub');
   return { servers: cur, notes };
+}
+
+export function absorbElevenlabsFromServers(servers: McpServers): { servers: McpServers; moved: boolean } {
+  const names = ['elevenlabs', 'ElevenLabs', 'elevenlabs-mcp'];
+  if (!names.some((n) => n in servers)) return { servers, moved: false };
+  const next = { ...servers };
+  for (const n of names) delete next[n];
+  return { servers: next, moved: true };
 }
 
 export function absorbGithubFromServers(servers: McpServers): { servers: McpServers; moved: boolean } {
@@ -516,6 +556,7 @@ export function migrateTregFromMcpJson(): void {
     if (k) writeStore({ ...after, context: { apiKey: k } });
   }
   if (getEnvMap()[CONTEXT_ENV]) deleteEnvValue(CONTEXT_ENV);
+  if (getEnvMap()[ELEVENLABS_ENV]) deleteEnvValue(ELEVENLABS_ENV);
   const ghStore = readStore();
   if (!ghStore.github?.token) {
     const env = getEnvMap();
@@ -568,6 +609,117 @@ export function connectContext(input: { apiKey?: string } = {}): { ok: boolean; 
 export function disconnectContext(): { ok: true } {
   const s = readStore();
   if (s.context) s.context = { apiKey: '' };
+  writeStore(s);
+  return { ok: true };
+}
+
+async function elevenlabsAuthMeta(): Promise<{ authorization: string; token: string }> {
+  const res = await fetch(ELEVENLABS_AS_META);
+  const j = await readJson(res);
+  return {
+    authorization: String(j.authorization_endpoint || 'https://elevenlabs.io/app/oauth/authorize'),
+    token: String(j.token_endpoint || 'https://api.us.elevenlabs.io/v1/oauth/token'),
+  };
+}
+
+async function exchangeElevenlabs(opts: {
+  tokenEndpoint: string;
+  clientId: string;
+  redirectUri: string;
+  code: string;
+  verifier: string;
+}): Promise<ElevenlabsGrant> {
+  const res = await formPost(opts.tokenEndpoint, {
+    grant_type: 'authorization_code',
+    code: opts.code,
+    redirect_uri: opts.redirectUri,
+    client_id: opts.clientId,
+    code_verifier: opts.verifier,
+    resource: ELEVENLABS_MCP_URL,
+  });
+  const j = await readJson(res);
+  const access = String(j.access_token || '');
+  if (!res.ok || !access) {
+    throw new Error(String(j.error_description || j.error || j.raw || `ElevenLabs token HTTP ${res.status}`));
+  }
+  const expiresIn = Number(j.expires_in) || 3600;
+  return {
+    clientId: opts.clientId,
+    redirectUri: opts.redirectUri,
+    accessToken: access,
+    refreshToken: String(j.refresh_token || ''),
+    expiresAt: Date.now() + expiresIn * 1000,
+    tokenEndpoint: opts.tokenEndpoint,
+  };
+}
+
+async function refreshElevenlabs(g: ElevenlabsGrant): Promise<ElevenlabsGrant> {
+  const res = await formPost(g.tokenEndpoint, {
+    grant_type: 'refresh_token',
+    refresh_token: g.refreshToken,
+    client_id: g.clientId,
+    resource: ELEVENLABS_MCP_URL,
+  });
+  const j = await readJson(res);
+  const access = String(j.access_token || '');
+  if (!res.ok || !access) {
+    throw new Error(String(j.error_description || j.error || 'ElevenLabs refresh failed'));
+  }
+  const expiresIn = Number(j.expires_in) || 3600;
+  return {
+    ...g,
+    accessToken: access,
+    refreshToken: String(j.refresh_token || g.refreshToken),
+    expiresAt: Date.now() + expiresIn * 1000,
+  };
+}
+
+export async function connectElevenlabs(): Promise<{ ok: boolean; error?: string }> {
+  if (connecting) return connecting;
+  connecting = (async () => {
+    const redirectUri = `http://127.0.0.1:${ELEVENLABS_CALLBACK_PORT}/callback`;
+    const meta = await elevenlabsAuthMeta();
+    const { verifier, challenge } = pkce();
+    const state = b64url(crypto.randomBytes(16));
+    const pending = await waitForCode(ELEVENLABS_CALLBACK_PORT, state, 'ElevenLabs');
+    const auth = new URL(meta.authorization);
+    auth.searchParams.set('response_type', 'code');
+    auth.searchParams.set('client_id', ELEVENLABS_CLIENT_ID);
+    auth.searchParams.set('redirect_uri', redirectUri);
+    auth.searchParams.set('code_challenge', challenge);
+    auth.searchParams.set('code_challenge_method', 'S256');
+    auth.searchParams.set('state', state);
+    auth.searchParams.set('scope', ELEVENLABS_SCOPES);
+    auth.searchParams.set('resource', ELEVENLABS_MCP_URL);
+    await shell.openExternal(auth.toString());
+    const code = await pending.code;
+    const grant = await exchangeElevenlabs({
+      tokenEndpoint: meta.token,
+      clientId: ELEVENLABS_CLIENT_ID,
+      redirectUri,
+      code,
+      verifier,
+    });
+    writeStore({ ...readStore(), elevenlabs: grant });
+    return { ok: true as const };
+  })()
+    .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
+    .finally(() => {
+      connecting = null;
+    });
+  return connecting;
+}
+
+export function disconnectElevenlabs(): { ok: true } {
+  const s = readStore();
+  if (s.elevenlabs) {
+    s.elevenlabs = {
+      ...s.elevenlabs,
+      accessToken: '',
+      refreshToken: '',
+      expiresAt: 0,
+    };
+  }
   writeStore(s);
   return { ok: true };
 }
@@ -785,6 +937,10 @@ export function clearConnectorField(id: string, field: string): { ok: true } {
       writeStore(s);
     }
   }
+  if (id === 'elevenlabs' && field === 'all') {
+    delete s.elevenlabs;
+    writeStore(s);
+  }
   if (id === 'github') {
     const g: GithubGrant = { ...(s.github || {}) };
     if (field === 'token') {
@@ -813,6 +969,22 @@ export function clearConnectorField(id: string, field: string): { ok: true } {
     writeStore(s);
   }
   return { ok: true };
+}
+
+async function elevenlabsAccessToken(): Promise<string | null> {
+  const s = readStore();
+  let g = s.elevenlabs;
+  if (!g?.accessToken && !g?.refreshToken) return null;
+  if (g.accessToken && g.expiresAt > Date.now() + 60_000) return g.accessToken;
+  if (!g.refreshToken) return g.accessToken || null;
+  try {
+    g = await refreshElevenlabs(g);
+    writeStore({ ...readStore(), elevenlabs: g });
+    return g.accessToken;
+  } catch {
+    console.warn('[TecAdRiseBot] ElevenLabs token refresh failed');
+    return g.accessToken || null;
+  }
 }
 
 async function canvaAccessToken(): Promise<string | null> {
@@ -858,6 +1030,14 @@ export async function connectorMcpServers(): Promise<McpServers> {
       type: 'http',
       url: CONTEXT_MCP_URL,
       headers: { Authorization: `Bearer ${ctx.apiKey}` },
+    };
+  }
+  const elTok = await elevenlabsAccessToken();
+  if (elTok) {
+    out.elevenlabs = {
+      type: 'http',
+      url: ELEVENLABS_MCP_URL,
+      headers: { Authorization: `Bearer ${elTok}` },
     };
   }
   const mail = readStore().agentmail;

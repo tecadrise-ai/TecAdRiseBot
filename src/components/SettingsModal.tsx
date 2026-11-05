@@ -243,7 +243,9 @@ function ConnectorsBody() {
               ? 'Saving Context.dev key…'
               : id === 'github'
                 ? 'Browser opened. Approve GitHub, then this page will update.'
-                : 'Browser opened. Approve Canva, then this page will update.'
+                : id === 'elevenlabs'
+                  ? 'Browser opened. Approve ElevenLabs, then this page will update.'
+                  : 'Browser opened. Approve Canva, then this page will update.'
     );
     try {
       const res = await window.tecapi.connectors.connect(
@@ -271,7 +273,9 @@ function ConnectorsBody() {
                 ? 'Context.dev connected. All agents get scrape and search tools on the next turn.'
                 : id === 'github'
                   ? 'GitHub connected. All agents get repo tools on the next turn.'
-                  : 'Canva connected. All agents get it on the next turn.';
+                  : id === 'elevenlabs'
+                    ? 'ElevenLabs connected. All agents get voice tools on the next turn.'
+                    : 'Canva connected. All agents get it on the next turn.';
       setStatus(res.ok ? ok : res.error || 'Connect failed');
       if (res.ok && id === 'zoho') {
         setZohoClientId('');
@@ -324,8 +328,8 @@ function ConnectorsBody() {
     <section>
       <h2>Connectors</h2>
       <p className="hint">
-        Global for every agent. Canva, Zoho and GitHub open the vendor site in your browser. Treg,
-        AgentMail and Context.dev use a saved token. Tokens stay in secrets.bin, not in MCP JSON.
+        Global for every agent. Canva, Zoho, GitHub and ElevenLabs open the vendor site in your browser.
+        Treg, AgentMail and Context.dev use a saved token. Tokens stay in secrets.bin, not in MCP JSON.
       </p>
       {rows.map((r) => (
         <div key={r.id} className="connector-block">

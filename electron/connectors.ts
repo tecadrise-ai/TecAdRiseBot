@@ -11,10 +11,14 @@ const AGENTMAIL_MCP_URL = 'https://mcp.agentmail.to/mcp';
 const AGENTMAIL_ENV = 'AGENTMAIL_API_KEY';
 const CONTEXT_MCP_URL = 'https://mcp.context.dev/mcp';
 const CONTEXT_ENV = 'CONTEXT_DEV_API_KEY';
+const GITHUB_ENV = 'GITHUB_PERSONAL_ACCESS_TOKEN';
+const GITHUB_ENV_ALT = 'GITHUB_TOKEN';
 const GLOBAL_MCP_SETTING = 'mcp_servers_json';
 const CANVA_RESOURCE = 'https://mcp.canva.com';
 const AUTH_META = 'https://mcp.canva.com/.well-known/oauth-authorization-server';
 const CALLBACK_PORT = 18766;
+const GITHUB_CALLBACK_PORT = 18768;
+const GITHUB_SCOPES = 'repo read:user read:org';
 const SCOPES = [
   'profile:read',
   'design:meta:read',
@@ -56,6 +60,12 @@ export type ZohoGrant = {
 export type TregGrant = { token: string; org: string };
 export type AgentmailGrant = { apiKey: string };
 export type ContextGrant = { apiKey: string };
+export type GithubGrant = {
+  clientId?: string;
+  clientSecret?: string;
+  accessToken?: string;
+  token?: string;
+};
 
 type Store = {
   canva?: CanvaGrant;
@@ -63,6 +73,7 @@ type Store = {
   treg?: TregGrant;
   agentmail?: AgentmailGrant;
   context?: ContextGrant;
+  github?: GithubGrant;
 };
 
 let connecting: Promise<{ ok: boolean; error?: string }> | null = null;
@@ -134,7 +145,11 @@ function formPost(url: string, body: Record<string, string>): Promise<Response> 
   });
 }
 
-function waitForCode(port: number, expectedState: string): Promise<{ code: Promise<string> }> {
+function waitForCode(
+  port: number,
+  expectedState: string,
+  product = 'Canva'
+): Promise<{ code: Promise<string> }> {
   return new Promise((resolveListen, rejectListen) => {
     let settled = false;
     const server = http.createServer((req, res) => {
@@ -150,7 +165,7 @@ function waitForCode(port: number, expectedState: string): Promise<{ code: Promi
         const state = u.searchParams.get('state') || '';
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         if (err) {
-          res.end('<html><body><p>Canva denied access. You can close this tab.</p></body></html>');
+          res.end(`<html><body><p>${product} denied access. You can close this tab.</p></body></html>`);
           server.close();
           fail(new Error(err));
           return;
@@ -158,10 +173,12 @@ function waitForCode(port: number, expectedState: string): Promise<{ code: Promi
         if (!code || state !== expectedState) {
           res.end('<html><body><p>Bad callback. Close this tab and try Connect again.</p></body></html>');
           server.close();
-          fail(new Error('Bad Canva callback'));
+          fail(new Error(`Bad ${product} callback`));
           return;
         }
-        res.end('<html><body><p>Canva connected. You can close this tab and return to TecAdRiseBot.</p></body></html>');
+        res.end(
+          `<html><body><p>${product} connected. You can close this tab and return to TecAdRiseBot.</p></body></html>`
+        );
         server.close();
         ok(code);
       } catch (e) {
@@ -196,7 +213,7 @@ function waitForCode(port: number, expectedState: string): Promise<{ code: Promi
     server.listen(port, '127.0.0.1', () => resolveListen({ code }));
     setTimeout(() => {
       server.close();
-      fail(new Error('Timed out waiting for Canva. Click Connect again.'));
+      fail(new Error(`Timed out waiting for ${product}. Click Connect again.`));
     }, 6 * 60 * 1000);
   });
 }
@@ -286,6 +303,14 @@ export function listConnectors(): ConnectorRow[] {
       name: 'Context.dev',
       connected: Boolean(context?.apiKey),
       hasToken: Boolean(context?.apiKey),
+    },
+    {
+      id: 'github',
+      name: 'GitHub',
+      connected: Boolean(s.github?.accessToken),
+      hasToken: Boolean(s.github?.accessToken || s.github?.token),
+      hasClientId: Boolean(s.github?.clientId),
+      hasClientSecret: Boolean(s.github?.clientSecret),
     },
     {
       id: 'zoho',
@@ -448,7 +473,26 @@ export function absorbConnectorMcp(servers: McpServers): { servers: McpServers; 
   const ctx = absorbContextFromServers(cur);
   cur = ctx.servers;
   if (ctx.moved) notes.push('Context.dev');
+  const gh = absorbGithubFromServers(cur);
+  cur = gh.servers;
+  if (gh.moved) notes.push('GitHub');
   return { servers: cur, notes };
+}
+
+export function absorbGithubFromServers(servers: McpServers): { servers: McpServers; moved: boolean } {
+  const entry = servers.github;
+  if (!entry) return { servers, moved: false };
+  const fromHeader = resolveHeaderSecret(headerVal(entry.headers, ['Authorization']));
+  const env = getEnvMap();
+  const token = fromHeader || env[GITHUB_ENV] || env[GITHUB_ENV_ALT] || '';
+  if (token) {
+    const cur = readStore();
+    const stored = keepSecret(token, cur.github?.token);
+    writeStore({ ...cur, github: { token: stored || token } });
+  }
+  const next = { ...servers };
+  delete next.github;
+  return { servers: next, moved: true };
 }
 
 export function migrateTregFromMcpJson(): void {
@@ -472,6 +516,14 @@ export function migrateTregFromMcpJson(): void {
     if (k) writeStore({ ...after, context: { apiKey: k } });
   }
   if (getEnvMap()[CONTEXT_ENV]) deleteEnvValue(CONTEXT_ENV);
+  const ghStore = readStore();
+  if (!ghStore.github?.token) {
+    const env = getEnvMap();
+    const k = env[GITHUB_ENV] || env[GITHUB_ENV_ALT];
+    if (k) writeStore({ ...ghStore, github: { token: k } });
+  }
+  if (getEnvMap()[GITHUB_ENV]) deleteEnvValue(GITHUB_ENV);
+  if (getEnvMap()[GITHUB_ENV_ALT]) deleteEnvValue(GITHUB_ENV_ALT);
 }
 
 export function connectTreg(input: { token?: string; org?: string } = {}): { ok: boolean; error?: string } {
@@ -520,6 +572,74 @@ export function disconnectContext(): { ok: true } {
   return { ok: true };
 }
 
+function githubAccess(g: GithubGrant | undefined): string {
+  return String(g?.accessToken || g?.token || '');
+}
+
+export async function connectGithub(
+  input: { clientId?: string; clientSecret?: string } = {}
+): Promise<{ ok: boolean; error?: string }> {
+  if (connecting) return connecting;
+  connecting = (async () => {
+    const stored = readStore().github;
+    const clientId = keepSecret(String(input.clientId || ''), stored?.clientId);
+    const clientSecret = keepSecret(String(input.clientSecret || ''), stored?.clientSecret);
+    if (!clientId || !clientSecret) {
+      throw new Error(
+        'Register a GitHub OAuth App at github.com/settings/developers (name it TecAdRiseBot). Callback URL: http://127.0.0.1:18768/callback. Expand GitHub, Save Client ID and Client secret, then Connect. GitHub will ask you to approve TecAdRiseBot.'
+      );
+    }
+    const redirectUri = `http://127.0.0.1:${GITHUB_CALLBACK_PORT}/callback`;
+    const state = b64url(crypto.randomBytes(16));
+    const pending = await waitForCode(GITHUB_CALLBACK_PORT, state, 'GitHub');
+    const auth = new URL('https://github.com/login/oauth/authorize');
+    auth.searchParams.set('client_id', clientId);
+    auth.searchParams.set('redirect_uri', redirectUri);
+    auth.searchParams.set('scope', GITHUB_SCOPES);
+    auth.searchParams.set('state', state);
+    await shell.openExternal(auth.toString());
+    const code = await pending.code;
+    const res = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: redirectUri,
+      }),
+    });
+    const j = await readJson(res);
+    const access = String(j.access_token || '');
+    if (!res.ok || !access) {
+      throw new Error(String(j.error_description || j.error || j.raw || `GitHub token HTTP ${res.status}`));
+    }
+    writeStore({
+      ...readStore(),
+      github: { clientId, clientSecret, accessToken: access, token: '' },
+    });
+    return { ok: true as const };
+  })()
+    .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
+    .finally(() => {
+      connecting = null;
+    });
+  return connecting;
+}
+
+export function disconnectGithub(): { ok: true } {
+  const s = readStore();
+  if (s.github) {
+    s.github = {
+      ...s.github,
+      accessToken: '',
+      token: '',
+    };
+  }
+  writeStore(s);
+  return { ok: true };
+}
+
 export function revealConnectorField(id: string, field: string): string {
   const s = readStore();
   let v = '';
@@ -533,6 +653,11 @@ export function revealConnectorField(id: string, field: string): string {
   }
   if (id === 'agentmail' && field === 'apiKey') v = s.agentmail?.apiKey || '';
   if (id === 'context' && field === 'apiKey') v = s.context?.apiKey || '';
+  if (id === 'github') {
+    if (field === 'token') v = githubAccess(s.github);
+    else if (field === 'clientId') v = s.github?.clientId || '';
+    else if (field === 'clientSecret') v = s.github?.clientSecret || '';
+  }
   if (!v.trim() || /^[\s*•]+$/.test(v)) return '';
   return v;
 }
@@ -571,6 +696,28 @@ export function saveConnectorField(
     const next = keepSecret(value, s.context?.apiKey);
     if (!next) return { ok: false, error: 'Enter a Context.dev API key' };
     s.context = { apiKey: next };
+    writeStore(s);
+    return { ok: true };
+  }
+  if (id === 'github') {
+    const s = readStore();
+    const g: GithubGrant = { ...(s.github || {}) };
+    if (field === 'clientId') {
+      const next = keepSecret(value, g.clientId);
+      if (!next) return { ok: false, error: 'Enter a GitHub Client ID' };
+      g.clientId = next;
+    } else if (field === 'clientSecret') {
+      const next = keepSecret(value, g.clientSecret);
+      if (!next) return { ok: false, error: 'Enter a GitHub Client secret' };
+      g.clientSecret = next;
+    } else if (field === 'token') {
+      const next = keepSecret(value, githubAccess(g));
+      if (!next) return { ok: false, error: 'Enter a GitHub token' };
+      g.token = next;
+    } else {
+      return { ok: false, error: 'Unknown field' };
+    }
+    s.github = g;
     writeStore(s);
     return { ok: true };
   }
@@ -638,6 +785,23 @@ export function clearConnectorField(id: string, field: string): { ok: true } {
       writeStore(s);
     }
   }
+  if (id === 'github') {
+    const g: GithubGrant = { ...(s.github || {}) };
+    if (field === 'token') {
+      g.token = '';
+      g.accessToken = '';
+    }
+    if (field === 'clientId') g.clientId = '';
+    if (field === 'clientSecret') g.clientSecret = '';
+    if (field === 'all') {
+      g.token = '';
+      g.accessToken = '';
+      g.clientId = '';
+      g.clientSecret = '';
+    }
+    s.github = g;
+    writeStore(s);
+  }
   if (id === 'treg') {
     if (!s.treg) s.treg = { token: '', org: 'tecadrisebot' };
     if (field === 'token') s.treg.token = '';
@@ -679,6 +843,15 @@ export async function connectorMcpServers(): Promise<McpServers> {
   }
   const { zohoMailMcp } = await import('./zohoMail');
   Object.assign(out, zohoMailMcp());
+  const ghTok = githubAccess(readStore().github);
+  if (ghTok) {
+    out.github = {
+      type: 'stdio',
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-github'],
+      env: { GITHUB_PERSONAL_ACCESS_TOKEN: ghTok },
+    };
+  }
   const ctx = readStore().context;
   if (ctx?.apiKey) {
     out.context = {

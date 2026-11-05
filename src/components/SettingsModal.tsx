@@ -153,6 +153,10 @@ function ConnectorsBody() {
   const [showMail, setShowMail] = useState(false);
   const [ctxKey, setCtxKey] = useState('');
   const [showCtx, setShowCtx] = useState(false);
+  const [ghClientId, setGhClientId] = useState('');
+  const [ghSecret, setGhSecret] = useState('');
+  const [showGhId, setShowGhId] = useState(false);
+  const [showGhSecret, setShowGhSecret] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
   async function refresh() {
@@ -171,7 +175,9 @@ function ConnectorsBody() {
   const tregRow = rows.find((r) => r.id === 'treg');
   const mailRow = rows.find((r) => r.id === 'agentmail');
   const ctxRow = rows.find((r) => r.id === 'context');
-  const extra = (id: string) => id === 'zoho' || id === 'treg' || id === 'agentmail' || id === 'context';
+  const ghRow = rows.find((r) => r.id === 'github');
+  const extra = (id: string) =>
+    id === 'zoho' || id === 'treg' || id === 'agentmail' || id === 'context' || id === 'github';
   useEffect(() => {
     if (zohoRow?.dc) setZohoDc(zohoRow.dc);
   }, [zohoRow?.dc]);
@@ -235,7 +241,9 @@ function ConnectorsBody() {
             ? 'Saving AgentMail key…'
             : id === 'context'
               ? 'Saving Context.dev key…'
-              : 'Browser opened. Approve Canva, then this page will update.'
+              : id === 'github'
+                ? 'Browser opened. Approve GitHub, then this page will update.'
+                : 'Browser opened. Approve Canva, then this page will update.'
     );
     try {
       const res = await window.tecapi.connectors.connect(
@@ -248,7 +256,9 @@ function ConnectorsBody() {
               ? { apiKey: mailKey }
               : id === 'context'
                 ? { apiKey: ctxKey }
-                : undefined
+                : id === 'github'
+                  ? { clientId: ghClientId, clientSecret: ghSecret }
+                  : undefined
       );
       const ok =
         id === 'zoho'
@@ -259,7 +269,9 @@ function ConnectorsBody() {
               ? 'AgentMail connected. All agents get mail tools on the next turn.'
               : id === 'context'
                 ? 'Context.dev connected. All agents get scrape and search tools on the next turn.'
-                : 'Canva connected. All agents get it on the next turn.';
+                : id === 'github'
+                  ? 'GitHub connected. All agents get repo tools on the next turn.'
+                  : 'Canva connected. All agents get it on the next turn.';
       setStatus(res.ok ? ok : res.error || 'Connect failed');
       if (res.ok && id === 'zoho') {
         setZohoClientId('');
@@ -279,6 +291,12 @@ function ConnectorsBody() {
       if (res.ok && id === 'context') {
         setCtxKey('');
         setShowCtx(false);
+      }
+      if (res.ok && id === 'github') {
+        setGhClientId('');
+        setGhSecret('');
+        setShowGhId(false);
+        setShowGhSecret(false);
       }
       await refresh();
     } catch (e) {
@@ -306,8 +324,8 @@ function ConnectorsBody() {
     <section>
       <h2>Connectors</h2>
       <p className="hint">
-        Global for every agent. Canva and Zoho open the vendor site in your browser. Treg, AgentMail and
-        Context.dev use a saved token. Tokens stay in secrets.bin, not in MCP JSON.
+        Global for every agent. Canva, Zoho and GitHub open the vendor site in your browser. Treg,
+        AgentMail and Context.dev use a saved token. Tokens stay in secrets.bin, not in MCP JSON.
       </p>
       {rows.map((r) => (
         <div key={r.id} className="connector-block">
@@ -371,6 +389,12 @@ function ConnectorsBody() {
                     if (r.id === 'context') {
                       setCtxKey('');
                       setShowCtx(false);
+                    }
+                    if (r.id === 'github') {
+                      setGhClientId('');
+                      setGhSecret('');
+                      setShowGhId(false);
+                      setShowGhSecret(false);
                     }
                     setStatus('Cleared.');
                     await refresh();
@@ -659,6 +683,167 @@ function ConnectorsBody() {
                             await window.tecapi.connectors.clearField('treg', 'token');
                             setTregToken('');
                             setShowTreg(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {r.id === 'github' && open.github ? (
+            <div className="connector-fields">
+              <p className="hint">
+                Register a GitHub OAuth App at github.com/settings/developers, name it TecAdRiseBot.
+                Callback: http://127.0.0.1:18768/callback. Save Client ID and Client secret here, then
+                Connect. GitHub opens in the browser to approve TecAdRiseBot. MCP name is github.
+              </p>
+              <table className="keys-table">
+                <tbody>
+                  <tr>
+                    <td className="keys-name">Client ID</td>
+                    <td>
+                      <input
+                        type={showGhId ? 'text' : 'password'}
+                        value={ghClientId}
+                        onChange={(e) => {
+                          setGhClientId(e.target.value);
+                          setShowGhId(true);
+                        }}
+                        autoComplete="off"
+                        placeholder={ghRow?.hasClientId ? SECRET_MASK : 'OAuth App client ID'}
+                        spellCheck={false}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={!ghRow?.hasClientId && !ghClientId}
+                        onClick={() =>
+                          void (async () => {
+                            if (showGhId) {
+                              setShowGhId(false);
+                              setGhClientId('');
+                              return;
+                            }
+                            const v = await window.tecapi.connectors.reveal('github', 'clientId');
+                            setGhClientId(v);
+                            setShowGhId(true);
+                          })()
+                        }
+                      >
+                        {showGhId ? 'Hide' : 'Show'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!ghClientId.trim()}
+                        onClick={() =>
+                          void (async () => {
+                            const res = await window.tecapi.connectors.saveField('github', 'clientId', ghClientId);
+                            setStatus(res.ok ? 'Saved.' : res.error || 'Save failed');
+                            if (!res.ok) return;
+                            setGhClientId('');
+                            setShowGhId(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Save
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void (async () => {
+                            await window.tecapi.connectors.clearField('github', 'clientId');
+                            setGhClientId('');
+                            setShowGhId(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="keys-name">Client secret</td>
+                    <td>
+                      <input
+                        type={showGhSecret ? 'text' : 'password'}
+                        value={ghSecret}
+                        onChange={(e) => {
+                          setGhSecret(e.target.value);
+                          setShowGhSecret(true);
+                        }}
+                        autoComplete="off"
+                        placeholder={ghRow?.hasClientSecret ? SECRET_MASK : 'OAuth App client secret'}
+                        spellCheck={false}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={!ghRow?.hasClientSecret && !ghSecret}
+                        onClick={() =>
+                          void (async () => {
+                            if (showGhSecret) {
+                              setShowGhSecret(false);
+                              setGhSecret('');
+                              return;
+                            }
+                            const v = await window.tecapi.connectors.reveal('github', 'clientSecret');
+                            setGhSecret(v);
+                            setShowGhSecret(true);
+                          })()
+                        }
+                      >
+                        {showGhSecret ? 'Hide' : 'Show'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!ghSecret.trim()}
+                        onClick={() =>
+                          void (async () => {
+                            const res = await window.tecapi.connectors.saveField(
+                              'github',
+                              'clientSecret',
+                              ghSecret
+                            );
+                            setStatus(res.ok ? 'Saved.' : res.error || 'Save failed');
+                            if (!res.ok) return;
+                            setGhSecret('');
+                            setShowGhSecret(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Save
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void (async () => {
+                            await window.tecapi.connectors.clearField('github', 'clientSecret');
+                            setGhSecret('');
+                            setShowGhSecret(false);
                             await refresh();
                           })()
                         }

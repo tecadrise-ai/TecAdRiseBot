@@ -15,6 +15,7 @@ import { DEFAULT_MODEL_ID, readLastMessages, readToastEnabled, toSdkModel, type 
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
 import { applyTodoCallToList, parseNumberedTasks, todoCallFromDelta, type TodoCall, type TodoItem } from '../src/lib/todos';
+import { connectorMcpServers } from './connectors';
 
 function broadcastUi(channel: string, payload: unknown, preferred?: BrowserWindow | null): void {
   const seen = new Set<number>();
@@ -599,13 +600,16 @@ function expandEnvRefs(servers: McpServers): McpServers {
   return out;
 }
 
-function mcpServersForAgent(
+async function mcpServersForAgent(
   config: Record<string, unknown> | null | undefined,
   cwd: string,
   extraMcp?: McpServers
-): McpServers | undefined {
+): Promise<McpServers | undefined> {
   const merged = mergeMcpServers(
-    mergeMcpServers(loadGlobalMcpServers(), serversFromUnknown(config?.mcpServers ?? {})),
+    mergeMcpServers(
+      mergeMcpServers(loadGlobalMcpServers(), serversFromUnknown(config?.mcpServers ?? {})),
+      await connectorMcpServers()
+    ),
     extraMcp || {}
   );
   if (!Object.keys(merged).length) return undefined;
@@ -655,7 +659,7 @@ async function getHandle(
     }
   }
   const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
-  const mcpServers = mcpServersForAgent(agent.config, cwd, extraMcp);
+  const mcpServers = await mcpServersForAgent(agent.config, cwd, extraMcp);
   const local = localAgentOpts(cwd, extraDirs);
 
   const handle = (await Agent.create({
@@ -699,7 +703,7 @@ export async function registerAgentMcp(agentId: string): Promise<{ ok: boolean; 
     const cwd = db.agentWorkspacePath(agentId);
     await getHandle(agent, apiKey, cwd);
     await disposeFreshHandle(agentId, cwd);
-    const n = Object.keys(mcpServersForAgent(agent.config, db.agentWorkspacePath(agentId)) || {}).length;
+    const n = Object.keys((await mcpServersForAgent(agent.config, cwd)) || {}).length;
     return {
       ok: true,
       note: n
@@ -964,7 +968,7 @@ async function runAgentTurnInner(opts: {
     userBody = offloadLongText(cwd, 'last_user.md', userBody);
   }
 
-  const mcpForTurn = mcpServersForAgent(agent.config, cwd, extras?.extraMcp);
+  const mcpForTurn = await mcpServersForAgent(agent.config, cwd, extras?.extraMcp);
   const mcpBlock = !mcpForTurn
     ? '[MCP]\nNo MCP servers this turn. Settings, MCP is empty and this agent has none.\n[/MCP]'
     : '[MCP]\nServers attached this turn (Settings MCP, then this agent MCP, then this-turn tools):\n' +

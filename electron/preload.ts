@@ -124,6 +124,14 @@ const api = {
     get: (): Promise<string> => ipcRenderer.invoke('sidebar:get'),
     save: (json: string): Promise<string> => ipcRenderer.invoke('sidebar:save', json),
   },
+  connectors: {
+    list: (): Promise<Array<{ id: string; name: string; connected: boolean }>> =>
+      ipcRenderer.invoke('connectors:list'),
+    connect: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('connectors:connect', id),
+    disconnect: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('connectors:disconnect', id),
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     setApiKey: (key: string) => ipcRenderer.invoke('settings:setApiKey', key),

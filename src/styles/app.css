@@ -1142,6 +1142,22 @@
   color: var(--danger);
 }
 
+.connector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 12px 0;
+  background: var(--bg);
+}
+.connector-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
 .info-card {
   display: flex;
   justify-content: space-between;

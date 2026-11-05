@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
+import { connectCanva, disconnectCanva, listConnectors } from './connectors';
 import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp, readGlobalMcpJson, registerGlobalMcp, readArchitecture } from './agentRunner';
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
@@ -211,6 +212,16 @@ function registerIpc() {
 
   ipcMain.handle('sidebar:get', () => db.getSidebarLayoutRaw());
   ipcMain.handle('sidebar:save', (_e, json: string) => db.setSidebarLayoutRaw(String(json ?? '')));
+
+  ipcMain.handle('connectors:list', () => listConnectors());
+  ipcMain.handle('connectors:connect', async (_e, id: string) => {
+    if (String(id) !== 'canva') return { ok: false, error: 'Unknown connector' };
+    return connectCanva();
+  });
+  ipcMain.handle('connectors:disconnect', (_e, id: string) => {
+    if (String(id) !== 'canva') return { ok: false, error: 'Unknown connector' };
+    return disconnectCanva();
+  });
 
   ipcMain.handle('agents:delete', async (_e, id: string) => {
     await cancelAgentRun(id);

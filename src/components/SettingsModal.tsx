@@ -8,7 +8,16 @@ import todosSvg from '../assets/todos.svg?raw';
 import { EMPTY_MCP_JSON } from '../lib/mcpConfig';
 import { fmtTok } from '../lib/usage';
 
-type Tab = 'general' | 'architecture' | 'system' | 'memory' | 'mcp' | 'computer' | 'usage' | 'updates';
+type Tab =
+  | 'general'
+  | 'architecture'
+  | 'system'
+  | 'memory'
+  | 'mcp'
+  | 'connectors'
+  | 'computer'
+  | 'usage'
+  | 'updates';
 
 type AgentUsageRow = {
   agentId: string;
@@ -106,6 +115,80 @@ function UsageBillingBody() {
           </table>
         </div>
       )}
+    </section>
+  );
+}
+
+function ConnectorsBody() {
+  const [rows, setRows] = useState<Array<{ id: string; name: string; connected: boolean }>>([]);
+  const [busy, setBusy] = useState('');
+  const [status, setStatus] = useState('');
+
+  async function refresh() {
+    try {
+      setRows(await window.tecapi.connectors.list());
+    } catch {
+      setRows([]);
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function connect(id: string) {
+    setBusy(id);
+    setStatus('Browser opened. Approve Canva, then this page will update.');
+    try {
+      const res = await window.tecapi.connectors.connect(id);
+      setStatus(res.ok ? 'Canva connected. All agents get it on the next turn.' : res.error || 'Connect failed');
+      await refresh();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function disconnect(id: string) {
+    setBusy(id);
+    setStatus('');
+    try {
+      await window.tecapi.connectors.disconnect(id);
+      setStatus('Disconnected.');
+      await refresh();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  return (
+    <section>
+      <h2>Connectors</h2>
+      <p className="hint">
+        Global for every agent. Connect opens the vendor site in your browser. After you approve, tokens
+        stay on this PC and every bot can use that account.
+      </p>
+      {rows.map((r) => (
+        <div key={r.id} className="connector-row">
+          <div>
+            <div className="connector-name">{r.name}</div>
+            <div className="hint">{r.connected ? 'Connected' : 'Not connected'}</div>
+          </div>
+          {r.connected ? (
+            <button type="button" className="secondary" disabled={busy === r.id} onClick={() => void disconnect(r.id)}>
+              Disconnect
+            </button>
+          ) : (
+            <button type="button" className="primary" disabled={Boolean(busy)} onClick={() => void connect(r.id)}>
+              {busy === r.id ? 'Waiting…' : 'Connect'}
+            </button>
+          )}
+        </div>
+      ))}
+      {status ? <p className={`status${status.toLowerCase().includes('fail') ? ' error' : ''}`}>{status}</p> : null}
     </section>
   );
 }
@@ -303,6 +386,7 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                 ['system', 'System prompt'],
                 ['memory', 'System memory'],
                 ['mcp', 'MCP'],
+                ['connectors', 'Connectors'],
                 ['computer', 'Computer'],
                 ['usage', 'Usage & Billing'],
                 ['updates', 'Updates'],
@@ -482,6 +566,8 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                 {status && <p className="status">{status}</p>}
               </section>
             )}
+
+            {tab === 'connectors' && <ConnectorsBody />}
 
             {tab === 'mcp' && (
               <section>

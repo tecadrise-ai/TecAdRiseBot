@@ -1,5 +1,5 @@
 {
-  "client_id": "https://raw.githubusercontent.com/tecadrise-ai/TecAdRiseBot/master/oauth/elevenlabs-client.json",
+  "client_id": "https://cdn.jsdelivr.net/gh/tecadrise-ai/TecAdRiseBot@master/oauth/elevenlabs-client.json",
   "client_name": "TecAdRiseBot",
   "client_uri": "https://github.com/tecadrise-ai/TecAdRiseBot",
   "redirect_uris": ["http://127.0.0.1:18769/callback"],

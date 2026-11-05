@@ -16,7 +16,7 @@ const ELEVENLABS_MCP_URL = 'https://api.elevenlabs.io/v1/mcp';
 const ELEVENLABS_AS_META = 'https://api.us.elevenlabs.io/.well-known/oauth-authorization-server';
 const ELEVENLABS_CALLBACK_PORT = 18769;
 const ELEVENLABS_CLIENT_ID =
-  'https://raw.githubusercontent.com/tecadrise-ai/TecAdRiseBot/master/oauth/elevenlabs-client.json';
+  'https://cdn.jsdelivr.net/gh/tecadrise-ai/TecAdRiseBot@master/oauth/elevenlabs-client.json';
 const ELEVENLABS_SCOPES = [
   'convai_read',
   'convai_write',
@@ -100,7 +100,25 @@ type Store = {
   github?: GithubGrant;
 };
 
-let connecting: Promise<{ ok: boolean; error?: string }> | null = null;
+const oauthListen = new Map<number, { server: http.Server; fail: (e: Error) => void }>();
+
+function stopOAuthListen(port: number, reason: string): void {
+  const cur = oauthListen.get(port);
+  if (!cur) return;
+  oauthListen.delete(port);
+  try {
+    cur.server.close();
+  } catch {
+    /* ignore */
+  }
+  cur.fail(new Error(reason));
+}
+
+function runConnect(fn: () => Promise<{ ok: true }>): Promise<{ ok: boolean; error?: string }> {
+  return fn()
+    .then(() => ({ ok: true as const }))
+    .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+}
 
 export function readStore(): Store {
   const v = getConnectors() as Store;
@@ -174,6 +192,7 @@ function waitForCode(
   expectedState: string,
   product = 'Canva'
 ): Promise<{ code: Promise<string> }> {
+  stopOAuthListen(port, 'Connect again');
   return new Promise((resolveListen, rejectListen) => {
     let settled = false;
     const server = http.createServer((req, res) => {
@@ -190,12 +209,14 @@ function waitForCode(
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         if (err) {
           res.end(`<html><body><p>${product} denied access. You can close this tab.</p></body></html>`);
+          oauthListen.delete(port);
           server.close();
           fail(new Error(err));
           return;
         }
         if (!code || state !== expectedState) {
           res.end('<html><body><p>Bad callback. Close this tab and try Connect again.</p></body></html>');
+          oauthListen.delete(port);
           server.close();
           fail(new Error(`Bad ${product} callback`));
           return;
@@ -203,6 +224,7 @@ function waitForCode(
         res.end(
           `<html><body><p>${product} connected. You can close this tab and return to TecAdRiseBot.</p></body></html>`
         );
+        oauthListen.delete(port);
         server.close();
         ok(code);
       } catch (e) {
@@ -231,11 +253,17 @@ function waitForCode(
       };
     });
     server.on('error', (e) => {
+      oauthListen.delete(port);
       fail(e instanceof Error ? e : new Error(String(e)));
       rejectListen(e);
     });
+    oauthListen.set(port, {
+      server,
+      fail: (e) => fail(e),
+    });
     server.listen(port, '127.0.0.1', () => resolveListen({ code }));
     setTimeout(() => {
+      if (oauthListen.get(port)?.server === server) oauthListen.delete(port);
       server.close();
       fail(new Error(`Timed out waiting for ${product}. Click Connect again.`));
     }, 6 * 60 * 1000);
@@ -362,8 +390,7 @@ export function listConnectors(): ConnectorRow[] {
 }
 
 export async function connectCanva(): Promise<{ ok: boolean; error?: string }> {
-  if (connecting) return connecting;
-  connecting = (async () => {
+  return runConnect(async () => {
     const redirectUri = `http://127.0.0.1:${CALLBACK_PORT}/callback`;
     const meta = await authMeta();
     const clientId = await registerClient(meta.register, redirectUri);
@@ -390,12 +417,7 @@ export async function connectCanva(): Promise<{ ok: boolean; error?: string }> {
     });
     writeStore({ ...readStore(), canva: grant });
     return { ok: true as const };
-  })()
-    .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
-    .finally(() => {
-      connecting = null;
-    });
-  return connecting;
+  });
 }
 
 export function disconnectCanva(): { ok: true } {
@@ -675,8 +697,7 @@ async function refreshElevenlabs(g: ElevenlabsGrant): Promise<ElevenlabsGrant> {
 }
 
 export async function connectElevenlabs(): Promise<{ ok: boolean; error?: string }> {
-  if (connecting) return connecting;
-  connecting = (async () => {
+  return runConnect(async () => {
     const redirectUri = `http://127.0.0.1:${ELEVENLABS_CALLBACK_PORT}/callback`;
     const meta = await elevenlabsAuthMeta();
     const { verifier, challenge } = pkce();
@@ -702,15 +723,11 @@ export async function connectElevenlabs(): Promise<{ ok: boolean; error?: string
     });
     writeStore({ ...readStore(), elevenlabs: grant });
     return { ok: true as const };
-  })()
-    .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
-    .finally(() => {
-      connecting = null;
-    });
-  return connecting;
+  });
 }
 
 export function disconnectElevenlabs(): { ok: true } {
+  stopOAuthListen(ELEVENLABS_CALLBACK_PORT, 'Cancelled');
   const s = readStore();
   if (s.elevenlabs) {
     s.elevenlabs = {
@@ -731,8 +748,7 @@ function githubAccess(g: GithubGrant | undefined): string {
 export async function connectGithub(
   input: { clientId?: string; clientSecret?: string } = {}
 ): Promise<{ ok: boolean; error?: string }> {
-  if (connecting) return connecting;
-  connecting = (async () => {
+  return runConnect(async () => {
     const stored = readStore().github;
     const clientId = keepSecret(String(input.clientId || ''), stored?.clientId);
     const clientSecret = keepSecret(String(input.clientSecret || ''), stored?.clientSecret);
@@ -771,12 +787,7 @@ export async function connectGithub(
       github: { clientId, clientSecret, accessToken: access, token: '' },
     });
     return { ok: true as const };
-  })()
-    .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
-    .finally(() => {
-      connecting = null;
-    });
-  return connecting;
+  });
 }
 
 export function disconnectGithub(): { ok: true } {
@@ -938,6 +949,7 @@ export function clearConnectorField(id: string, field: string): { ok: true } {
     }
   }
   if (id === 'elevenlabs' && field === 'all') {
+    stopOAuthListen(ELEVENLABS_CALLBACK_PORT, 'Cancelled');
     delete s.elevenlabs;
     writeStore(s);
   }

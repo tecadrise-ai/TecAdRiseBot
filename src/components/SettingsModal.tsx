@@ -138,6 +138,7 @@ type ConnectorRow = {
 function ConnectorsBody() {
   const [rows, setRows] = useState<ConnectorRow[]>([]);
   const [busy, setBusy] = useState('');
+  const connectSeq = useRef(0);
   const [status, setStatus] = useState('');
   const [zohoDc, setZohoDc] = useState('eu');
   const [zohoClientId, setZohoClientId] = useState('');
@@ -229,6 +230,7 @@ function ConnectorsBody() {
   }
 
   async function connect(id: string) {
+    const seq = ++connectSeq.current;
     setBusy(id);
     setStatus(
       id === 'zoho'
@@ -306,7 +308,7 @@ function ConnectorsBody() {
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy('');
+      if (connectSeq.current === seq) setBusy('');
     }
   }
 
@@ -358,7 +360,7 @@ function ConnectorsBody() {
                 <button
                   type="button"
                   className="primary"
-                  disabled={Boolean(busy)}
+                  disabled={Boolean(busy) && busy !== r.id}
                   onClick={() => {
                     if (extra(r.id)) setOpen((cur) => ({ ...cur, [r.id]: true }));
                     void connect(r.id);

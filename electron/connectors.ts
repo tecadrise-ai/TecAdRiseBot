@@ -16,7 +16,7 @@ const ELEVENLABS_MCP_URL = 'https://api.elevenlabs.io/v1/mcp';
 const ELEVENLABS_AS_META = 'https://api.us.elevenlabs.io/.well-known/oauth-authorization-server';
 const ELEVENLABS_CALLBACK_PORT = 18769;
 const ELEVENLABS_CLIENT_ID =
-  'https://cdn.jsdelivr.net/gh/tecadrise-ai/TecAdRiseBot@master/oauth/elevenlabs-client.json';
+  'https://tecadrise.ai/.well-known/oauth-client/tecadrisebot-elevenlabs.json';
 const ELEVENLABS_SCOPES = [
   'convai_read',
   'convai_write',

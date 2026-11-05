@@ -114,6 +114,14 @@ export function getRun(id: string): WorkflowRun | null {
   return rows.length ? parse<WorkflowRun | null>(rows[0].run_json, null) : null;
 }
 
+export function getLatestRunForRoutine(routineId: string): WorkflowRun | null {
+  const rows = db.dbAll(
+    `SELECT run_json FROM workflow_runs WHERE routine_id=$r ORDER BY created_at DESC LIMIT 1`,
+    { $r: routineId }
+  );
+  return rows.length ? parse<WorkflowRun | null>(rows[0].run_json, null) : null;
+}
+
 export function listActiveRuns(): WorkflowRun[] {
   const states = ACTIVE_RUN_STATES.map((s) => `'${s}'`).join(',');
   return db

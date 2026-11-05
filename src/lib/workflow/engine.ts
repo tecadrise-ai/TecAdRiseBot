@@ -359,10 +359,14 @@ export function applyFix(
  * A run blocked while its finished step waited for review goes back to review instead of redoing the work.
  */
 export function applyRetry(input: WorkflowRun, now: number): { ok: true; run: WorkflowRun } | { ok: false; error: string } {
-  if (input.state === 'done' || input.state === 'aborted') return { ok: false, error: `Run is ${input.state}.` };
+  if (input.state === 'done') return { ok: false, error: `Run is ${input.state}.` };
   const run = clone(input);
   const st = currentState(run);
-  if (run.state === 'blocked' && run.blockedFrom === 'awaiting_review' && st?.status === 'review') {
+  const fromReview =
+    (run.state === 'blocked' || run.state === 'aborted') &&
+    run.blockedFrom === 'awaiting_review' &&
+    st?.status === 'review';
+  if (fromReview) {
     run.state = 'awaiting_review';
   } else {
     run.steps[run.currentIndex] = { status: 'active', attempts: 0, startedAt: now };
@@ -371,6 +375,7 @@ export function applyRetry(input: WorkflowRun, now: number): { ok: true; run: Wo
   run.blockedReason = null;
   run.blockedFrom = null;
   run.idleTurns = 0;
+  run.finishedAt = null;
   run.updatedAt = now;
   return { ok: true, run };
 }
@@ -378,6 +383,7 @@ export function applyRetry(input: WorkflowRun, now: number): { ok: true; run: Wo
 export function applyAbort(input: WorkflowRun, reason: string, now: number): WorkflowRun {
   const run = clone(input);
   if (run.state === 'done') return run;
+  if (run.state !== 'aborted') run.blockedFrom = run.state;
   run.state = 'aborted';
   run.blockedReason = String(reason || 'Aborted').trim();
   run.finishedAt = now;

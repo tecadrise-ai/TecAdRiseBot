@@ -398,13 +398,32 @@ function ownerTools(agentId: string): McpTool[] {
     },
     {
       name: 'abort_run',
-      description: 'Abort a run that cannot succeed.',
+      description:
+        'Pause a run at the current step. Done steps stay done. A human Resume or resume_run continues from that step. Prefer this over inventing a hard stop when a local tool is down.',
       inputSchema: S({ run_id: STR('Run id'), reason: STR('Why') }, ['run_id', 'reason']),
       run: (a) =>
         withLock(String(a.run_id ?? ''), async () => {
           const run = engine.applyAbort(ownedRun(agentId, String(a.run_id ?? '')), String(a.reason ?? ''), Date.now());
           commit(run);
           return { ok: true, run_state: run.state };
+        }),
+    },
+    {
+      name: 'resume_run',
+      description:
+        'Resume an aborted run from the open step. Passed and skipped steps stay done. Use after the blocker is fixed (service back up, wrong gate removed).',
+      inputSchema: S({ run_id: STR('Run id'), reason: STR('Why it can continue now') }, ['run_id', 'reason']),
+      run: (a) =>
+        withLock(String(a.run_id ?? ''), async () => {
+          const run = ownedRun(agentId, String(a.run_id ?? ''));
+          if (run.state !== 'aborted') {
+            return { state: 'rejected', error: { code: 'RESUME_REJECTED', message: `Run is ${run.state}, nothing to resume.` } };
+          }
+          const r = engine.applyRetry(run, Date.now());
+          if (!r.ok) return { state: 'rejected', error: { code: 'RESUME_REJECTED', message: r.error } };
+          commit(r.run);
+          kickPump();
+          return { ok: true, run_state: r.run.state, progress: engine.progressOf(r.run) };
         }),
     },
   ];
@@ -489,7 +508,7 @@ export function startRun(input: {
   return viewOf(run);
 }
 
-/** Routine fired in Step workflow mode: resume its active run, or start a new one. */
+/** Routine fired in Step workflow mode: resume its active or aborted run, or start a new one. */
 export function startFromRoutine(r: db.RoutineRow): { ok: boolean; run?: RunView; note?: string } {
   if (!r.workflowId) return { ok: false, note: 'Routine has no workflow' };
   const active = store.listActiveRuns().find((x) => x.routineId === r.id && x.state !== 'blocked');
@@ -500,6 +519,20 @@ export function startFromRoutine(r: db.RoutineRow): { ok: boolean; run?: RunView
       run: viewOf(active),
       note: 'Previous run still active, resumed.',
     };
+  }
+  const latest = store.getLatestRunForRoutine(r.id);
+  if (latest?.state === 'aborted') {
+    const rsm = engine.applyRetry(latest, Date.now());
+    if (rsm.ok) {
+      commit(rsm.run);
+      db.flushPersist();
+      kickPump();
+      return {
+        ok: true,
+        run: viewOf(rsm.run),
+        note: `Resumed aborted run from step ${rsm.run.currentIndex + 1}.`,
+      };
+    }
   }
   try {
     return { ok: true, run: startRun({ workflowId: r.workflowId, runnerAgentId: r.agentId, routineId: r.id, input: r.prompt }) };
@@ -530,6 +563,7 @@ export function humanAction(runId: string, action: 'retry' | 'skip' | 'abort'): 
       next = r.run;
     }
     commit(next);
+    db.flushPersist();
     kickPump();
     return viewOf(next);
   });

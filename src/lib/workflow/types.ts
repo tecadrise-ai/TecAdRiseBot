@@ -62,6 +62,7 @@ export type StepState = {
  * awaiting_review: owner must review the step in "review".
  * needs_fix: a step failed, owner must fix it (or a human).
  * blocked: automation gave up, a human must act in the UI.
+ * aborted: paused at the current step. Resume (retry) continues from there. Done steps stay done.
  */
 export type RunState = 'running' | 'awaiting_review' | 'needs_fix' | 'blocked' | 'done' | 'aborted';
 

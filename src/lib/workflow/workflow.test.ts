@@ -152,6 +152,24 @@ test('human retry of a run blocked during review resumes the review, not the wor
   assert.ok(fromRunning.ok && fromRunning.run.state === 'running');
 });
 
+test('abort pauses the run; retry resumes the open step and keeps earlier steps', () => {
+  let r = applyDone(run(), 'a', EVIDENCE, PASS, 2).run;
+  r = applyFail(r, 'b', 'Voice engine down', 3).run;
+  assert.equal(r.currentIndex, 1);
+  r = applyAbort(r, 'Waiting for VoiceStudio', 4);
+  assert.equal(r.state, 'aborted');
+  assert.equal(r.finishedAt, 4);
+  assert.equal(r.steps[0].status, 'passed');
+  const retry = applyRetry(r, 5);
+  assert.ok(retry.ok);
+  r = retry.ok ? retry.run : r;
+  assert.equal(r.state, 'running');
+  assert.equal(r.finishedAt, null);
+  assert.equal(r.currentIndex, 1);
+  assert.equal(r.steps[0].status, 'passed');
+  assert.equal(r.steps[1].status, 'active');
+});
+
 test('definition rejects very long regexes', () => {
   assert.throws(
     () =>

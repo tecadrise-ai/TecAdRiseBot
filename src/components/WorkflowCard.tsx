@@ -71,7 +71,8 @@ export function WorkflowCard({ run, compact = false }: Props) {
   }
 
   const canFix = run.state === 'blocked' || run.state === 'needs_fix';
-  const active = run.state !== 'done' && run.state !== 'aborted';
+  const canResume = run.state === 'aborted';
+  const showActions = run.state !== 'done';
 
   return (
     <div className={`wf-card wf-${run.state}`}>
@@ -125,8 +126,13 @@ export function WorkflowCard({ run, compact = false }: Props) {
         })}
       </div>
       {run.blockedReason && run.state !== 'done' ? <div className="wf-blocked">{run.blockedReason}</div> : null}
-      {active ? (
+      {showActions ? (
         <div className="wf-actions">
+          {canResume ? (
+            <button type="button" className="text-btn" disabled={busy} onClick={() => void act('retry')}>
+              Resume from step {Math.min(run.currentIndex + 1, total)}
+            </button>
+          ) : null}
           {canFix ? (
             <>
               <button type="button" className="text-btn" disabled={busy} onClick={() => void act('retry')}>
@@ -137,9 +143,11 @@ export function WorkflowCard({ run, compact = false }: Props) {
               </button>
             </>
           ) : null}
-          <button type="button" className="text-btn danger-text" disabled={busy} onClick={() => void act('abort')}>
-            Abort run
-          </button>
+          {!canResume ? (
+            <button type="button" className="text-btn danger-text" disabled={busy} onClick={() => void act('abort')}>
+              Abort run
+            </button>
+          ) : null}
         </div>
       ) : null}
       {error ? <div className="wf-line wf-bad">{error}</div> : null}

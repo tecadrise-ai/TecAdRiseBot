@@ -131,9 +131,14 @@
 .section-head.collapsed .section-chevron svg {
   transform: rotate(-90deg);
 }
-.section-head-count {
-  color: var(--text-muted);
-  font-weight: 600;
+.section-head-leds {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.section-head-leds .agent-led {
+  margin-left: 0;
 }
 .section-rename,
 .agent-rename {
@@ -1156,6 +1161,16 @@
 .connector-name {
   font-weight: 600;
   font-size: 14px;
+}
+.connector-state {
+  font-size: 13px;
+  margin-top: 2px;
+}
+.connector-state.on {
+  color: #16a34a;
+}
+.connector-state.off {
+  color: #dc2626;
 }
 
 .info-card {

@@ -305,7 +305,17 @@ export function Sidebar({
                 ) : (
                   <span className="section-head-name">{g.name}</span>
                 )}
-                {isCollapsed ? <span className="section-head-count">{g.agents.length}</span> : null}
+                {isCollapsed ? (
+                  <span className="section-head-leds">
+                    {g.agents.map((a) => {
+                      const running = runningIds.has(a.id);
+                      const scheduled = scheduledIds.has(a.id);
+                      const led = running ? 'running' : scheduled ? 'scheduled' : 'idle';
+                      const ledTitle = running ? 'Running' : scheduled ? 'Scheduled (routine on)' : 'Idle';
+                      return <span key={a.id} className={`agent-led ${led}`} title={ledTitle} />;
+                    })}
+                  </span>
+                ) : null}
                 <span
                   className="section-chevron"
                   title={isCollapsed ? 'Expand' : 'Collapse'}

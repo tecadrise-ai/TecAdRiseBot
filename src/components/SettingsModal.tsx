@@ -175,7 +175,9 @@ function ConnectorsBody() {
         <div key={r.id} className="connector-row">
           <div>
             <div className="connector-name">{r.name}</div>
-            <div className="hint">{r.connected ? 'Connected' : 'Not connected'}</div>
+            <div className={`connector-state ${r.connected ? 'on' : 'off'}`}>
+              {r.connected ? 'Connected' : 'Not connected'}
+            </div>
           </div>
           {r.connected ? (
             <button type="button" className="secondary" disabled={busy === r.id} onClick={() => void disconnect(r.id)}>

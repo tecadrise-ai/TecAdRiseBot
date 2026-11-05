@@ -5,6 +5,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { AgentSettingsModal } from './components/AgentSettingsModal';
 import type { Agent, AppSettings, ChatMessage, WorkflowRunView } from './types';
 import type { TodoItem } from './lib/todos';
+import { emptyLayout, normalizeLayout, type SidebarLayout } from './lib/sidebarSections';
 import './styles/app.css';
 
 function mergeMeta(meta: string | null, patch: Record<string, unknown>): string {
@@ -41,6 +42,7 @@ export default function App() {
   const [runningIds, setRunningIds] = useState<Set<string>>(() => new Set());
   const [scheduledIds, setScheduledIds] = useState<Set<string>>(() => new Set());
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [sidebarLayout, setSidebarLayout] = useState<SidebarLayout>(() => emptyLayout());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const [liveTodos, setLiveTodos] = useState<TodoItem[]>([]);
@@ -83,8 +85,13 @@ export default function App() {
 
   const refreshAgents = useCallback(async () => {
     try {
-      const list = await window.tecapi.agents.list();
+      const [list, raw] = await Promise.all([window.tecapi.agents.list(), window.tecapi.sidebar.get()]);
       setAgents(list);
+      try {
+        setSidebarLayout(normalizeLayout(JSON.parse(raw), list.map((a) => a.id)));
+      } catch {
+        setSidebarLayout(emptyLayout());
+      }
       setSelectedId((cur) => cur ?? list[0]?.id ?? null);
     } catch (e) {
       console.error('refreshAgents', e);
@@ -341,6 +348,19 @@ export default function App() {
         onOpenAgentSettings={(id) => {
           setSelectedId(id);
           setAgentSettingsOpen(true);
+        }}
+        layout={sidebarLayout}
+        onRenameAgent={(id, name) => {
+          void (async () => {
+            await window.tecapi.agents.update(id, { name });
+            await refreshAgents();
+          })();
+        }}
+        onLayout={(next) => {
+          setSidebarLayout(next);
+          void window.tecapi.sidebar.save(JSON.stringify(next)).catch(() => {
+            void refreshAgents();
+          });
         }}
         onDeleteAgent={(id) => {
           void (async () => {

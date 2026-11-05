@@ -209,6 +209,9 @@ function registerIpc() {
 
   ipcMain.handle('agents:reorder', (_e, ids: string[]) => db.reorderAgents(Array.isArray(ids) ? ids : []));
 
+  ipcMain.handle('sidebar:get', () => db.getSidebarLayoutRaw());
+  ipcMain.handle('sidebar:save', (_e, json: string) => db.setSidebarLayoutRaw(String(json ?? '')));
+
   ipcMain.handle('agents:delete', async (_e, id: string) => {
     await cancelAgentRun(id);
     db.deleteAgent(id);

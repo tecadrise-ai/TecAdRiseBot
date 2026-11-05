@@ -120,6 +120,10 @@ const api = {
     info: (): Promise<{ port: number; baseUrl: string }> =>
       ipcRenderer.invoke('controlPlane:info'),
   },
+  sidebar: {
+    get: (): Promise<string> => ipcRenderer.invoke('sidebar:get'),
+    save: (json: string): Promise<string> => ipcRenderer.invoke('sidebar:save', json),
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     setApiKey: (key: string) => ipcRenderer.invoke('settings:setApiKey', key),

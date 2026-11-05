@@ -776,6 +776,17 @@ export function setMissedGraceMinutes(min: number): number {
   return v;
 }
 
+const SIDEBAR_SETTING = 'sidebar_layout_json';
+
+export function getSidebarLayoutRaw(): string {
+  return getSetting(SIDEBAR_SETTING) || '{"sections":[],"membership":{}}';
+}
+
+export function setSidebarLayoutRaw(json: string): string {
+  setSetting(SIDEBAR_SETTING, json);
+  return json;
+}
+
 export function ensureWorkspacesDir(userDataPath?: string): string {
   const base = userDataPath ?? app.getPath('userData');
   const dir = path.join(base, 'workspaces');

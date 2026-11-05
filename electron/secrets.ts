@@ -10,6 +10,7 @@ const META_FILE = 'settings-meta.json';
 
 export const MASK = '**************************';
 export const CURSOR_KEY_NAME = 'CURSOR_SDK_API_KEY';
+const CONNECTOR_ENV_NAMES = new Set(['AGENTMAIL_API_KEY']);
 
 export type SecretsBlob = {
   cursorApiKey?: string;
@@ -196,7 +197,7 @@ export function getEnvMap(): Record<string, string> {
 
 export function listEnvPublic(): Array<{ name: string; masked: string }> {
   return Object.keys(getEnvMap())
-    .filter((name) => name !== CURSOR_KEY_NAME)
+    .filter((name) => name !== CURSOR_KEY_NAME && !CONNECTOR_ENV_NAMES.has(name))
     .sort()
     .map((name) => ({ name, masked: MASK }));
 }
@@ -210,6 +211,7 @@ export function revealSecret(name: string): string {
 export function setEnvValue(name: string, value: string): { ok: boolean; error?: string } {
   const key = String(name || '').trim();
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return { ok: false, error: 'Invalid name' };
+  if (CONNECTOR_ENV_NAMES.has(key)) return { ok: false, error: 'Use Settings, Connectors for this key' };
   const val = String(value ?? '');
   if (!val.trim() || isMasked(val)) return { ok: false, error: 'Enter a new value' };
   const env = getEnvMap();

@@ -7,10 +7,15 @@ import * as db from './db';
 import * as secrets from './secrets';
 import {
   clearConnectorField,
+  connectAgentmail,
   connectCanva,
+  connectTreg,
+  disconnectAgentmail,
   disconnectCanva,
+  disconnectTreg,
   disconnectZoho,
   listConnectors,
+  migrateTregFromMcpJson,
   revealConnectorField,
   saveConnectorField,
 } from './connectors';
@@ -226,11 +231,15 @@ function registerIpc() {
   ipcMain.handle('connectors:connect', async (_e, id: string, opts?: Record<string, string>) => {
     if (String(id) === 'canva') return connectCanva();
     if (String(id) === 'zoho') return connectZoho(opts || {});
+    if (String(id) === 'treg') return connectTreg(opts || {});
+    if (String(id) === 'agentmail') return connectAgentmail(opts || {});
     return { ok: false, error: 'Unknown connector' };
   });
   ipcMain.handle('connectors:disconnect', (_e, id: string) => {
     if (String(id) === 'canva') return disconnectCanva();
     if (String(id) === 'zoho') return disconnectZoho();
+    if (String(id) === 'treg') return disconnectTreg();
+    if (String(id) === 'agentmail') return disconnectAgentmail();
     return { ok: false, error: 'Unknown connector' };
   });
   ipcMain.handle('connectors:reveal', (_e, id: string, field: string) => revealConnectorField(String(id), String(field)));
@@ -441,6 +450,7 @@ app.whenReady().then(async () => {
   }
   try {
     await db.initDb();
+    migrateTregFromMcpJson();
     // Seed a default agent if empty
     if (db.listAgents().length === 0) {
       db.createAgent({ id: uuid(), name: 'Assistant' });

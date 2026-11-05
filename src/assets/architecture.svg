@@ -25,18 +25,24 @@
     <rect x="185" y="-11" width="12" height="12" rx="3" fill="#e8743b"/><text class="legend" x="205" y="0">This turn</text>
   </g>
 
-  <text class="col" x="185" y="190">Starts a turn</text>
+  <text class="col" x="185" y="142">Starts a turn</text>
   <g data-tip="You type in the chat. The message starts one turn of this agent. If the agent is busy, its current turn is stopped first.">
-    <rect class="card" x="40" y="206" width="290" height="80" rx="12"/>
-    <text class="title" x="60" y="238">You</text><text class="sub" x="60" y="264">Chat message</text>
+    <rect class="card" x="40" y="158" width="290" height="80" rx="12"/>
+    <text class="title" x="60" y="190">You</text><text class="sub" x="60" y="216">Chat message</text>
   </g>
   <g data-tip="Per-agent schedule: loop, interval, daily, weekly, once or cron. Task mode Off = plain prompt. Force updateTodos = the agent must work through a todo checklist. Step workflow = runs a workflow with this agent as Runner.">
-    <rect class="card" x="40" y="302" width="290" height="80" rx="12"/>
-    <text class="title" x="60" y="334">Routine</text><text class="sub" x="60" y="360">Schedule, updateTodos, workflow</text>
+    <rect class="card" x="40" y="254" width="290" height="80" rx="12"/>
+    <text class="title" x="60" y="286">Routine</text><text class="sub" x="60" y="312">Schedule, updateTodos, workflow</text>
   </g>
   <g data-tip="Interbot message from another agent (POST /api/agents/&lt;id&gt;/interbot). Saved in both chats. The target agent must be idle.">
-    <rect class="card" x="40" y="398" width="290" height="80" rx="12"/>
-    <text class="title" x="60" y="430">Other agent</text><text class="sub" x="60" y="456">Interbot message</text>
+    <rect class="card" x="40" y="350" width="290" height="80" rx="12"/>
+    <text class="title" x="60" y="382">Other agent</text><text class="sub" x="60" y="408">Interbot message</text>
+  </g>
+  <g data-tip="http://127.0.0.1:8787, local only. POST /api/agents/:id/messages or POST /api/routines/:id/run starts a turn. Agents also read live state, change their own settings, message peers and manage routines.">
+    <rect class="card" x="40" y="446" width="290" height="80" rx="12"/>
+    <text class="title" x="60" y="472">Local API</text>
+    <text class="sub" x="60" y="496">Agents, External LLMs,</text>
+    <text class="sub" x="60" y="516">routines . 8787</text>
   </g>
 
   <path class="arrow" d="M348 342 H392 M384 334 L393 342 L384 350"/>
@@ -105,12 +111,8 @@
     <rect class="card" x="870" y="350" width="290" height="80" rx="12"/>
     <text class="title" x="890" y="382">Workflows</text><text class="sub" x="890" y="408">Runner runs, Owner fixes</text>
   </g>
-  <g data-tip="http://127.0.0.1:8787, local only. Agents read live state, change their own settings, message peers and manage routines. An external LLM can start a turn here: POST /api/routines/:id/run or POST /api/agents/:id/messages.">
+  <g data-tip="Settings, Connectors. Global Canva, Zoho Mail and treg. Tokens stay in secrets.bin and attach as MCP tools on every turn for every agent. Not stored in Common MCP JSON.">
     <rect class="card" x="870" y="446" width="290" height="80" rx="12"/>
-    <text class="title" x="890" y="478">Local API</text><text class="sub" x="890" y="504">Agents, routines</text>
-  </g>
-  <g data-tip="Any local process or external LLM on this PC can call 127.0.0.1:8787 to send chat, run a routine, or read agent state. The schedule in Routines is not required.">
-    <path class="arrow" d="M1015 578 V544 M1007 552 L1015 544 L1023 552"/>
-    <text class="col" x="1015" y="602">External LLM</text>
+    <text class="title" x="890" y="478">Connectors</text><text class="sub" x="890" y="504">Canva, Zoho, Treg, etc...</text>
   </g>
 </svg>

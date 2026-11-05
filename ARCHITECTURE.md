@@ -3,13 +3,13 @@
 Local Windows Electron app. Each agent has its own chat, settings, Soul, routines and workspace. Turns run on this PC via the Cursor SDK. One agent runs one turn at a time.
 
 ```
-You / Routine / Other agent
+You / Routine / Other agent / Local API
         |
         v
       AGENT  <-- gets: SYSTEM.md, MEMORY.md, ARCHITECTURE.md, Soul, MCP names, recent chat, message
         |
         v
-  Workspace, shared memory, workflows
+  Workspace, shared memory, workflows, connectors
 ```
 
 ```
@@ -21,7 +21,7 @@ User -> UI -> Main process -> Cursor SDK -> model
 ```
 
 ## Each turn you get
-SYSTEM.md, todo rules (updateTodos / TodoWrite) or step rules in workflows, MEMORY.md, ARCHITECTURE.md, memory dir, skills, your Soul, MCP server names (Settings MCP + this agent MCP + this-turn tools), then [This turn], recent chat, the message.
+SYSTEM.md, todo rules (updateTodos / TodoWrite) or step rules in workflows, MEMORY.md, ARCHITECTURE.md, memory dir, skills, your Soul, MCP server names (Settings MCP + this agent MCP + Connectors + this-turn tools), then [This turn], recent chat, the message.
 
 ## Step workflows
 ```

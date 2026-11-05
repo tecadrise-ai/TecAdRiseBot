@@ -2,8 +2,14 @@ import { shell } from 'electron';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import type { McpServers } from '../src/lib/mcpConfig';
-import { getConnectors, keepSecret, MASK, setConnectors } from './secrets';
+import { parseMcpJson } from '../src/lib/mcpConfig';
+import * as db from './db';
+import { deleteEnvValue, getConnectors, getEnvMap, keepSecret, MASK, setConnectors } from './secrets';
 const CANVA_MCP_URL = 'https://mcp.canva.com/mcp';
+const TREG_MCP_URL = 'https://treg.to/mcp/';
+const AGENTMAIL_MCP_URL = 'https://mcp.agentmail.to/mcp';
+const AGENTMAIL_ENV = 'AGENTMAIL_API_KEY';
+const GLOBAL_MCP_SETTING = 'mcp_servers_json';
 const CANVA_RESOURCE = 'https://mcp.canva.com';
 const AUTH_META = 'https://mcp.canva.com/.well-known/oauth-authorization-server';
 const CALLBACK_PORT = 18766;
@@ -45,7 +51,10 @@ export type ZohoGrant = {
   mcpToken: string;
 };
 
-type Store = { canva?: CanvaGrant; zoho?: ZohoGrant };
+export type TregGrant = { token: string; org: string };
+export type AgentmailGrant = { apiKey: string };
+
+type Store = { canva?: CanvaGrant; zoho?: ZohoGrant; treg?: TregGrant; agentmail?: AgentmailGrant };
 
 let connecting: Promise<{ ok: boolean; error?: string }> | null = null;
 
@@ -245,13 +254,23 @@ export type ConnectorRow = {
   hasClientSecret?: boolean;
   clientIdMask?: string;
   clientSecretMask?: string;
+  hasToken?: boolean;
+  org?: string;
 };
 
 export function listConnectors(): ConnectorRow[] {
   const s = readStore();
   const zoho = s.zoho;
+  const treg = s.treg;
+  const agentmail = s.agentmail;
   return [
     { id: 'canva', name: 'Canva', connected: Boolean(s.canva?.refreshToken) },
+    {
+      id: 'agentmail',
+      name: 'AgentMail',
+      connected: Boolean(agentmail?.apiKey),
+      hasToken: Boolean(agentmail?.apiKey),
+    },
     {
       id: 'zoho',
       name: 'Zoho Mail',
@@ -262,7 +281,14 @@ export function listConnectors(): ConnectorRow[] {
       clientIdMask: zoho?.clientId ? MASK : '',
       clientSecretMask: zoho?.clientSecret ? MASK : '',
     },
-  ];
+    {
+      id: 'treg',
+      name: 'Treg',
+      connected: Boolean(treg?.token),
+      hasToken: Boolean(treg?.token),
+      org: treg?.org || 'tecadrisebot',
+    },
+  ].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
 export async function connectCanva(): Promise<{ ok: boolean; error?: string }> {
@@ -324,6 +350,119 @@ export function disconnectZoho(): { ok: true } {
   return { ok: true };
 }
 
+function headerVal(h: Record<string, string> | undefined, names: string[]): string {
+  if (!h) return '';
+  for (const n of names) {
+    const hit = Object.entries(h).find(([k]) => k.toLowerCase() === n.toLowerCase());
+    if (hit) return String(hit[1] || '');
+  }
+  return '';
+}
+
+function tregTokenFromHeaders(h: Record<string, string> | undefined): string {
+  const raw = headerVal(h, ['X-Treg-Token', 'Authorization']);
+  return raw.replace(/^Bearer\s+/i, '').trim();
+}
+
+function resolveHeaderSecret(raw: string): string {
+  const t = String(raw || '').trim();
+  const env = /^\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(t);
+  if (env) return getEnvMap()[env[1]] || '';
+  return t.replace(/^Bearer\s+/i, '').trim();
+}
+
+/** Pull a hardcoded treg block out of Common MCP into secrets.bin. */
+export function absorbTregFromServers(servers: McpServers): { servers: McpServers; moved: boolean } {
+  const entry = servers.treg;
+  if (!entry) return { servers, moved: false };
+  const token = tregTokenFromHeaders(entry.headers);
+  const org = headerVal(entry.headers, ['X-Treg-Org']) || 'tecadrisebot';
+  if (token) {
+    const cur = readStore();
+    const stored = keepSecret(token, cur.treg?.token);
+    writeStore({ ...cur, treg: { token: stored || token, org: cur.treg?.org || org } });
+  }
+  const next = { ...servers };
+  delete next.treg;
+  return { servers: next, moved: true };
+}
+
+export function absorbAgentmailFromServers(servers: McpServers): { servers: McpServers; moved: boolean } {
+  const entry = servers.agentmail;
+  if (!entry) return { servers, moved: false };
+  const fromHeader = resolveHeaderSecret(headerVal(entry.headers, ['x-api-key', 'Authorization']));
+  const fromEnv = getEnvMap()[AGENTMAIL_ENV] || '';
+  const token = fromHeader || fromEnv;
+  if (token) {
+    const cur = readStore();
+    const stored = keepSecret(token, cur.agentmail?.apiKey);
+    writeStore({ ...cur, agentmail: { apiKey: stored || token } });
+  }
+  const next = { ...servers };
+  delete next.agentmail;
+  return { servers: next, moved: true };
+}
+
+export function absorbConnectorMcp(servers: McpServers): { servers: McpServers; notes: string[] } {
+  const notes: string[] = [];
+  let cur = servers;
+  const treg = absorbTregFromServers(cur);
+  cur = treg.servers;
+  if (treg.moved) notes.push('treg');
+  const mail = absorbAgentmailFromServers(cur);
+  cur = mail.servers;
+  if (mail.moved) notes.push('AgentMail');
+  return { servers: cur, notes };
+}
+
+export function migrateTregFromMcpJson(): void {
+  const raw = db.getSetting(GLOBAL_MCP_SETTING);
+  if (raw) {
+    const parsed = parseMcpJson(raw);
+    if (parsed.ok) {
+      const { servers, notes } = absorbConnectorMcp(parsed.servers);
+      if (notes.length) db.setSetting(GLOBAL_MCP_SETTING, JSON.stringify(servers));
+    }
+  }
+  const cur = readStore();
+  if (!cur.agentmail?.apiKey) {
+    const k = getEnvMap()[AGENTMAIL_ENV];
+    if (k) writeStore({ ...cur, agentmail: { apiKey: k } });
+  }
+  if (getEnvMap()[AGENTMAIL_ENV]) deleteEnvValue(AGENTMAIL_ENV);
+}
+
+export function connectTreg(input: { token?: string; org?: string } = {}): { ok: boolean; error?: string } {
+  const stored = readStore().treg;
+  const token = keepSecret(String(input.token || ''), stored?.token);
+  const org = String(input.org || stored?.org || 'tecadrisebot').trim() || 'tecadrisebot';
+  if (!token) return { ok: false, error: 'Paste the treg team token, then Connect or Save.' };
+  writeStore({ ...readStore(), treg: { token, org } });
+  return { ok: true };
+}
+
+export function disconnectTreg(): { ok: true } {
+  const s = readStore();
+  if (s.treg) s.treg = { ...s.treg, token: '' };
+  writeStore(s);
+  return { ok: true };
+}
+
+export function connectAgentmail(input: { apiKey?: string } = {}): { ok: boolean; error?: string } {
+  const stored = readStore().agentmail;
+  const apiKey = keepSecret(String(input.apiKey || ''), stored?.apiKey);
+  if (!apiKey) return { ok: false, error: 'Paste the AgentMail API key, then Connect or Save.' };
+  writeStore({ ...readStore(), agentmail: { apiKey } });
+  return { ok: true };
+}
+
+export function disconnectAgentmail(): { ok: true } {
+  const s = readStore();
+  if (s.agentmail) s.agentmail = { apiKey: '' };
+  writeStore(s);
+  return { ok: true };
+}
+
 export function revealConnectorField(id: string, field: string): string {
   const s = readStore();
   let v = '';
@@ -331,6 +470,11 @@ export function revealConnectorField(id: string, field: string): string {
     if (field === 'clientId') v = s.zoho?.clientId || '';
     else if (field === 'clientSecret') v = s.zoho?.clientSecret || '';
   }
+  if (id === 'treg') {
+    if (field === 'token') v = s.treg?.token || '';
+    else if (field === 'org') v = s.treg?.org || '';
+  }
+  if (id === 'agentmail' && field === 'apiKey') v = s.agentmail?.apiKey || '';
   if (!v.trim() || /^[\s*•]+$/.test(v)) return '';
   return v;
 }
@@ -354,6 +498,31 @@ export function saveConnectorField(
   field: string,
   value: string
 ): { ok: boolean; error?: string } {
+  if (id === 'agentmail') {
+    const s = readStore();
+    if (field !== 'apiKey') return { ok: false, error: 'Unknown field' };
+    const next = keepSecret(value, s.agentmail?.apiKey);
+    if (!next) return { ok: false, error: 'Enter an AgentMail API key' };
+    s.agentmail = { apiKey: next };
+    writeStore(s);
+    return { ok: true };
+  }
+  if (id === 'treg') {
+    const s = readStore();
+    const t = { token: s.treg?.token || '', org: s.treg?.org || 'tecadrisebot' };
+    if (field === 'org') {
+      t.org = String(value || '').trim() || 'tecadrisebot';
+    } else if (field === 'token') {
+      const next = keepSecret(value, t.token);
+      if (!next) return { ok: false, error: 'Enter a treg token' };
+      t.token = next;
+    } else {
+      return { ok: false, error: 'Unknown field' };
+    }
+    s.treg = t;
+    writeStore(s);
+    return { ok: true };
+  }
   if (id !== 'zoho') return { ok: false, error: 'Unknown connector' };
   const s = readStore();
   const z = s.zoho ? { ...s.zoho } : emptyZoho();
@@ -390,6 +559,22 @@ export function clearConnectorField(id: string, field: string): { ok: true } {
     delete s.canva;
     writeStore(s);
   }
+  if (id === 'agentmail') {
+    if (field === 'apiKey' || field === 'all') {
+      s.agentmail = { apiKey: '' };
+      writeStore(s);
+    }
+  }
+  if (id === 'treg') {
+    if (!s.treg) s.treg = { token: '', org: 'tecadrisebot' };
+    if (field === 'token') s.treg.token = '';
+    if (field === 'org') s.treg.org = 'tecadrisebot';
+    if (field === 'all') {
+      s.treg.token = '';
+      s.treg.org = 'tecadrisebot';
+    }
+    writeStore(s);
+  }
   return { ok: true };
 }
 
@@ -421,5 +606,25 @@ export async function connectorMcpServers(): Promise<McpServers> {
   }
   const { zohoMailMcp } = await import('./zohoMail');
   Object.assign(out, zohoMailMcp());
+  const mail = readStore().agentmail;
+  if (mail?.apiKey) {
+    out.agentmail = {
+      type: 'http',
+      url: AGENTMAIL_MCP_URL,
+      headers: { 'x-api-key': mail.apiKey },
+    };
+  }
+  const treg = readStore().treg;
+  if (treg?.token) {
+    out.treg = {
+      type: 'http',
+      url: TREG_MCP_URL,
+      headers: {
+        Authorization: `Bearer ${treg.token}`,
+        'X-Treg-Token': treg.token,
+        'X-Treg-Org': treg.org || 'tecadrisebot',
+      },
+    };
+  }
   return out;
 }

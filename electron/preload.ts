@@ -135,6 +135,8 @@ const api = {
         hasClientSecret?: boolean;
         clientIdMask?: string;
         clientSecretMask?: string;
+        hasToken?: boolean;
+        org?: string;
       }>
     > => ipcRenderer.invoke('connectors:list'),
     connect: (id: string, opts?: Record<string, string>): Promise<{ ok: boolean; error?: string }> =>

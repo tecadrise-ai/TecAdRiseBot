@@ -15,7 +15,7 @@ import { DEFAULT_MODEL_ID, readLastMessages, readToastEnabled, toSdkModel, type 
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
 import { applyTodoCallToList, parseNumberedTasks, todoCallFromDelta, type TodoCall, type TodoItem } from '../src/lib/todos';
-import { connectorMcpServers } from './connectors';
+import { absorbConnectorMcp, connectorMcpServers } from './connectors';
 
 function broadcastUi(channel: string, payload: unknown, preferred?: BrowserWindow | null): void {
   const seen = new Set<number>();
@@ -707,17 +707,21 @@ export function readGlobalMcpJson(): string {
 export async function registerGlobalMcp(raw: string): Promise<{ ok: boolean; error?: string; note?: string }> {
   const parsed = parseMcpJson(raw);
   if (!parsed.ok) return { ok: false, error: parsed.error };
-  db.setSetting(GLOBAL_MCP_SETTING, JSON.stringify(parsed.servers));
+  const absorbed = absorbConnectorMcp(parsed.servers);
+  db.setSetting(GLOBAL_MCP_SETTING, JSON.stringify(absorbed.servers));
   dropAllAgentHandles();
-  const n = Object.keys(parsed.servers).length;
+  const n = Object.keys(absorbed.servers).length;
   const busy = listBusyAgentIds().length;
+  const moved = absorbed.notes.length
+    ? ` Moved ${absorbed.notes.join(', ')} into Connectors (secrets.bin).`
+    : '';
   return {
     ok: true,
     note: n
       ? `Saved ${n} global MCP server${n === 1 ? '' : 's'}. Idle sessions will attach on the next message. ${
           busy ? 'Busy agents pick this up after their current turn. ' : ''
-        }Agent Register is only for extra servers on one agent.`
-      : 'Cleared global MCP. Idle sessions drop it on the next message.',
+        }Agent Register is only for extra servers on one agent.${moved}`
+      : `Cleared global MCP. Idle sessions drop it on the next message.${moved}`,
   };
 }
 

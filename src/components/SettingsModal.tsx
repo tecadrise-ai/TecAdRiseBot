@@ -131,6 +131,8 @@ type ConnectorRow = {
   hasClientSecret?: boolean;
   clientIdMask?: string;
   clientSecretMask?: string;
+  hasToken?: boolean;
+  org?: string;
 };
 
 function ConnectorsBody() {
@@ -144,6 +146,12 @@ function ConnectorsBody() {
   const [showId, setShowId] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [showGrant, setShowGrant] = useState(false);
+  const [tregToken, setTregToken] = useState('');
+  const [tregOrg, setTregOrg] = useState('tecadrisebot');
+  const [showTreg, setShowTreg] = useState(false);
+  const [mailKey, setMailKey] = useState('');
+  const [showMail, setShowMail] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
 
   async function refresh() {
     try {
@@ -158,9 +166,15 @@ function ConnectorsBody() {
   }, []);
 
   const zohoRow = rows.find((r) => r.id === 'zoho');
+  const tregRow = rows.find((r) => r.id === 'treg');
+  const mailRow = rows.find((r) => r.id === 'agentmail');
+  const extra = (id: string) => id === 'zoho' || id === 'treg' || id === 'agentmail';
   useEffect(() => {
     if (zohoRow?.dc) setZohoDc(zohoRow.dc);
   }, [zohoRow?.dc]);
+  useEffect(() => {
+    if (tregRow?.org) setTregOrg(tregRow.org);
+  }, [tregRow?.org]);
 
   async function saveZohoField(field: 'clientId' | 'clientSecret', value: string) {
     const res = await window.tecapi.connectors.saveField('zoho', 'dc', zohoDc);
@@ -212,19 +226,31 @@ function ConnectorsBody() {
         ? zohoGrant.trim()
           ? 'Exchanging Zoho grant token…'
           : 'Browser opened. Approve Zoho, then this page will update.'
-        : 'Browser opened. Approve Canva, then this page will update.'
+        : id === 'treg'
+          ? 'Saving Treg token…'
+          : id === 'agentmail'
+            ? 'Saving AgentMail key…'
+            : 'Browser opened. Approve Canva, then this page will update.'
     );
     try {
       const res = await window.tecapi.connectors.connect(
         id,
         id === 'zoho'
           ? { dc: zohoDc, clientId: zohoClientId, clientSecret: zohoSecret, grantCode: zohoGrant }
-          : undefined
+          : id === 'treg'
+            ? { token: tregToken, org: tregOrg }
+            : id === 'agentmail'
+              ? { apiKey: mailKey }
+              : undefined
       );
       const ok =
         id === 'zoho'
           ? 'Zoho Mail connected. All agents get mail tools on the next turn.'
-          : 'Canva connected. All agents get it on the next turn.';
+          : id === 'treg'
+            ? 'Treg connected. All agents get catalog tools on the next turn.'
+            : id === 'agentmail'
+              ? 'AgentMail connected. All agents get mail tools on the next turn.'
+              : 'Canva connected. All agents get it on the next turn.';
       setStatus(res.ok ? ok : res.error || 'Connect failed');
       if (res.ok && id === 'zoho') {
         setZohoClientId('');
@@ -232,6 +258,14 @@ function ConnectorsBody() {
         setZohoGrant('');
         setShowId(false);
         setShowSecret(false);
+      }
+      if (res.ok && id === 'treg') {
+        setTregToken('');
+        setShowTreg(false);
+      }
+      if (res.ok && id === 'agentmail') {
+        setMailKey('');
+        setShowMail(false);
       }
       await refresh();
     } catch (e) {
@@ -259,8 +293,8 @@ function ConnectorsBody() {
     <section>
       <h2>Connectors</h2>
       <p className="hint">
-        Global for every agent. Connect opens the vendor site in your browser. After you approve, tokens
-        stay in secrets.bin on this PC and every bot can use that account.
+        Global for every agent. Canva and Zoho open the vendor site in your browser. Treg and AgentMail
+        use a saved token. Tokens stay in secrets.bin, not in MCP JSON.
       </p>
       {rows.map((r) => (
         <div key={r.id} className="connector-block">
@@ -272,12 +306,29 @@ function ConnectorsBody() {
               </div>
             </div>
             <div className="connector-actions">
+              {extra(r.id) ? (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => setOpen((cur) => ({ ...cur, [r.id]: !cur[r.id] }))}
+                >
+                  {open[r.id] ? 'Collapse' : 'Expand'}
+                </button>
+              ) : null}
               {r.connected ? (
                 <button type="button" className="secondary" disabled={busy === r.id} onClick={() => void disconnect(r.id)}>
                   Disconnect
                 </button>
               ) : (
-                <button type="button" className="primary" disabled={Boolean(busy)} onClick={() => void connect(r.id)}>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={Boolean(busy)}
+                  onClick={() => {
+                    if (extra(r.id)) setOpen((cur) => ({ ...cur, [r.id]: true }));
+                    void connect(r.id);
+                  }}
+                >
                   {busy === r.id ? 'Waiting…' : 'Connect'}
                 </button>
               )}
@@ -296,6 +347,14 @@ function ConnectorsBody() {
                       setShowId(false);
                       setShowSecret(false);
                     }
+                    if (r.id === 'treg') {
+                      setTregToken('');
+                      setShowTreg(false);
+                    }
+                    if (r.id === 'agentmail') {
+                      setMailKey('');
+                      setShowMail(false);
+                    }
                     setStatus('Cleared.');
                     await refresh();
                   })()
@@ -305,7 +364,7 @@ function ConnectorsBody() {
               </button>
             </div>
           </div>
-          {r.id === 'zoho' ? (
+          {r.id === 'zoho' && open.zoho ? (
             <div className="connector-fields">
               <p className="hint">
                 Register a client at api-console.zoho.eu (Poland is usually EU). Scopes:
@@ -453,6 +512,227 @@ function ConnectorsBody() {
                     <td />
                     <td>
                       <button type="button" className="secondary" onClick={() => setZohoGrant('')}>
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {r.id === 'treg' && open.treg ? (
+            <div className="connector-fields">
+              <p className="hint">
+                Team token from treg.to, org slug for X-Treg-Org (tecadrisebot). A treg block in Common MCP
+                is moved here on launch so the token is not left in JSON.
+              </p>
+              <table className="keys-table">
+                <tbody>
+                  <tr>
+                    <td className="keys-name">Org</td>
+                    <td>
+                      <input
+                        type="text"
+                        value={tregOrg}
+                        onChange={(e) => setTregOrg(e.target.value)}
+                        autoComplete="off"
+                        placeholder="tecadrisebot"
+                        spellCheck={false}
+                      />
+                    </td>
+                    <td />
+                    <td>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!tregOrg.trim()}
+                        onClick={() =>
+                          void (async () => {
+                            const res = await window.tecapi.connectors.saveField('treg', 'org', tregOrg);
+                            setStatus(res.ok ? 'Saved.' : res.error || 'Save failed');
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Save
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void (async () => {
+                            await window.tecapi.connectors.clearField('treg', 'org');
+                            setTregOrg('tecadrisebot');
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="keys-name">Token</td>
+                    <td>
+                      <input
+                        type={showTreg ? 'text' : 'password'}
+                        value={tregToken}
+                        onChange={(e) => {
+                          setTregToken(e.target.value);
+                          setShowTreg(true);
+                        }}
+                        autoComplete="off"
+                        placeholder={tregRow?.hasToken ? SECRET_MASK : 'Paste team token'}
+                        spellCheck={false}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={!tregRow?.hasToken && !tregToken}
+                        onClick={() =>
+                          void (async () => {
+                            if (showTreg) {
+                              setShowTreg(false);
+                              setTregToken('');
+                              return;
+                            }
+                            const v = await window.tecapi.connectors.reveal('treg', 'token');
+                            if (!v.trim()) {
+                              setStatus('Nothing stored. Paste a new token.');
+                              return;
+                            }
+                            setTregToken(v);
+                            setShowTreg(true);
+                          })()
+                        }
+                      >
+                        {showTreg ? 'Hide' : 'Show'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!tregToken.trim()}
+                        onClick={() =>
+                          void (async () => {
+                            await window.tecapi.connectors.saveField('treg', 'org', tregOrg);
+                            const res = await window.tecapi.connectors.saveField('treg', 'token', tregToken);
+                            setStatus(res.ok ? 'Saved.' : res.error || 'Save failed');
+                            if (!res.ok) return;
+                            setTregToken('');
+                            setShowTreg(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Save
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void (async () => {
+                            await window.tecapi.connectors.clearField('treg', 'token');
+                            setTregToken('');
+                            setShowTreg(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {r.id === 'agentmail' && open.agentmail ? (
+            <div className="connector-fields">
+              <p className="hint">
+                API key from console.agentmail.to, sent as x-api-key. Keep it here, not in API Keys or MCP JSON.
+              </p>
+              <table className="keys-table">
+                <tbody>
+                  <tr>
+                    <td className="keys-name">API key</td>
+                    <td>
+                      <input
+                        type={showMail ? 'text' : 'password'}
+                        value={mailKey}
+                        onChange={(e) => {
+                          setMailKey(e.target.value);
+                          setShowMail(true);
+                        }}
+                        autoComplete="off"
+                        placeholder={mailRow?.hasToken ? SECRET_MASK : 'Paste API key'}
+                        spellCheck={false}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={!mailRow?.hasToken && !mailKey}
+                        onClick={() =>
+                          void (async () => {
+                            if (showMail) {
+                              setShowMail(false);
+                              setMailKey('');
+                              return;
+                            }
+                            const v = await window.tecapi.connectors.reveal('agentmail', 'apiKey');
+                            if (!v.trim()) {
+                              setStatus('Nothing stored. Paste a new key.');
+                              return;
+                            }
+                            setMailKey(v);
+                            setShowMail(true);
+                          })()
+                        }
+                      >
+                        {showMail ? 'Hide' : 'Show'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!mailKey.trim()}
+                        onClick={() =>
+                          void (async () => {
+                            const res = await window.tecapi.connectors.saveField('agentmail', 'apiKey', mailKey);
+                            setStatus(res.ok ? 'Saved.' : res.error || 'Save failed');
+                            if (!res.ok) return;
+                            setMailKey('');
+                            setShowMail(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Save
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void (async () => {
+                            await window.tecapi.connectors.clearField('agentmail', 'apiKey');
+                            setMailKey('');
+                            setShowMail(false);
+                            await refresh();
+                          })()
+                        }
+                      >
                         Clear
                       </button>
                     </td>

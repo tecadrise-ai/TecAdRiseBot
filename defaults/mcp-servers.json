@@ -3,9 +3,5 @@
     "type": "stdio",
     "command": "npx",
     "args": ["-y", "@playwright/mcp@latest"]
-  },
-  "agentmail": {
-    "type": "http",
-    "url": "https://mcp.agentmail.to/mcp"
   }
 }

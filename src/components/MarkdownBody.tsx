@@ -32,7 +32,14 @@ export const MarkdownBody = memo(function MarkdownBody({
       className={['md-body', className].filter(Boolean).join(' ')}
       dangerouslySetInnerHTML={{ __html: html }}
       onClick={(e) => {
-        const a = (e.target as HTMLElement | null)?.closest?.('a');
+        const t = e.target as HTMLElement | null;
+        if (t instanceof HTMLImageElement) {
+          e.preventDefault();
+          e.stopPropagation();
+          t.classList.toggle('zoomed');
+          return;
+        }
+        const a = t?.closest?.('a');
         if (!a) return;
         const href = a.getAttribute('href') || '';
         if (href.startsWith('#')) return;

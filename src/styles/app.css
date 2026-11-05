@@ -698,11 +698,18 @@
   margin: 12px 0;
 }
 .md-body img {
-  max-width: 100%;
+  max-width: 50%;
+  width: auto;
   height: auto;
   display: block;
   margin: 8px 0 12px;
   border-radius: 10px;
+  cursor: zoom-in;
+}
+.md-body img.zoomed,
+.md-user img.zoomed {
+  max-width: 100%;
+  cursor: zoom-out;
 }
 .md-user {
   color: inherit;
@@ -717,9 +724,12 @@
   margin-bottom: 0;
 }
 .md-user img {
-  max-width: min(280px, 100%);
+  max-width: 50%;
+  width: auto;
+  height: auto;
   margin: 8px 0 0;
   border-radius: 10px;
+  cursor: zoom-in;
 }
 .bubble.interbot {
   background: #eef2ff;

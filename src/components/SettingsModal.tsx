@@ -151,6 +151,8 @@ function ConnectorsBody() {
   const [showTreg, setShowTreg] = useState(false);
   const [mailKey, setMailKey] = useState('');
   const [showMail, setShowMail] = useState(false);
+  const [ctxKey, setCtxKey] = useState('');
+  const [showCtx, setShowCtx] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
   async function refresh() {
@@ -168,7 +170,8 @@ function ConnectorsBody() {
   const zohoRow = rows.find((r) => r.id === 'zoho');
   const tregRow = rows.find((r) => r.id === 'treg');
   const mailRow = rows.find((r) => r.id === 'agentmail');
-  const extra = (id: string) => id === 'zoho' || id === 'treg' || id === 'agentmail';
+  const ctxRow = rows.find((r) => r.id === 'context');
+  const extra = (id: string) => id === 'zoho' || id === 'treg' || id === 'agentmail' || id === 'context';
   useEffect(() => {
     if (zohoRow?.dc) setZohoDc(zohoRow.dc);
   }, [zohoRow?.dc]);
@@ -230,7 +233,9 @@ function ConnectorsBody() {
           ? 'Saving Treg token…'
           : id === 'agentmail'
             ? 'Saving AgentMail key…'
-            : 'Browser opened. Approve Canva, then this page will update.'
+            : id === 'context'
+              ? 'Saving Context.dev key…'
+              : 'Browser opened. Approve Canva, then this page will update.'
     );
     try {
       const res = await window.tecapi.connectors.connect(
@@ -241,7 +246,9 @@ function ConnectorsBody() {
             ? { token: tregToken, org: tregOrg }
             : id === 'agentmail'
               ? { apiKey: mailKey }
-              : undefined
+              : id === 'context'
+                ? { apiKey: ctxKey }
+                : undefined
       );
       const ok =
         id === 'zoho'
@@ -250,7 +257,9 @@ function ConnectorsBody() {
             ? 'Treg connected. All agents get catalog tools on the next turn.'
             : id === 'agentmail'
               ? 'AgentMail connected. All agents get mail tools on the next turn.'
-              : 'Canva connected. All agents get it on the next turn.';
+              : id === 'context'
+                ? 'Context.dev connected. All agents get scrape and search tools on the next turn.'
+                : 'Canva connected. All agents get it on the next turn.';
       setStatus(res.ok ? ok : res.error || 'Connect failed');
       if (res.ok && id === 'zoho') {
         setZohoClientId('');
@@ -266,6 +275,10 @@ function ConnectorsBody() {
       if (res.ok && id === 'agentmail') {
         setMailKey('');
         setShowMail(false);
+      }
+      if (res.ok && id === 'context') {
+        setCtxKey('');
+        setShowCtx(false);
       }
       await refresh();
     } catch (e) {
@@ -293,8 +306,8 @@ function ConnectorsBody() {
     <section>
       <h2>Connectors</h2>
       <p className="hint">
-        Global for every agent. Canva and Zoho open the vendor site in your browser. Treg and AgentMail
-        use a saved token. Tokens stay in secrets.bin, not in MCP JSON.
+        Global for every agent. Canva and Zoho open the vendor site in your browser. Treg, AgentMail and
+        Context.dev use a saved token. Tokens stay in secrets.bin, not in MCP JSON.
       </p>
       {rows.map((r) => (
         <div key={r.id} className="connector-block">
@@ -354,6 +367,10 @@ function ConnectorsBody() {
                     if (r.id === 'agentmail') {
                       setMailKey('');
                       setShowMail(false);
+                    }
+                    if (r.id === 'context') {
+                      setCtxKey('');
+                      setShowCtx(false);
                     }
                     setStatus('Cleared.');
                     await refresh();
@@ -642,6 +659,94 @@ function ConnectorsBody() {
                             await window.tecapi.connectors.clearField('treg', 'token');
                             setTregToken('');
                             setShowTreg(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {r.id === 'context' && open.context ? (
+            <div className="connector-fields">
+              <p className="hint">
+                API key from context.dev, sent as Bearer to mcp.context.dev. Keep it here, not in API Keys
+                or MCP JSON.
+              </p>
+              <table className="keys-table">
+                <tbody>
+                  <tr>
+                    <td className="keys-name">API key</td>
+                    <td>
+                      <input
+                        type={showCtx ? 'text' : 'password'}
+                        value={ctxKey}
+                        onChange={(e) => {
+                          setCtxKey(e.target.value);
+                          setShowCtx(true);
+                        }}
+                        autoComplete="off"
+                        placeholder={ctxRow?.hasToken ? SECRET_MASK : 'Paste API key'}
+                        spellCheck={false}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={!ctxRow?.hasToken && !ctxKey}
+                        onClick={() =>
+                          void (async () => {
+                            if (showCtx) {
+                              setShowCtx(false);
+                              setCtxKey('');
+                              return;
+                            }
+                            const v = await window.tecapi.connectors.reveal('context', 'apiKey');
+                            if (!v.trim()) {
+                              setStatus('Nothing stored. Paste a new key.');
+                              return;
+                            }
+                            setCtxKey(v);
+                            setShowCtx(true);
+                          })()
+                        }
+                      >
+                        {showCtx ? 'Hide' : 'Show'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!ctxKey.trim()}
+                        onClick={() =>
+                          void (async () => {
+                            const res = await window.tecapi.connectors.saveField('context', 'apiKey', ctxKey);
+                            setStatus(res.ok ? 'Saved.' : res.error || 'Save failed');
+                            if (!res.ok) return;
+                            setCtxKey('');
+                            setShowCtx(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Save
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void (async () => {
+                            await window.tecapi.connectors.clearField('context', 'apiKey');
+                            setCtxKey('');
+                            setShowCtx(false);
                             await refresh();
                           })()
                         }

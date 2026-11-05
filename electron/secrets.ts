@@ -10,7 +10,7 @@ const META_FILE = 'settings-meta.json';
 
 export const MASK = '**************************';
 export const CURSOR_KEY_NAME = 'CURSOR_SDK_API_KEY';
-const CONNECTOR_ENV_NAMES = new Set(['AGENTMAIL_API_KEY']);
+const CONNECTOR_ENV_NAMES = new Set(['AGENTMAIL_API_KEY', 'CONTEXT_DEV_API_KEY']);
 
 export type SecretsBlob = {
   cursorApiKey?: string;

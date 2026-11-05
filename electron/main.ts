@@ -9,9 +9,11 @@ import {
   clearConnectorField,
   connectAgentmail,
   connectCanva,
+  connectContext,
   connectTreg,
   disconnectAgentmail,
   disconnectCanva,
+  disconnectContext,
   disconnectTreg,
   disconnectZoho,
   listConnectors,
@@ -233,6 +235,7 @@ function registerIpc() {
     if (String(id) === 'zoho') return connectZoho(opts || {});
     if (String(id) === 'treg') return connectTreg(opts || {});
     if (String(id) === 'agentmail') return connectAgentmail(opts || {});
+    if (String(id) === 'context') return connectContext(opts || {});
     return { ok: false, error: 'Unknown connector' };
   });
   ipcMain.handle('connectors:disconnect', (_e, id: string) => {
@@ -240,6 +243,7 @@ function registerIpc() {
     if (String(id) === 'zoho') return disconnectZoho();
     if (String(id) === 'treg') return disconnectTreg();
     if (String(id) === 'agentmail') return disconnectAgentmail();
+    if (String(id) === 'context') return disconnectContext();
     return { ok: false, error: 'Unknown connector' };
   });
   ipcMain.handle('connectors:reveal', (_e, id: string, field: string) => revealConnectorField(String(id), String(field)));

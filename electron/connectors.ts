@@ -9,6 +9,8 @@ const CANVA_MCP_URL = 'https://mcp.canva.com/mcp';
 const TREG_MCP_URL = 'https://treg.to/mcp/';
 const AGENTMAIL_MCP_URL = 'https://mcp.agentmail.to/mcp';
 const AGENTMAIL_ENV = 'AGENTMAIL_API_KEY';
+const CONTEXT_MCP_URL = 'https://mcp.context.dev/mcp';
+const CONTEXT_ENV = 'CONTEXT_DEV_API_KEY';
 const GLOBAL_MCP_SETTING = 'mcp_servers_json';
 const CANVA_RESOURCE = 'https://mcp.canva.com';
 const AUTH_META = 'https://mcp.canva.com/.well-known/oauth-authorization-server';
@@ -53,8 +55,15 @@ export type ZohoGrant = {
 
 export type TregGrant = { token: string; org: string };
 export type AgentmailGrant = { apiKey: string };
+export type ContextGrant = { apiKey: string };
 
-type Store = { canva?: CanvaGrant; zoho?: ZohoGrant; treg?: TregGrant; agentmail?: AgentmailGrant };
+type Store = {
+  canva?: CanvaGrant;
+  zoho?: ZohoGrant;
+  treg?: TregGrant;
+  agentmail?: AgentmailGrant;
+  context?: ContextGrant;
+};
 
 let connecting: Promise<{ ok: boolean; error?: string }> | null = null;
 
@@ -263,6 +272,7 @@ export function listConnectors(): ConnectorRow[] {
   const zoho = s.zoho;
   const treg = s.treg;
   const agentmail = s.agentmail;
+  const context = s.context;
   return [
     { id: 'canva', name: 'Canva', connected: Boolean(s.canva?.refreshToken) },
     {
@@ -270,6 +280,12 @@ export function listConnectors(): ConnectorRow[] {
       name: 'AgentMail',
       connected: Boolean(agentmail?.apiKey),
       hasToken: Boolean(agentmail?.apiKey),
+    },
+    {
+      id: 'context',
+      name: 'Context.dev',
+      connected: Boolean(context?.apiKey),
+      hasToken: Boolean(context?.apiKey),
     },
     {
       id: 'zoho',
@@ -403,15 +419,35 @@ export function absorbAgentmailFromServers(servers: McpServers): { servers: McpS
   return { servers: next, moved: true };
 }
 
+export function absorbContextFromServers(servers: McpServers): { servers: McpServers; moved: boolean } {
+  const entry = servers.context || servers['context-dev'];
+  if (!entry) return { servers, moved: false };
+  const fromHeader = resolveHeaderSecret(headerVal(entry.headers, ['Authorization', 'x-api-key']));
+  const fromEnv = getEnvMap()[CONTEXT_ENV] || '';
+  const token = fromHeader || fromEnv;
+  if (token) {
+    const cur = readStore();
+    const stored = keepSecret(token, cur.context?.apiKey);
+    writeStore({ ...cur, context: { apiKey: stored || token } });
+  }
+  const next = { ...servers };
+  delete next.context;
+  delete next['context-dev'];
+  return { servers: next, moved: true };
+}
+
 export function absorbConnectorMcp(servers: McpServers): { servers: McpServers; notes: string[] } {
   const notes: string[] = [];
   let cur = servers;
   const treg = absorbTregFromServers(cur);
   cur = treg.servers;
-  if (treg.moved) notes.push('treg');
+  if (treg.moved) notes.push('Treg');
   const mail = absorbAgentmailFromServers(cur);
   cur = mail.servers;
   if (mail.moved) notes.push('AgentMail');
+  const ctx = absorbContextFromServers(cur);
+  cur = ctx.servers;
+  if (ctx.moved) notes.push('Context.dev');
   return { servers: cur, notes };
 }
 
@@ -430,6 +466,12 @@ export function migrateTregFromMcpJson(): void {
     if (k) writeStore({ ...cur, agentmail: { apiKey: k } });
   }
   if (getEnvMap()[AGENTMAIL_ENV]) deleteEnvValue(AGENTMAIL_ENV);
+  const after = readStore();
+  if (!after.context?.apiKey) {
+    const k = getEnvMap()[CONTEXT_ENV];
+    if (k) writeStore({ ...after, context: { apiKey: k } });
+  }
+  if (getEnvMap()[CONTEXT_ENV]) deleteEnvValue(CONTEXT_ENV);
 }
 
 export function connectTreg(input: { token?: string; org?: string } = {}): { ok: boolean; error?: string } {
@@ -463,6 +505,21 @@ export function disconnectAgentmail(): { ok: true } {
   return { ok: true };
 }
 
+export function connectContext(input: { apiKey?: string } = {}): { ok: boolean; error?: string } {
+  const stored = readStore().context;
+  const apiKey = keepSecret(String(input.apiKey || ''), stored?.apiKey);
+  if (!apiKey) return { ok: false, error: 'Paste the Context.dev API key, then Connect or Save.' };
+  writeStore({ ...readStore(), context: { apiKey } });
+  return { ok: true };
+}
+
+export function disconnectContext(): { ok: true } {
+  const s = readStore();
+  if (s.context) s.context = { apiKey: '' };
+  writeStore(s);
+  return { ok: true };
+}
+
 export function revealConnectorField(id: string, field: string): string {
   const s = readStore();
   let v = '';
@@ -475,6 +532,7 @@ export function revealConnectorField(id: string, field: string): string {
     else if (field === 'org') v = s.treg?.org || '';
   }
   if (id === 'agentmail' && field === 'apiKey') v = s.agentmail?.apiKey || '';
+  if (id === 'context' && field === 'apiKey') v = s.context?.apiKey || '';
   if (!v.trim() || /^[\s*•]+$/.test(v)) return '';
   return v;
 }
@@ -504,6 +562,15 @@ export function saveConnectorField(
     const next = keepSecret(value, s.agentmail?.apiKey);
     if (!next) return { ok: false, error: 'Enter an AgentMail API key' };
     s.agentmail = { apiKey: next };
+    writeStore(s);
+    return { ok: true };
+  }
+  if (id === 'context') {
+    const s = readStore();
+    if (field !== 'apiKey') return { ok: false, error: 'Unknown field' };
+    const next = keepSecret(value, s.context?.apiKey);
+    if (!next) return { ok: false, error: 'Enter a Context.dev API key' };
+    s.context = { apiKey: next };
     writeStore(s);
     return { ok: true };
   }
@@ -565,6 +632,12 @@ export function clearConnectorField(id: string, field: string): { ok: true } {
       writeStore(s);
     }
   }
+  if (id === 'context') {
+    if (field === 'apiKey' || field === 'all') {
+      s.context = { apiKey: '' };
+      writeStore(s);
+    }
+  }
   if (id === 'treg') {
     if (!s.treg) s.treg = { token: '', org: 'tecadrisebot' };
     if (field === 'token') s.treg.token = '';
@@ -606,6 +679,14 @@ export async function connectorMcpServers(): Promise<McpServers> {
   }
   const { zohoMailMcp } = await import('./zohoMail');
   Object.assign(out, zohoMailMcp());
+  const ctx = readStore().context;
+  if (ctx?.apiKey) {
+    out.context = {
+      type: 'http',
+      url: CONTEXT_MCP_URL,
+      headers: { Authorization: `Bearer ${ctx.apiKey}` },
+    };
+  }
   const mail = readStore().agentmail;
   if (mail?.apiKey) {
     out.agentmail = {

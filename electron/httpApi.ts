@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import * as cp from './controlPlane';
 import * as workflows from './workflows/service';
+import { handleZohoMcp } from './zohoMail';
 
 let server: http.Server | null = null;
 let boundPort = 0;
@@ -80,13 +81,15 @@ function match(
   return params;
 }
 
-/** Built-in MCP servers for step workflows (Streamable HTTP, JSON responses, no SSE). */
+/** Built-in MCP servers (Streamable HTTP, JSON responses, no SSE). */
 async function handleMcpRoute(req: IncomingMessage, res: ServerResponse, method: string, path: string): Promise<void> {
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
   let route: workflows.McpRoute | null = null;
+  let zohoToken: string | null = null;
   if (parts.length === 4 && parts[1] === 'run') route = { kind: 'run', runId: parts[2], token: parts[3] };
   if (parts.length === 4 && parts[1] === 'owner') route = { kind: 'owner', agentId: parts[2], token: parts[3] };
-  if (!route) {
+  if (parts.length === 3 && parts[1] === 'zoho') zohoToken = parts[2];
+  if (!route && !zohoToken) {
     notFound(res);
     return;
   }
@@ -113,7 +116,7 @@ async function handleMcpRoute(req: IncomingMessage, res: ServerResponse, method:
     send(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
     return;
   }
-  const out = await workflows.handleMcp(route, body);
+  const out = zohoToken ? await handleZohoMcp(zohoToken, body) : await workflows.handleMcp(route!, body);
   if (!out) {
     notFound(res);
     return;

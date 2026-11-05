@@ -125,12 +125,35 @@ const api = {
     save: (json: string): Promise<string> => ipcRenderer.invoke('sidebar:save', json),
   },
   connectors: {
-    list: (): Promise<Array<{ id: string; name: string; connected: boolean }>> =>
-      ipcRenderer.invoke('connectors:list'),
-    connect: (id: string): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke('connectors:connect', id),
+    list: (): Promise<
+      Array<{
+        id: string;
+        name: string;
+        connected: boolean;
+        dc?: string;
+        hasClientId?: boolean;
+        hasClientSecret?: boolean;
+        clientIdMask?: string;
+        clientSecretMask?: string;
+      }>
+    > => ipcRenderer.invoke('connectors:list'),
+    connect: (id: string, opts?: Record<string, string>): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('connectors:connect', id, opts),
     disconnect: (id: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('connectors:disconnect', id),
+    reveal: (id: string, field: string): Promise<string> => ipcRenderer.invoke('connectors:reveal', id, field),
+    saveField: (id: string, field: string, value: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('connectors:saveField', id, field, value),
+    clearField: (id: string, field: string): Promise<{ ok: true }> =>
+      ipcRenderer.invoke('connectors:clearField', id, field),
+  },
+  secrets: {
+    envList: (): Promise<Array<{ name: string; masked: string }>> => ipcRenderer.invoke('secrets:env-list'),
+    envSet: (name: string, value: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('secrets:env-set', name, value),
+    envDelete: (name: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('secrets:env-delete', name),
+    reveal: (name: string): Promise<string> => ipcRenderer.invoke('secrets:reveal', name),
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),

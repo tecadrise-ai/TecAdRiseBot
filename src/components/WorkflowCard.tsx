@@ -125,7 +125,11 @@ export function WorkflowCard({ run, compact = false }: Props) {
           );
         })}
       </div>
-      {run.blockedReason && run.state !== 'done' ? <div className="wf-blocked">{run.blockedReason}</div> : null}
+      {run.blockedReason && run.state !== 'done' ? (
+        <div className="wf-blocked">
+          {run.blockedReason.replace(/Retry( step)? to continue\.?/i, 'Click Retry to continue.')}
+        </div>
+      ) : null}
       {showActions ? (
         <div className="wf-actions">
           {canResume ? (
@@ -136,7 +140,7 @@ export function WorkflowCard({ run, compact = false }: Props) {
           {canFix ? (
             <>
               <button type="button" className="text-btn" disabled={busy} onClick={() => void act('retry')}>
-                Retry step
+                Retry
               </button>
               <button type="button" className="text-btn" disabled={busy} onClick={() => void act('skip')}>
                 Skip step

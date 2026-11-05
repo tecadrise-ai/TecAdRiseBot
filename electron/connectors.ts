@@ -1,11 +1,8 @@
-import { app, safeStorage, shell } from 'electron';
+import { shell } from 'electron';
 import http from 'node:http';
-import fs from 'node:fs';
-import path from 'node:path';
 import crypto from 'node:crypto';
 import type { McpServers } from '../src/lib/mcpConfig';
-
-const FILE = 'connectors.bin';
+import { getConnectors, keepSecret, MASK, setConnectors } from './secrets';
 const CANVA_MCP_URL = 'https://mcp.canva.com/mcp';
 const CANVA_RESOURCE = 'https://mcp.canva.com';
 const AUTH_META = 'https://mcp.canva.com/.well-known/oauth-authorization-server';
@@ -36,41 +33,29 @@ type CanvaGrant = {
   tokenEndpoint: string;
 };
 
-type Store = { canva?: CanvaGrant };
+export type ZohoGrant = {
+  dc: string;
+  clientId: string;
+  clientSecret: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  accountsUrl: string;
+  mailUrl: string;
+  mcpToken: string;
+};
+
+type Store = { canva?: CanvaGrant; zoho?: ZohoGrant };
 
 let connecting: Promise<{ ok: boolean; error?: string }> | null = null;
 
-function storePath(): string {
-  return path.join(app.getPath('userData'), FILE);
+export function readStore(): Store {
+  const v = getConnectors() as Store;
+  return v && typeof v === 'object' ? v : {};
 }
 
-function readStore(): Store {
-  try {
-    if (!fs.existsSync(storePath())) return {};
-    const buf = fs.readFileSync(storePath());
-    const asText = buf.toString('utf8');
-    let json: string;
-    if (asText.startsWith('plain:')) {
-      json = Buffer.from(asText.slice(6), 'base64').toString('utf8');
-    } else if (safeStorage.isEncryptionAvailable()) {
-      json = safeStorage.decryptString(buf);
-    } else {
-      return {};
-    }
-    const v = JSON.parse(json) as Store;
-    return v && typeof v === 'object' ? v : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeStore(next: Store): void {
-  const json = JSON.stringify(next);
-  if (safeStorage.isEncryptionAvailable()) {
-    fs.writeFileSync(storePath(), safeStorage.encryptString(json));
-    return;
-  }
-  fs.writeFileSync(storePath(), Buffer.from(`plain:${Buffer.from(json, 'utf8').toString('base64')}`, 'utf8'));
+export function writeStore(next: Store): void {
+  setConnectors(next);
 }
 
 function b64url(buf: Buffer): string {
@@ -251,9 +236,33 @@ async function refreshGrant(g: CanvaGrant): Promise<CanvaGrant> {
   };
 }
 
-export function listConnectors(): Array<{ id: string; name: string; connected: boolean }> {
+export type ConnectorRow = {
+  id: string;
+  name: string;
+  connected: boolean;
+  dc?: string;
+  hasClientId?: boolean;
+  hasClientSecret?: boolean;
+  clientIdMask?: string;
+  clientSecretMask?: string;
+};
+
+export function listConnectors(): ConnectorRow[] {
   const s = readStore();
-  return [{ id: 'canva', name: 'Canva', connected: Boolean(s.canva?.refreshToken) }];
+  const zoho = s.zoho;
+  return [
+    { id: 'canva', name: 'Canva', connected: Boolean(s.canva?.refreshToken) },
+    {
+      id: 'zoho',
+      name: 'Zoho Mail',
+      connected: Boolean(zoho?.refreshToken),
+      dc: zoho?.dc,
+      hasClientId: Boolean(zoho?.clientId),
+      hasClientSecret: Boolean(zoho?.clientSecret),
+      clientIdMask: zoho?.clientId ? MASK : '',
+      clientSecretMask: zoho?.clientSecret ? MASK : '',
+    },
+  ];
 }
 
 export async function connectCanva(): Promise<{ ok: boolean; error?: string }> {
@@ -300,6 +309,90 @@ export function disconnectCanva(): { ok: true } {
   return { ok: true };
 }
 
+export function disconnectZoho(): { ok: true } {
+  const s = readStore();
+  if (s.zoho) {
+    s.zoho = {
+      ...s.zoho,
+      accessToken: '',
+      refreshToken: '',
+      expiresAt: 0,
+      mcpToken: '',
+    };
+  }
+  writeStore(s);
+  return { ok: true };
+}
+
+export function revealConnectorField(id: string, field: string): string {
+  const s = readStore();
+  let v = '';
+  if (id === 'zoho') {
+    if (field === 'clientId') v = s.zoho?.clientId || '';
+    else if (field === 'clientSecret') v = s.zoho?.clientSecret || '';
+  }
+  if (!v.trim() || /^[\s*•]+$/.test(v)) return '';
+  return v;
+}
+
+function emptyZoho(): ZohoGrant {
+  return {
+    dc: 'eu',
+    clientId: '',
+    clientSecret: '',
+    accessToken: '',
+    refreshToken: '',
+    expiresAt: 0,
+    accountsUrl: '',
+    mailUrl: '',
+    mcpToken: '',
+  };
+}
+
+export function saveConnectorField(
+  id: string,
+  field: string,
+  value: string
+): { ok: boolean; error?: string } {
+  if (id !== 'zoho') return { ok: false, error: 'Unknown connector' };
+  const s = readStore();
+  const z = s.zoho ? { ...s.zoho } : emptyZoho();
+  if (field === 'dc') {
+    z.dc = String(value || 'eu');
+  } else if (field === 'clientId') {
+    const next = keepSecret(value, z.clientId);
+    if (!next) return { ok: false, error: 'Enter a Client ID' };
+    z.clientId = next;
+  } else if (field === 'clientSecret') {
+    const next = keepSecret(value, z.clientSecret);
+    if (!next) return { ok: false, error: 'Enter a Client secret' };
+    z.clientSecret = next;
+  } else {
+    return { ok: false, error: 'Unknown field' };
+  }
+  s.zoho = z;
+  writeStore(s);
+  return { ok: true };
+}
+
+export function clearConnectorField(id: string, field: string): { ok: true } {
+  const s = readStore();
+  if (id === 'zoho' && s.zoho) {
+    if (field === 'clientId') s.zoho.clientId = '';
+    if (field === 'clientSecret') s.zoho.clientSecret = '';
+    if (field === 'all') {
+      s.zoho.clientId = '';
+      s.zoho.clientSecret = '';
+    }
+    writeStore(s);
+  }
+  if (id === 'canva' && field === 'all') {
+    delete s.canva;
+    writeStore(s);
+  }
+  return { ok: true };
+}
+
 async function canvaAccessToken(): Promise<string | null> {
   const s = readStore();
   let g = s.canva;
@@ -317,13 +410,16 @@ async function canvaAccessToken(): Promise<string | null> {
 
 /** Global HTTP MCP from Connectors. Tokens stay here, not in MCP JSON. */
 export async function connectorMcpServers(): Promise<McpServers> {
+  const out: McpServers = {};
   const token = await canvaAccessToken();
-  if (!token) return {};
-  return {
-    canva: {
+  if (token) {
+    out.canva = {
       type: 'http',
       url: CANVA_MCP_URL,
       headers: { Authorization: `Bearer ${token}` },
-    },
-  };
+    };
+  }
+  const { zohoMailMcp } = await import('./zohoMail');
+  Object.assign(out, zohoMailMcp());
+  return out;
 }

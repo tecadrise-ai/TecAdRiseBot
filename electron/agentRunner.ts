@@ -10,7 +10,7 @@ import { restoreFlattenedMarkdown } from '../src/lib/markdown';
 import { finalizeAssistantBody, packAssistantBody, unpackAssistantBody } from '../src/lib/assistantBody';
 import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
-import { getApiKey } from './secrets';
+import { getApiKey, getEnvMap } from './secrets';
 import { DEFAULT_MODEL_ID, readLastMessages, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
@@ -563,23 +563,8 @@ function loadGlobalMcpServers(): McpServers {
   return serversFromUnknown(db.getSetting(GLOBAL_MCP_SETTING) || '{}');
 }
 
-/** KEY=value lines from <userData>/.env; secrets for MCP headers stay out of the JSON and the DB. */
-function readUserEnvFile(): Record<string, string> {
-  const out: Record<string, string> = {};
-  try {
-    const text = fs.readFileSync(path.join(app.getPath('userData'), '.env'), 'utf8');
-    for (const line of text.split(/\r?\n/)) {
-      const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
-      if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
-    }
-  } catch {
-    /* no .env */
-  }
-  return out;
-}
-
 function expandEnvRefs(servers: McpServers): McpServers {
-  const fileEnv = readUserEnvFile();
+  const fileEnv = getEnvMap();
   const sub = (v: string) =>
     v.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_all, name: string) => {
       const val = process.env[name] ?? fileEnv[name];
@@ -899,7 +884,7 @@ async function runAgentTurnInner(opts: {
   const apiKey = getApiKey();
   if (!apiKey) {
     const err =
-      'No Cursor API key saved. Open Local user settings, paste your CURSOR_API_KEY from Cursor Dashboard â†’ API Keys, then try again.';
+      'No Cursor API key saved. Open Settings, API Keys, paste the Cursor key, then try again.';
     db.updateMessageContent(assistantMessageId, err);
     db.updateAgent(opts.agentId, { lastSnippet: err.slice(0, 120) });
     emit('chat:stream-error', { agentId: opts.agentId, messageId: assistantMessageId, error: err });

@@ -5,7 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
-import { connectCanva, disconnectCanva, listConnectors } from './connectors';
+import {
+  clearConnectorField,
+  connectCanva,
+  disconnectCanva,
+  disconnectZoho,
+  listConnectors,
+  revealConnectorField,
+  saveConnectorField,
+} from './connectors';
+import { connectZoho } from './zohoMail';
 import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp, readGlobalMcpJson, registerGlobalMcp, readArchitecture } from './agentRunner';
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
@@ -214,14 +223,23 @@ function registerIpc() {
   ipcMain.handle('sidebar:save', (_e, json: string) => db.setSidebarLayoutRaw(String(json ?? '')));
 
   ipcMain.handle('connectors:list', () => listConnectors());
-  ipcMain.handle('connectors:connect', async (_e, id: string) => {
-    if (String(id) !== 'canva') return { ok: false, error: 'Unknown connector' };
-    return connectCanva();
+  ipcMain.handle('connectors:connect', async (_e, id: string, opts?: Record<string, string>) => {
+    if (String(id) === 'canva') return connectCanva();
+    if (String(id) === 'zoho') return connectZoho(opts || {});
+    return { ok: false, error: 'Unknown connector' };
   });
   ipcMain.handle('connectors:disconnect', (_e, id: string) => {
-    if (String(id) !== 'canva') return { ok: false, error: 'Unknown connector' };
-    return disconnectCanva();
+    if (String(id) === 'canva') return disconnectCanva();
+    if (String(id) === 'zoho') return disconnectZoho();
+    return { ok: false, error: 'Unknown connector' };
   });
+  ipcMain.handle('connectors:reveal', (_e, id: string, field: string) => revealConnectorField(String(id), String(field)));
+  ipcMain.handle('connectors:saveField', (_e, id: string, field: string, value: string) =>
+    saveConnectorField(String(id), String(field), String(value ?? ''))
+  );
+  ipcMain.handle('connectors:clearField', (_e, id: string, field: string) =>
+    clearConnectorField(String(id), String(field))
+  );
 
   ipcMain.handle('agents:delete', async (_e, id: string) => {
     await cancelAgentRun(id);
@@ -314,6 +332,10 @@ function registerIpc() {
     secrets.clearApiKey();
     return { ok: true };
   });
+  ipcMain.handle('secrets:env-list', () => secrets.listEnvPublic());
+  ipcMain.handle('secrets:env-set', (_e, name: string, value: string) => secrets.setEnvValue(name, value));
+  ipcMain.handle('secrets:env-delete', (_e, name: string) => secrets.deleteEnvValue(name));
+  ipcMain.handle('secrets:reveal', (_e, name: string) => secrets.revealSecret(String(name || '')));
   ipcMain.handle('settings:setModel', (_e, model: string) => {
     secrets.writeMeta({ selectedModel: model });
     for (const a of db.listAgents()) {

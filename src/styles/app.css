@@ -1157,16 +1157,82 @@
   color: var(--danger);
 }
 
-.connector-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.connector-block {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 16px;
   margin: 12px 0;
   background: var(--bg);
+}
+.connector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.connector-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.connector-fields {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.connector-fields label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.keys-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+.keys-table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 8px 8px 0;
+}
+.keys-table td {
+  padding: 6px 8px 6px 0;
+  vertical-align: middle;
+}
+.keys-table .keys-name {
+  width: 220px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.keys-table td:nth-child(3),
+.keys-table td:nth-child(4),
+.keys-table td:nth-child(5) {
+  width: 1%;
+  white-space: nowrap;
+}
+.keys-table input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.keys-table button {
+  min-width: 72px;
+}
+.connector-fields input,
+.connector-fields select {
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
 }
 .connector-name {
   font-weight: 600;

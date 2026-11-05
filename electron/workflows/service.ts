@@ -711,7 +711,7 @@ function settleTurn(runId: string, role: 'runner' | 'review' | 'fix', before: st
     const cur = store.getRun(runId);
     if (!cur || !isRunActive(cur.state)) return;
     if (stopped) {
-      commit(engine.applyBlock(cur, `Stopped by user during ${role} turn. Retry to continue.`, Date.now()));
+      commit(engine.applyBlock(cur, `Stopped by user during ${role} turn. Click Retry to continue.`, Date.now()));
       return;
     }
     if (fingerprint(cur) !== before) return;

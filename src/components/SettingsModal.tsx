@@ -10,6 +10,7 @@ import { fmtTok } from '../lib/usage';
 
 type Tab =
   | 'general'
+  | 'keys'
   | 'architecture'
   | 'system'
   | 'memory'
@@ -119,10 +120,30 @@ function UsageBillingBody() {
   );
 }
 
+const SECRET_MASK = '**************************';
+
+type ConnectorRow = {
+  id: string;
+  name: string;
+  connected: boolean;
+  dc?: string;
+  hasClientId?: boolean;
+  hasClientSecret?: boolean;
+  clientIdMask?: string;
+  clientSecretMask?: string;
+};
+
 function ConnectorsBody() {
-  const [rows, setRows] = useState<Array<{ id: string; name: string; connected: boolean }>>([]);
+  const [rows, setRows] = useState<ConnectorRow[]>([]);
   const [busy, setBusy] = useState('');
   const [status, setStatus] = useState('');
+  const [zohoDc, setZohoDc] = useState('eu');
+  const [zohoClientId, setZohoClientId] = useState('');
+  const [zohoSecret, setZohoSecret] = useState('');
+  const [zohoGrant, setZohoGrant] = useState('');
+  const [showId, setShowId] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const [showGrant, setShowGrant] = useState(false);
 
   async function refresh() {
     try {
@@ -136,12 +157,82 @@ function ConnectorsBody() {
     void refresh();
   }, []);
 
+  const zohoRow = rows.find((r) => r.id === 'zoho');
+  useEffect(() => {
+    if (zohoRow?.dc) setZohoDc(zohoRow.dc);
+  }, [zohoRow?.dc]);
+
+  async function saveZohoField(field: 'clientId' | 'clientSecret', value: string) {
+    const res = await window.tecapi.connectors.saveField('zoho', 'dc', zohoDc);
+    if (!res.ok) {
+      setStatus(res.error || 'Save failed');
+      return;
+    }
+    const saved = await window.tecapi.connectors.saveField('zoho', field, value);
+    setStatus(saved.ok ? 'Saved.' : saved.error || 'Save failed');
+    if (!saved.ok) return;
+    if (field === 'clientId') {
+      setZohoClientId('');
+      setShowId(false);
+    } else {
+      setZohoSecret('');
+      setShowSecret(false);
+    }
+    await refresh();
+  }
+
+  async function toggleZohoField(field: 'clientId' | 'clientSecret') {
+    const showing = field === 'clientId' ? showId : showSecret;
+    const setShowing = field === 'clientId' ? setShowId : setShowSecret;
+    const setVal = field === 'clientId' ? setZohoClientId : setZohoSecret;
+    if (showing) {
+      setShowing(false);
+      setVal('');
+      return;
+    }
+    try {
+      const v = await window.tecapi.connectors.reveal('zoho', field);
+      if (!v.trim() || /^[\s*•]+$/.test(v)) {
+        setStatus('Nothing stored. Paste a new value.');
+        setVal('');
+        setShowing(false);
+        return;
+      }
+      setVal(v);
+      setShowing(true);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function connect(id: string) {
     setBusy(id);
-    setStatus('Browser opened. Approve Canva, then this page will update.');
+    setStatus(
+      id === 'zoho'
+        ? zohoGrant.trim()
+          ? 'Exchanging Zoho grant token…'
+          : 'Browser opened. Approve Zoho, then this page will update.'
+        : 'Browser opened. Approve Canva, then this page will update.'
+    );
     try {
-      const res = await window.tecapi.connectors.connect(id);
-      setStatus(res.ok ? 'Canva connected. All agents get it on the next turn.' : res.error || 'Connect failed');
+      const res = await window.tecapi.connectors.connect(
+        id,
+        id === 'zoho'
+          ? { dc: zohoDc, clientId: zohoClientId, clientSecret: zohoSecret, grantCode: zohoGrant }
+          : undefined
+      );
+      const ok =
+        id === 'zoho'
+          ? 'Zoho Mail connected. All agents get mail tools on the next turn.'
+          : 'Canva connected. All agents get it on the next turn.';
+      setStatus(res.ok ? ok : res.error || 'Connect failed');
+      if (res.ok && id === 'zoho') {
+        setZohoClientId('');
+        setZohoSecret('');
+        setZohoGrant('');
+        setShowId(false);
+        setShowSecret(false);
+      }
       await refresh();
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
@@ -169,27 +260,404 @@ function ConnectorsBody() {
       <h2>Connectors</h2>
       <p className="hint">
         Global for every agent. Connect opens the vendor site in your browser. After you approve, tokens
-        stay on this PC and every bot can use that account.
+        stay in secrets.bin on this PC and every bot can use that account.
       </p>
       {rows.map((r) => (
-        <div key={r.id} className="connector-row">
-          <div>
-            <div className="connector-name">{r.name}</div>
-            <div className={`connector-state ${r.connected ? 'on' : 'off'}`}>
-              {r.connected ? 'Connected' : 'Not connected'}
+        <div key={r.id} className="connector-block">
+          <div className="connector-row">
+            <div>
+              <div className="connector-name">{r.name}</div>
+              <div className={`connector-state ${r.connected ? 'on' : 'off'}`}>
+                {r.connected ? 'Connected' : 'Not connected'}
+              </div>
+            </div>
+            <div className="connector-actions">
+              {r.connected ? (
+                <button type="button" className="secondary" disabled={busy === r.id} onClick={() => void disconnect(r.id)}>
+                  Disconnect
+                </button>
+              ) : (
+                <button type="button" className="primary" disabled={Boolean(busy)} onClick={() => void connect(r.id)}>
+                  {busy === r.id ? 'Waiting…' : 'Connect'}
+                </button>
+              )}
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy === r.id}
+                onClick={() =>
+                  void (async () => {
+                    await window.tecapi.connectors.clearField(r.id, 'all');
+                    if (r.connected) await disconnect(r.id);
+                    if (r.id === 'zoho') {
+                      setZohoClientId('');
+                      setZohoSecret('');
+                      setZohoGrant('');
+                      setShowId(false);
+                      setShowSecret(false);
+                    }
+                    setStatus('Cleared.');
+                    await refresh();
+                  })()
+                }
+              >
+                Clear
+              </button>
             </div>
           </div>
-          {r.connected ? (
-            <button type="button" className="secondary" disabled={busy === r.id} onClick={() => void disconnect(r.id)}>
-              Disconnect
-            </button>
-          ) : (
-            <button type="button" className="primary" disabled={Boolean(busy)} onClick={() => void connect(r.id)}>
-              {busy === r.id ? 'Waiting…' : 'Connect'}
-            </button>
-          )}
+          {r.id === 'zoho' ? (
+            <div className="connector-fields">
+              <p className="hint">
+                Register a client at api-console.zoho.eu (Poland is usually EU). Scopes:
+                ZohoMail.accounts.READ, folders.READ, messages.READ, messages.CREATE. Server-based
+                client redirect: http://127.0.0.1:18767/callback. Self Client: paste a grant token
+                instead of using the browser. About 30 API calls/minute on free. After adding send,
+                Disconnect then Connect so Zoho asks again.
+              </p>
+              <label>
+                Data center
+                <select value={zohoDc} onChange={(e) => setZohoDc(e.target.value)}>
+                  <option value="eu">EU (Poland)</option>
+                  <option value="com">US (.com)</option>
+                  <option value="in">India</option>
+                  <option value="au">Australia</option>
+                  <option value="uk">UK</option>
+                  <option value="jp">Japan</option>
+                  <option value="ca">Canada</option>
+                  <option value="sa">Saudi Arabia</option>
+                </select>
+              </label>
+              <table className="keys-table">
+                <tbody>
+                  <tr>
+                    <td className="keys-name">Client ID</td>
+                    <td>
+                      <input
+                        type={showId ? 'text' : 'password'}
+                        value={zohoClientId}
+                        onChange={(e) => {
+                          setZohoClientId(e.target.value);
+                          setShowId(true);
+                        }}
+                        autoComplete="off"
+                        placeholder={zohoRow?.hasClientId ? SECRET_MASK : 'Paste client ID'}
+                        spellCheck={false}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={!zohoRow?.hasClientId && !zohoClientId}
+                        onClick={() => void toggleZohoField('clientId')}
+                      >
+                        {showId ? 'Hide' : 'Show'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!zohoClientId.trim()}
+                        onClick={() => void saveZohoField('clientId', zohoClientId)}
+                      >
+                        Save
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void (async () => {
+                            await window.tecapi.connectors.clearField('zoho', 'clientId');
+                            setZohoClientId('');
+                            setShowId(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="keys-name">Client secret</td>
+                    <td>
+                      <input
+                        type={showSecret ? 'text' : 'password'}
+                        value={zohoSecret}
+                        onChange={(e) => {
+                          setZohoSecret(e.target.value);
+                          setShowSecret(true);
+                        }}
+                        autoComplete="off"
+                        placeholder={zohoRow?.hasClientSecret ? SECRET_MASK : 'Paste client secret'}
+                        spellCheck={false}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={!zohoRow?.hasClientSecret && !zohoSecret}
+                        onClick={() => void toggleZohoField('clientSecret')}
+                      >
+                        {showSecret ? 'Hide' : 'Show'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!zohoSecret.trim()}
+                        onClick={() => void saveZohoField('clientSecret', zohoSecret)}
+                      >
+                        Save
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void (async () => {
+                            await window.tecapi.connectors.clearField('zoho', 'clientSecret');
+                            setZohoSecret('');
+                            setShowSecret(false);
+                            await refresh();
+                          })()
+                        }
+                      >
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="keys-name">Grant token</td>
+                    <td>
+                      <input
+                        type={showGrant ? 'text' : 'password'}
+                        value={zohoGrant}
+                        onChange={(e) => setZohoGrant(e.target.value)}
+                        autoComplete="off"
+                        placeholder="Self Client, optional"
+                        spellCheck={false}
+                      />
+                    </td>
+                    <td>
+                      <button type="button" className="secondary" onClick={() => setShowGrant((v) => !v)}>
+                        {showGrant ? 'Hide' : 'Show'}
+                      </button>
+                    </td>
+                    <td />
+                    <td>
+                      <button type="button" className="secondary" onClick={() => setZohoGrant('')}>
+                        Clear
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       ))}
+      {status ? <p className={`status${status.toLowerCase().includes('fail') ? ' error' : ''}`}>{status}</p> : null}
+    </section>
+  );
+}
+
+const CURSOR_KEY_NAME = 'CURSOR_SDK_API_KEY';
+
+function ApiKeysBody({
+  settings,
+  onRefresh,
+}: {
+  settings: AppSettings | null;
+  onRefresh: () => Promise<void>;
+}) {
+  const [rows, setRows] = useState<Array<{ name: string; masked: string }>>([]);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [shown, setShown] = useState<Record<string, boolean>>({});
+  const [newName, setNewName] = useState('');
+  const [newValue, setNewValue] = useState('');
+  const [showNew, setShowNew] = useState(false);
+  const [status, setStatus] = useState('');
+
+  async function refreshEnv() {
+    try {
+      setRows(await window.tecapi.secrets.envList());
+    } catch {
+      setRows([]);
+    }
+  }
+
+  useEffect(() => {
+    void refreshEnv();
+  }, []);
+
+  function setDraft(name: string, value: string) {
+    setDrafts((cur) => ({ ...cur, [name]: value }));
+  }
+
+  async function toggleShow(name: string) {
+    if (shown[name]) {
+      setShown((cur) => ({ ...cur, [name]: false }));
+      setDraft(name, '');
+      return;
+    }
+    const v = await window.tecapi.secrets.reveal(name);
+    setDraft(name, v);
+    setShown((cur) => ({ ...cur, [name]: true }));
+  }
+
+  async function saveRow(name: string, value: string) {
+    const v = value.trim();
+    if (!v) return;
+    if (name === CURSOR_KEY_NAME) {
+      const res = await window.tecapi.settings.setApiKey(v);
+      setStatus(res.ok ? 'CURSOR_SDK_API_KEY saved.' : res.error || 'Save failed');
+      if (res.ok) {
+        setDraft(name, '');
+        setShown((cur) => ({ ...cur, [name]: false }));
+        await onRefresh();
+      }
+      return;
+    }
+    const res = await window.tecapi.secrets.envSet(name, v);
+    setStatus(res.ok ? `${name} saved.` : res.error || 'Save failed');
+    if (res.ok) {
+      setDraft(name, '');
+      setShown((cur) => ({ ...cur, [name]: false }));
+      await refreshEnv();
+    }
+  }
+
+  const names = [CURSOR_KEY_NAME, ...rows.map((r) => r.name)];
+
+  return (
+    <section>
+      <h2>API Keys</h2>
+      <p className="hint">
+        One table. CURSOR_SDK_API_KEY is required. Add any other name for MCP {'${env:NAME}'}.
+      </p>
+      <table className="keys-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Secret</th>
+            <th />
+            <th />
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {names.map((name) => {
+            const isCursor = name === CURSOR_KEY_NAME;
+            const has = isCursor ? Boolean(settings?.hasApiKey) : true;
+            const draft = drafts[name] ?? '';
+            const open = Boolean(shown[name]);
+            return (
+              <tr key={name}>
+                <td className="keys-name">{name}</td>
+                <td>
+                  <input
+                    type={open ? 'text' : 'password'}
+                    placeholder={has ? SECRET_MASK : 'Paste key'}
+                    value={draft}
+                    onChange={(e) => setDraft(name, e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </td>
+                <td>
+                  <button type="button" className="secondary" disabled={!has && !draft} onClick={() => void toggleShow(name)}>
+                    {open ? 'Hide' : 'Show'}
+                  </button>
+                </td>
+                <td>
+                  <button type="button" className="primary" disabled={!draft.trim()} onClick={() => void saveRow(name, draft)}>
+                    Save
+                  </button>
+                </td>
+                <td>
+                  {isCursor ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={!settings?.hasApiKey}
+                      onClick={() =>
+                        void (async () => {
+                          await window.tecapi.settings.clearApiKey();
+                          setDraft(name, '');
+                          setShown((cur) => ({ ...cur, [name]: false }));
+                          await onRefresh();
+                          setStatus('CURSOR_SDK_API_KEY removed.');
+                        })()
+                      }
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() =>
+                        void (async () => {
+                          await window.tecapi.secrets.envDelete(name);
+                          setDraft(name, '');
+                          await refreshEnv();
+                        })()
+                      }
+                    >
+                      Remove
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          <tr>
+            <td>
+              <input placeholder="Key name" value={newName} onChange={(e) => setNewName(e.target.value)} autoComplete="off" />
+            </td>
+            <td>
+              <input
+                type={showNew ? 'text' : 'password'}
+                placeholder="Secret"
+                value={newValue}
+                onChange={(e) => setNewValue(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </td>
+            <td>
+              <button type="button" className="secondary" onClick={() => setShowNew((v) => !v)}>
+                {showNew ? 'Hide' : 'Show'}
+              </button>
+            </td>
+            <td>
+              <button
+                type="button"
+                className="primary"
+                disabled={!newName.trim() || !newValue.trim()}
+                onClick={() =>
+                  void (async () => {
+                    await saveRow(newName.trim(), newValue);
+                    setNewName('');
+                    setNewValue('');
+                    setShowNew(false);
+                  })()
+                }
+              >
+                Add
+              </button>
+            </td>
+            <td />
+          </tr>
+        </tbody>
+      </table>
       {status ? <p className={`status${status.toLowerCase().includes('fail') ? ' error' : ''}`}>{status}</p> : null}
     </section>
   );
@@ -217,7 +685,6 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
       .then((t) => setArchDoc({ name, text: t || `${name} is empty.` }))
       .catch((err) => setArchDoc({ name, text: `Could not read ${name}: ${String(err)}` }));
   }
-  const [apiKey, setApiKey] = useState('');
   const [accountName, setAccountName] = useState(settings?.accountName ?? '');
   const [models, setModels] = useState<{ id: string; displayName: string }[]>([]);
   const [model, setModel] = useState(settings?.selectedModel ?? 'composer-2.5');
@@ -279,25 +746,6 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
   }, [open]);
 
   if (!open) return null;
-
-  async function saveKey() {
-    if (!apiKey.trim()) return;
-    setSaving(true);
-    setStatus('');
-    try {
-      const res = await window.tecapi.settings.setApiKey(apiKey.trim());
-      if (!res.ok) throw new Error(res.error || 'Failed');
-      setApiKey('');
-      setStatus('API key saved securely.');
-      await onRefresh();
-      const list = await window.tecapi.models.list();
-      setModels(list);
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function guarded(fn: () => Promise<void>) {
     setStatus('');
@@ -388,6 +836,7 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                 ['system', 'System prompt'],
                 ['memory', 'System memory'],
                 ['mcp', 'MCP'],
+                ['keys', 'API Keys'],
                 ['connectors', 'Connectors'],
                 ['computer', 'Computer'],
                 ['usage', 'Usage & Billing'],
@@ -413,7 +862,7 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
             {tab === 'general' && (
               <section>
                 <h2>App settings</h2>
-          <p className="hint">Global for this install (API key, default model, account). Per-agent name/model use the gear in the chat header.</p>
+          <p className="hint">Global for this install (default model, account). Per-agent name/model use the gear in the chat header. Keys live under API Keys.</p>
                 <label className="field">
                   <span>Display name</span>
                   <div className="row">
@@ -422,30 +871,6 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                       Save
                     </button>
                   </div>
-                </label>
-
-                <label className="field">
-                  <span>Cursor API key</span>
-                  <div className="row">
-                    <input
-                      type="password"
-                      placeholder={settings?.hasApiKey ? '••••••••  (saved)' : 'Paste CURSOR_API_KEY'}
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={saving || !apiKey.trim()}
-                      onClick={() => void saveKey()}
-                    >
-                      Save
-                    </button>
-                  </div>
-                  <p className="hint">
-                    Stored with Electron safeStorage on this PC only. Get a key from Cursor Dashboard →
-                    API Keys.
-                  </p>
                 </label>
 
                 <label className="field">
@@ -488,23 +913,11 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
                   </p>
                 </label>
 
-                {settings?.hasApiKey && (
-                  <button
-                    type="button"
-                    className="danger-link"
-                    onClick={() =>
-                      void guarded(async () => {
-                        await window.tecapi.settings.clearApiKey();
-                        await onRefresh();
-                      })
-                    }
-                  >
-                    Clear saved API key
-                  </button>
-                )}
                 {status && <p className="status">{status}</p>}
               </section>
             )}
+
+            {tab === 'keys' && <ApiKeysBody settings={settings} onRefresh={onRefresh} />}
 
             {tab === 'system' && (
               <section className="system-prompt-section">

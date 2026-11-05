@@ -407,6 +407,7 @@ export default function App() {
         onOpenAgentSettings={openAgentSettings}
         onRename={renameSelected}
         ownerAgent={agents.find((a) => a.id === ownerAgentIdOf(selected)) ?? null}
+        userDataPath={settings?.userDataPath}
       />
       <AgentSettingsModal
         open={agentSettingsOpen}

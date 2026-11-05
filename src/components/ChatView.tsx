@@ -30,6 +30,7 @@ type Props = {
   onOpenAgentSettings: (tab?: 'routines' | 'workflows') => void;
   onRename?: (name: string) => Promise<void>;
   ownerAgent?: Agent | null;
+  userDataPath?: string;
 };
 
 const TODO_MARK: Record<TodoStatus, string> = {
@@ -43,17 +44,21 @@ function ThinkingSection({
   text,
   streaming,
   collapse,
+  agentId,
+  userDataPath,
 }: {
   text: string;
   streaming: boolean;
   collapse: boolean;
+  agentId?: string;
+  userDataPath?: string;
 }) {
   const [open, setOpen] = useState(false);
   if (streaming) {
     return <div className="md-thinking md-thinking-raw">{text}</div>;
   }
   if (!collapse) {
-    return <MarkdownBody className="md-thinking" text={text} />;
+    return <MarkdownBody className="md-thinking" text={text} agentId={agentId} userDataPath={userDataPath} />;
   }
   return (
     <div className="think-fold">
@@ -66,7 +71,7 @@ function ThinkingSection({
         <span className="think-fold-chevron" aria-hidden="true" />
         Thinking
       </button>
-      {open ? <MarkdownBody className="md-thinking" text={text} /> : null}
+      {open ? <MarkdownBody className="md-thinking" text={text} agentId={agentId} userDataPath={userDataPath} /> : null}
     </div>
   );
 }
@@ -479,6 +484,7 @@ export function ChatView({
   onOpenAgentSettings,
   onRename,
   ownerAgent = null,
+  userDataPath,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [role, setRole] = useState<ChatRole>('runner');
@@ -652,11 +658,15 @@ export function ChatView({
                         text={parts.thinking}
                         streaming={streamingId === m.id}
                         collapse={streamingId !== m.id && !!parts.answer}
+                        agentId={agent.id}
+                        userDataPath={userDataPath}
                       />
                     ) : null}
                     {wfRun ? <WorkflowCard run={wfRun} compact={wfLastMsg.get(wfRun.id) !== m.id} /> : null}
                     <TodoList todos={todos} />
-                    {parts?.answer ? <MarkdownBody text={parts.answer} /> : null}
+                    {parts?.answer ? (
+                      <MarkdownBody text={parts.answer} agentId={agent.id} userDataPath={userDataPath} />
+                    ) : null}
                     {metaLine ? (
                       <div className="msg-time" title={metaLine}>
                         {metaLine}
@@ -664,7 +674,12 @@ export function ChatView({
                     ) : null}
                   </>
                 ) : (
-                  <MarkdownBody className="md-user" text={m.content} />
+                  <MarkdownBody
+                    className="md-user"
+                    text={m.content}
+                    agentId={agent.id}
+                    userDataPath={userDataPath}
+                  />
                 )}
               </div>
             </div>

@@ -2,18 +2,24 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { memo } from 'react';
 import { restoreFlattenedMarkdown } from '../lib/markdown';
+import { rewriteMarkdownImages } from '../lib/rewriteChatImages';
 
 marked.setOptions({ gfm: true, breaks: true });
 
 export const MarkdownBody = memo(function MarkdownBody({
   text,
   className,
+  agentId,
+  userDataPath,
 }: {
   text: string;
   className?: string;
+  agentId?: string;
+  userDataPath?: string;
 }) {
   const clean = restoreFlattenedMarkdown(text).replace(/\n{3,}/g, '\n\n');
-  const html = DOMPurify.sanitize(String(marked.parse(clean)), {
+  const withImgs = rewriteMarkdownImages(clean, { agentId, userDataPath });
+  const html = DOMPurify.sanitize(String(marked.parse(withImgs)), {
     ADD_TAGS: ['img'],
     ADD_ATTR: ['src', 'alt', 'title'],
     ALLOWED_URI_REGEXP:

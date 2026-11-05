@@ -12,7 +12,7 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --no-warnings --test src/lib/workflow/workflow.test.ts src/lib/sidebarSections.test.ts electron/workflows/checks.test.ts",
+    "test": "node --experimental-strip-types --no-warnings --test src/lib/workflow/workflow.test.ts src/lib/sidebarSections.test.ts src/lib/rewriteChatImages.test.ts electron/workflows/checks.test.ts",
     "postinstall": "electron-builder install-app-deps || true",
     "stamp-icon": "node scripts/stamp-dev-icon.mjs"
   },

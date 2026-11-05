@@ -24,6 +24,7 @@ type Props = {
   onSelect: (id: string) => void;
   onCreate: () => void;
   onOpenSettings: () => void;
+  onOpenConnectors: () => void;
   onOpenAgentSettings: (id: string) => void;
   onDeleteAgent: (id: string) => void;
   onRenameAgent: (id: string, name: string) => void;
@@ -51,6 +52,7 @@ export function Sidebar({
   onSelect,
   onCreate,
   onOpenSettings,
+  onOpenConnectors,
   onOpenAgentSettings,
   onDeleteAgent,
   onRenameAgent,
@@ -557,29 +559,62 @@ export function Sidebar({
       ) : null}
 
       <div className="sidebar-footer">
-        <button type="button" className="account-row" onClick={onOpenSettings}>
-          <div className="avatar small" style={{ background: '#4C78FF' }}>
-            {(settings?.accountName || 'U').slice(0, 1).toUpperCase()}
-          </div>
-          <div className="account-meta">
-            <div className="account-name">{settings?.accountName || 'Local user'}</div>
-            <div className="account-sub">
-              {settings?.hasApiKey ? 'API key saved' : 'Set API key'}
+        <div className="account-row">
+          <button type="button" className="account-identity" onClick={onOpenSettings}>
+            <div className="avatar small" style={{ background: '#4C78FF' }}>
+              {(settings?.accountName || 'U').slice(0, 1).toUpperCase()}
             </div>
-          </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="gear">
-            <path
-              d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-          </svg>
-        </button>
+            <div className="account-meta">
+              <div className="account-name">{settings?.accountName || 'Local user'}</div>
+              <div className="account-sub">
+                {settings?.hasApiKey ? 'API key saved' : 'Set API key'}
+              </div>
+            </div>
+          </button>
+          <button
+            type="button"
+            className="account-icon-btn"
+            title="Connectors"
+            aria-label="Connectors"
+            onClick={onOpenConnectors}
+          >
+            <svg width="17" height="17" viewBox="5 2 14 20" fill="none" className="account-plug">
+              <path
+                d="M9 7V3M15 7V3"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <path
+                d="M7 7h10v4a5 5 0 0 1-5 5h0a5 5 0 0 1-5-5V7z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinejoin="round"
+              />
+              <path d="M12 16v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="account-icon-btn"
+            title="Settings"
+            aria-label="Settings"
+            onClick={onOpenSettings}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="gear">
+              <path
+                d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              />
+              <path
+                d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1-.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
     </aside>
   );

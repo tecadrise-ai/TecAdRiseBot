@@ -337,19 +337,53 @@
 .account-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  border: none;
+  gap: 2px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 8px 10px;
+  padding: 6px 8px 6px 10px;
   margin-top: 4px;
-  text-align: left;
   color: inherit;
   width: 100%;
 }
 .account-row:hover {
   background: var(--bg-hover);
+}
+.account-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 2px 4px 2px 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.account-icon-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.account-icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.account-plug {
+  width: 17px;
+  height: 16px;
+  display: block;
+  flex-shrink: 0;
 }
 .account-meta {
   flex: 1;

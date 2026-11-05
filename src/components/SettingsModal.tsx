@@ -1241,12 +1241,13 @@ function ApiKeysBody({
 
 type Props = {
   open: boolean;
+  initialTab?: Tab;
   onClose: () => void;
   settings: AppSettings | null;
   onRefresh: () => Promise<void>;
 };
 
-export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
+export function SettingsModal({ open, initialTab, onClose, settings, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('general');
   const [archDoc, setArchDoc] = useState<{ name: string; text: string } | null>(null);
 
@@ -1273,6 +1274,11 @@ export function SettingsModal({ open, onClose, settings, onRefresh }: Props) {
   const [mcpJson, setMcpJson] = useState(EMPTY_MCP_JSON);
   const [mcpBusy, setMcpBusy] = useState(false);
   const [missedGrace, setMissedGrace] = useState(String(settings?.missedGraceMinutes ?? 15));
+
+  useEffect(() => {
+    if (!open) return;
+    setTab(initialTab || 'general');
+  }, [open, initialTab]);
 
   // Seed form fields once per open. Re-seeding on every settings refresh wiped unsaved edits.
   const seeded = useRef(false);

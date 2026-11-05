@@ -44,6 +44,7 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [sidebarLayout, setSidebarLayout] = useState<SidebarLayout>(() => emptyLayout());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'connectors'>('general');
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const [liveTodos, setLiveTodos] = useState<TodoItem[]>([]);
   const [liveTodoMessageId, setLiveTodoMessageId] = useState<string | null>(null);
@@ -344,7 +345,14 @@ export default function App() {
         settings={settings}
         onSelect={setSelectedId}
         onCreate={() => void createAgent()}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => {
+          setSettingsTab('general');
+          setSettingsOpen(true);
+        }}
+        onOpenConnectors={() => {
+          setSettingsTab('connectors');
+          setSettingsOpen(true);
+        }}
         onOpenAgentSettings={(id) => {
           setSelectedId(id);
           setAgentSettingsOpen(true);
@@ -436,6 +444,7 @@ export default function App() {
       />
       <SettingsModal
         open={settingsOpen}
+        initialTab={settingsTab}
         onClose={() => setSettingsOpen(false)}
         settings={settings}
         onRefresh={refreshSettings}

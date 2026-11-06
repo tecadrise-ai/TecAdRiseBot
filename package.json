@@ -2,7 +2,7 @@
   "name": "tecadrise-bot",
   "productName": "TecAdRiseBot",
   "version": "0.1.4",
-  "description": "TecAdRiseBot - a free open-source alternative to Grok Bot.",
+  "description": "TecAdRiseBot — free open-source Grok Bot alternative for Windows. Local multi-agent desktop on the Cursor SDK.",
   "main": "dist-electron/main.js",
   "author": "TecAdRise",
   "license": "MIT",

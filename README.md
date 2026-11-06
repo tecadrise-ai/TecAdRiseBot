@@ -1,8 +1,10 @@
-# TecAdRiseBot - a free open-source alternative to Grok Bot based on Cursor SDK.
+# TecAdRiseBot
 
-Local desktop multi-agent chat (Electron + React + TypeScript + Cursor SDK). Agents run on your PC through the [Cursor TypeScript SDK](https://cursor.com/docs/sdk/typescript). MIT licensed. Not a clone and Not an official Grok or xAI product.
+Free open-source **Grok Bot alternative** for Windows. Local multi-agent desktop (Electron + React + TypeScript) on the [Cursor TypeScript SDK](https://cursor.com/docs/sdk/typescript). MIT. Not an official Grok or xAI product.
 
-[tecadrise.ai](https://tecadrise.ai)
+**[Download for Windows (64-bit)](https://tecadrise.ai/products/tecadrisebot)** · [Product page](https://tecadrise.ai/products/tecadrisebot) · [tecadrise.ai](https://tecadrise.ai)
+
+The published Setup.exe, `latest.json`, and this git tag are the same commit. Settings → Updates checks [latest.json](https://tecadrise.ai/downloads/tecadrisebot/latest.json).
 
 ## Screenshots
 
@@ -97,11 +99,17 @@ Playwright needs Node/`npx` on PATH. AgentMail may open a browser login on first
 
 ## Requirements
 
-- Node.js 22.13+
-- npm 10+
-- Windows 10/11 (Electron, Mac possible later)
+- Windows 10 or 11, 64-bit (installer)
+- A Cursor API key ([Dashboard](https://cursor.com/dashboard))
+- From source only: Node.js 22.13+, npm 10+
 
 ## Quick start
+
+1. [Download the Windows installer](https://tecadrise.ai/downloads/tecadrisebot/TecAdRiseBot-Setup-win64.exe) and run it.
+2. Open Local user → General, paste a Cursor API key, Save.
+3. Pick a default model, create an agent, send a message.
+
+From source (changing the app itself):
 
 ```powershell
 git clone https://github.com/tecadrise-ai/TecAdRiseBot.git
@@ -109,11 +117,6 @@ cd TecAdRiseBot
 npm install
 npm run dev
 ```
-
-1. Open Local user (account row) → General.
-2. Paste a Cursor API key (Cursor Dashboard → API Keys) and Save.
-3. Pick a default model and Apply.
-4. Create or select an agent, then send a message.
 
 ## Local API
 
@@ -153,4 +156,4 @@ Windows shipping (version bump, **git tag must match the exe**, installer on the
 
 ## License
 
-MIT. See [LICENSE](LICENSE). [tecadrise.ai](https://tecadrise.ai)
+MIT. See [LICENSE](LICENSE). [Download](https://tecadrise.ai/products/tecadrisebot) · [tecadrise.ai](https://tecadrise.ai)

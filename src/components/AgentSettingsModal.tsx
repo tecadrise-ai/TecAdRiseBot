@@ -278,7 +278,7 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
             <h2>Agent settings - {agent.name}</h2>
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
-            X
+            ×
           </button>
         </div>
 

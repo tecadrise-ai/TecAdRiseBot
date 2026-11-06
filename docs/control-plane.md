@@ -20,7 +20,7 @@ Machine-readable catalog: `GET /api`
 | --- | --- | --- |
 | GET | `/api` | Catalog + curl examples |
 | GET | `/api/health` | Liveness |
-| GET | `/api/awareness?agentId=` | Live `[App]` capability brief (secrets, connectors, MCP, paths) |
+| GET | `/api/awareness?agentId=` | JSON holdings (names, connectors, catalog). No secret values. Not a prompt. |
 | GET | `/api/agents` | List agents |
 | POST | `/api/agents` | Create `{ name, model?, instructions?, config?, enabled? }` |
 | GET | `/api/agents/:id` | Get agent + status |
@@ -40,7 +40,7 @@ Machine-readable catalog: `GET /api`
 | PATCH | `/api/settings` | Non-secret fields |
 | POST | `/api/settings/api-key` | `{ apiKey }` — local secret write |
 | GET | `/api/secrets` | List API Key names in secrets.bin (no values) |
-| GET | `/api/secrets/:name` | Read one secrets.bin value (host decrypts). Cursor key is blocked. |
+| GET | `/api/secrets/:name` | Always 403. Values stay in the host. |
 | GET | `/api/models` | Models |
 
 ## Secrets
@@ -49,11 +49,11 @@ API keys and SSH keys live in `secrets.bin` (Settings → API Keys). The host de
 
 ```
 curl -s http://127.0.0.1:8787/api/secrets
-curl -s http://127.0.0.1:8787/api/secrets/VPS1_KEY1
 ```
+
+`GET /api/secrets/:name` is 403. The UI reads values through the Electron main process. MCP `${env:NAME}` is filled from secrets.bin in the host.
 
 ## Security
 
-- Never returns the Cursor API key from GET endpoints.
-- Other secrets.bin values are available on localhost `GET /api/secrets/:name` so agents can use them without writing files.
+- Never returns secret values from GET endpoints.
 - Do not port-forward or expose `8787` outside the PC.

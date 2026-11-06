@@ -135,7 +135,7 @@ type ConnectorRow = {
   org?: string;
 };
 
-function ConnectorsBody() {
+function ConnectorsBody({ highlightId }: { highlightId?: string | null }) {
   const [rows, setRows] = useState<ConnectorRow[]>([]);
   const [busy, setBusy] = useState('');
   const connectSeq = useRef(0);
@@ -171,6 +171,13 @@ function ConnectorsBody() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    setOpen((cur) => ({ ...cur, [highlightId]: true }));
+    const el = document.getElementById(`connector-${highlightId}`);
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [highlightId, rows.length]);
 
   const zohoRow = rows.find((r) => r.id === 'zoho');
   const tregRow = rows.find((r) => r.id === 'treg');
@@ -332,9 +339,14 @@ function ConnectorsBody() {
       <p className="hint">
         Global for every agent. Canva, Zoho, GitHub and ElevenLabs open the vendor site in your browser.
         Treg, AgentMail and Context.dev use a saved token. Tokens stay in secrets.bin, not in MCP JSON.
+        Agents call show_connector; this pane opens when an app is off.
       </p>
       {rows.map((r) => (
-        <div key={r.id} className="connector-block">
+        <div
+          key={r.id}
+          id={`connector-${r.id}`}
+          className={`connector-block${highlightId === r.id ? ' flash' : ''}`}
+        >
           <div className="connector-row">
             <div>
               <div className="connector-name">{r.name}</div>
@@ -1242,12 +1254,13 @@ function ApiKeysBody({
 type Props = {
   open: boolean;
   initialTab?: Tab;
+  highlightConnector?: string | null;
   onClose: () => void;
   settings: AppSettings | null;
   onRefresh: () => Promise<void>;
 };
 
-export function SettingsModal({ open, initialTab, onClose, settings, onRefresh }: Props) {
+export function SettingsModal({ open, initialTab, highlightConnector, onClose, settings, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('general');
   const [archDoc, setArchDoc] = useState<{ name: string; text: string } | null>(null);
 
@@ -1564,15 +1577,15 @@ export function SettingsModal({ open, initialTab, onClose, settings, onRefresh }
               </section>
             )}
 
-            {tab === 'connectors' && <ConnectorsBody />}
+            {tab === 'connectors' && <ConnectorsBody highlightId={highlightConnector} />}
 
             {tab === 'mcp' && (
               <section>
                 <h2>Common MCP</h2>
                 <p className="hint">
-                  Catalog only. A server here is not attached until that agent ticks it under Agent
-                  settings → MCP. Register saves the JSON. Same name in an agent&apos;s JSON wins as
-                  the definition, still only if granted.
+                  Catalog of extra servers. The host attaches a server only when this message needs it
+                  (email → Zoho, browser → Playwright). Agent MCP JSON always attaches. Greetings get
+                  none of these. Same name: agent JSON wins.
                 </p>
                 <label className="field">
                   <span>mcpServers</span>

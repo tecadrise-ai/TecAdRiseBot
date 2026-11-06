@@ -24,13 +24,15 @@ import {
   migrateTregFromMcpJson,
   revealConnectorField,
   saveConnectorField,
+  setZohoMailMcp,
 } from './connectors';
-import { connectZoho } from './zohoMail';
-import { listModels, runAgentTurn, cancelAgentRun, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp, readGlobalMcpJson, registerGlobalMcp, readArchitecture } from './agentRunner';
+import { connectZoho, zohoMailMcp } from './zohoMail';
+import { listModels, runAgentTurn, cancelAgentRun, isAgentBusy, listBusyAgentIds, readSystemPrompt, writeSystemPrompt, readSystemMemory, writeSystemMemory, cleanupLegacyControlPlaneFiles, dropAgentHandle, registerAgentMcp, readGlobalMcpJson, registerGlobalMcp, readArchitecture } from './agentRunner';
 import { startScheduler, stopScheduler } from './scheduler';
 import { startHttpApi, stopHttpApi, getHttpApiInfo } from './httpApi';
-import { configureControlPlane, getBaseUrl } from './controlPlane';
+import { configureControlPlane, getBaseUrl, sendInterbot } from './controlPlane';
 import * as workflows from './workflows/service';
+import { configureHostMcp } from './hostMcp';
 import { handleChatImages, registerChatImageScheme } from './chatImages';
 import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 import { APP_USER_MODEL_ID, APP_DISPLAY_NAME, appIconPath, ensureWindowsToastIdentity } from './notify';
@@ -178,8 +180,8 @@ function createWindow() {
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error('did-fail-load', code, desc, url);
   });
-  mainWindow.webContents.on('console-message', (_e, _l, message) => {
-    console.log('[renderer]', message);
+  mainWindow.webContents.on('console-message', (event) => {
+    console.log('[renderer]', event.message);
   });
   const devUrl = VITE_DEV_SERVER_URL || 'http://localhost:5173/';
   const useDevUi = Boolean(process.defaultApp) || Boolean(VITE_DEV_SERVER_URL);
@@ -491,6 +493,8 @@ app.whenReady().then(async () => {
   createWindow();
   configureControlPlane({ getWindow: () => mainWindow });
   workflows.configureWorkflows({ getBaseUrl, getWindow: () => mainWindow });
+  setZohoMailMcp(zohoMailMcp);
+  configureHostMcp({ getBaseUrl, isAgentBusy, sendInterbot });
   try {
     const info = await startHttpApi(8787);
     console.log('[TecAdRiseBot] Control plane', info);

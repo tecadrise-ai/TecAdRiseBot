@@ -5,16 +5,18 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
-import { formatAppAwareness, formatRuntimeContext } from './controlPlane';
 import { restoreFlattenedMarkdown } from '../src/lib/markdown';
 import { finalizeAssistantBody, packAssistantBody, unpackAssistantBody } from '../src/lib/assistantBody';
 import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
 import { getApiKey, getEnvMap } from './secrets';
-import { DEFAULT_MODEL_ID, readLastMessages, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
+import { DEFAULT_MODEL_ID, formatModelLabel, readLastMessages, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
-import { parseGrants, pickGrantedServers } from '../src/lib/grants';
+import { buildHostSystemPrompt } from '../src/lib/promptHost';
+import { pickMcpServers } from '../src/lib/mcpAttach';
+import { labelsFromUnknown, mergeUsed } from '../src/lib/usedHoldings';
+import { hostMcpExtras } from './hostMcp';
 import { applyTodoCallToList, parseNumberedTasks, todoCallFromDelta, type TodoCall, type TodoItem } from '../src/lib/todos';
 import { absorbConnectorMcp, connectorMcpServers } from './connectors';
 
@@ -174,14 +176,6 @@ export function cleanupLegacyControlPlaneFiles(): void {
     const leftover = path.join(root, ent.name, 'CONTROL_PLANE.md');
     if (fs.existsSync(leftover)) fs.unlinkSync(leftover);
   }
-}
-
-function loadSystemPrompt(): string {
-  return readSystemPrompt().trim();
-}
-
-function loadSystemMemory(): string {
-  return readSystemMemory().trim();
 }
 
 async function loadCursorSdk(): Promise<typeof import('@cursor/sdk')> {
@@ -589,18 +583,26 @@ function expandEnvRefs(servers: McpServers): McpServers {
 async function mcpServersForAgent(
   config: Record<string, unknown> | null | undefined,
   cwd: string,
-  extraMcp?: McpServers
+  extraMcp?: McpServers,
+  userText?: string,
+  priorText = ''
 ): Promise<McpServers | undefined> {
-  const grants = parseGrants(config);
-  const catalog = mergeMcpServers(loadGlobalMcpServers(), serversFromUnknown(config?.mcpServers ?? {}));
-  const merged = pickGrantedServers(catalog, await connectorMcpServers(), extraMcp || {}, grants);
-  if (!Object.keys(merged).length) return undefined;
+  const always = mergeMcpServers(serversFromUnknown(config?.mcpServers ?? {}), extraMcp || {});
+  const optional = mergeMcpServers(loadGlobalMcpServers(), await connectorMcpServers());
+  const merged =
+    userText == null
+      ? mergeMcpServers(optional, always)
+      : pickMcpServers(always, optional, userText, priorText);
+  if (!Object.keys(merged).length) {
+    console.log('[TecAdRiseBot] mcp this turn: (none)');
+    return {};
+  }
   const pinned: McpServers = {};
   for (const [name, server] of Object.entries(expandEnvRefs(merged))) {
     const stdio = Boolean(server.command) && !server.url && server.type !== 'http' && server.type !== 'sse';
     pinned[name] = stdio ? { ...server, cwd: server.cwd || cwd } : server;
   }
-  console.log('[TecAdRiseBot] mcp this turn:', Object.keys(pinned).join(',') || '(none)', 'grants', JSON.stringify(grants));
+  console.log('[TecAdRiseBot] mcp this turn:', Object.keys(pinned).join(',') || '(none)');
   return pinned;
 }
 
@@ -619,7 +621,8 @@ async function getHandle(
   cwd: string,
   systemPrompt?: string,
   extraDirs: string[] = [],
-  extraMcp?: McpServers
+  extraMcp?: McpServers,
+  pinnedMcp?: McpServers
 ): Promise<CursorAgent> {
   // Every user message and routine is an independent bounded-context SDK agent.
   const oldAgentId = handles.get(agent.id)?.agentId;
@@ -641,7 +644,7 @@ async function getHandle(
     }
   }
   const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
-  const mcpServers = await mcpServersForAgent(agent.config, cwd, extraMcp);
+  const mcpServers = pinnedMcp ?? (await mcpServersForAgent(agent.config, cwd, extraMcp));
   const local = localAgentOpts(cwd, extraDirs);
 
   const handle = (await Agent.create({
@@ -773,7 +776,8 @@ export type TurnExtras = {
   noAugment?: boolean;
 };
 
-type TurnAugmenter = (agent: db.AgentRow) => TurnExtras | null;
+export type TurnAugmenterCtx = { userText: string; source?: string };
+type TurnAugmenter = (agent: db.AgentRow, ctx: TurnAugmenterCtx) => TurnExtras | null;
 let turnAugmenter: TurnAugmenter | null = null;
 
 /** Feature modules (workflows) register extras that apply to every turn of matching agents. */
@@ -831,7 +835,12 @@ async function runAgentTurnInner(opts: {
 }): Promise<TurnResult> {
   const baseAgent = db.getAgent(opts.agentId);
   if (!baseAgent) throw new Error('Agent not found');
-  const extras = opts.extras?.noAugment ? opts.extras : mergeExtras(turnAugmenter?.(baseAgent), opts.extras);
+  const extras = opts.extras?.noAugment
+    ? opts.extras
+    : mergeExtras(
+        hostMcpExtras(baseAgent.id, opts.userText),
+        mergeExtras(turnAugmenter?.(baseAgent, { userText: opts.userText, source: opts.source }), opts.extras)
+      );
   const agent = withExtras(baseAgent, extras);
   const extraDirs = extras?.extraDirs ?? [];
 
@@ -919,10 +928,6 @@ async function runAgentTurnInner(opts: {
     /* ignore */
   }
 
-  const systemPrompt = loadSystemPrompt();
-  const systemMemory = loadSystemMemory();
-  const architecture = readArchitecture().trim();
-  const runtimeCtx = formatRuntimeContext(opts.agentId);
   const instructions = resolveAgentSoul(agent.instructions);
   
   const attachments = opts.attachments ?? [];
@@ -954,14 +959,18 @@ async function runAgentTurnInner(opts: {
     userBody = offloadLongText(cwd, 'last_user.md', userBody);
   }
 
-  const mcpForTurn = await mcpServersForAgent(agent.config, cwd, extras?.extraMcp);
-  const mcpBlock = !mcpForTurn
-    ? '[MCP]\nNo MCP servers this turn. Settings, MCP is empty and this agent has none.\n[/MCP]'
-    : '[MCP]\nServers attached this turn (Settings MCP, then this agent MCP, then this-turn tools):\n' +
-      Object.entries(mcpForTurn)
-        .map(([name, s]) => `- ${name} (${s.url ? 'http' : 'stdio'})`)
-        .join('\n') +
-      '\nUse these as MCP tools. Do not search the app folder to check if they exist. If a server has no tools, connect or login failed; it is still configured.\n[/MCP]';
+  const priorUser = db
+    .listMessages(opts.agentId, { limit: 8 })
+    .filter((m) => m.role === 'user' && m.id !== userMessageId)
+    .slice(0, 3)
+    .map((m) => m.content.slice(0, 400));
+  const mcpForTurn = await mcpServersForAgent(
+    agent.config,
+    cwd,
+    extras?.extraMcp,
+    opts.userText,
+    priorUser.join('\n')
+  );
 
   const recoveredChat = formatRecentChat(
     opts.agentId,
@@ -971,46 +980,21 @@ async function runAgentTurnInner(opts: {
     cwd
   );
 
-  const hostSystemPrompt = [
-      formatAppAwareness(opts.agentId, Object.keys(mcpForTurn || {})),
-      systemPrompt,
-      extras?.checklistBlock ||
-      '[Checklist tool]\n' +
-        'If you need a task list, call the todo tool already in this turn (TodoWrite or updateTodos). ' +
-        'Pass { todos: [{ id, content, status }], merge }. merge: false replaces the list. merge: true updates matching ids and keeps the rest.\n' +
-        'Todo tool statuses depend on the tool name you were given this turn:\n' +
-        '- TodoWrite: pending / in_progress / completed / cancelled (underscore). inProgress is rejected and nothing in that call is applied.\n' +
-        '- updateTodos: pending / inProgress / completed / cancelled (camelCase).\n' +
-        'Use the spelling for the tool you actually have. If the tool returns a validation error, the allowed values in that error are correct, so retry with them immediately.\n' +
-        'After every todo call, read the returned list. If it was rejected or does not match, fix it before continuing.\n' +
-        'Never reword or drop items, only change status. Mark an item completed as soon as it is done. Each open user action is its own item.\n' +
-        'Do not grep the app source. Do not use GetDynamicTools or HTTP for todos.\n' +
-        '[/Checklist tool]',
-      systemMemory ? '[System memory]' + '\n' + systemMemory + '\n[/System memory]' : '',
-      architecture ? '[Architecture]' + '\n' + architecture + '\n[/Architecture]' : '',
-      mcpBlock,
-      '[Memory directory]' +
-        '\n' +
-        db.ensureMemoryDir() +
-        '\nRead index.md first. Write lasting facts every agent should know here. Shared by all agents.\n' +
-        'Your private store is memory.md in the Workspace path this turn. Read and update that file for per-agent memory. Do not put shared facts only there.\n' +
-        '[/Memory directory]',
-      '[Skills]' + '\n' + db.formatSkillsCatalog() + '\n[/Skills]',
-      instructions
-        ? '[Agent soul]' + '\n' + instructions + '\n[/Agent soul]'
-        : '',
-      extras?.extraSystem || '',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
+  const hostSystemPrompt = buildHostSystemPrompt({
+    agentName: agent.name,
+    agentId: opts.agentId,
+    modelLabel: formatModelLabel(agent.model, agent.config),
+    workspace: cwd,
+    memoryDir: db.ensureMemoryDir(),
+    skillsIndex: db.formatSkillsCatalog(),
+    soul: instructions,
+    mcpNames: Object.keys(mcpForTurn || {}),
+    extraSystem: extras?.extraSystem,
+    checklist: extras?.checklistBlock,
+    userText: opts.userText,
+  });
 
-  const turnPrompt = [
-      runtimeCtx,
-      recoveredChat,
-      '[User message]' + '\n' + userBody + '\n[/User message]',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
+  const turnPrompt = [recoveredChat, userBody ? `User:\n${userBody}` : ''].filter(Boolean).join('\n\n');
 
   db.patchMessageMeta(assistantMessageId, {
     hostChars: hostSystemPrompt.length,
@@ -1019,15 +1003,17 @@ async function runAgentTurnInner(opts: {
 
   let assembled = '';
   let usage: TokenUsage | null = null;
+  let used: string[] = [];
   let todos: TodoItem[] = [];
   let stalled = false;
   let wasStopped = false;
   let policyBlocked = false;
   let systemPromptRejected = false;
-  let customSystemPrompt = true;
+  // This Cursor account rejects Agent.create({ systemPrompt }). Host text goes in the user turn.
+  let customSystemPrompt = false;
   let lastActivity = Date.now();
   try {
-    let handle = await getHandle(agent, apiKey, cwd, hostSystemPrompt, extraDirs, extras?.extraMcp);
+    let handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs, extras?.extraMcp, mcpForTurn);
 
     const sendOnce = async (h: CursorAgent) => {
       let turnText = '';
@@ -1132,7 +1118,7 @@ async function runAgentTurnInner(opts: {
         if (!packed.answer && !packed.thinking) return;
         lastPersist = Date.now();
         db.updateMessageContent(assistantMessageId, assembled);
-        if (usage) db.patchMessageMeta(assistantMessageId, { usage });
+        db.patchMessageMeta(assistantMessageId, { ...(usage ? { usage } : {}), used });
         db.updateAgent(opts.agentId, {
           lastSnippet: (packed.answer || assembled)
             .replace(/!\[[^\]]*]\((?:data|tecimg):[^)]+\)/g, '[image]')
@@ -1160,6 +1146,18 @@ async function runAgentTurnInner(opts: {
         }
         const incomingCall = todoCallFromDelta(update) || todoCallFromDelta(delta);
         if (incomingCall) applyTodoCall(incomingCall);
+        const nextUsed = mergeUsed(used, labelsFromUnknown(delta));
+        if (nextUsed.length !== used.length) {
+          used = nextUsed;
+          db.patchMessageMeta(assistantMessageId, { used });
+          emit('chat:stream-delta', {
+            agentId: opts.agentId,
+            messageId: assistantMessageId,
+            delta: '',
+            content: assembled,
+            used,
+          });
+        }
         if (update.type === 'tool-call-completed') {
           addImgs(imagesFromUnknown(update.toolCall ?? update));
           persistVisible();
@@ -1220,7 +1218,7 @@ async function runAgentTurnInner(opts: {
         {
           local: { ...localAgentOpts(cwd, extraDirs), force: true },
           model: modelSel,
-          mcpServers: mcpForTurn,
+          mcpServers: mcpForTurn || {},
           onDelta: takeDelta,
         }
       );
@@ -1233,6 +1231,18 @@ async function runAgentTurnInner(opts: {
               lastActivity = Date.now();
               const incoming = todoCallFromDelta(ev);
               if (incoming) applyTodoCall(incoming);
+              const fromStream = mergeUsed(used, labelsFromUnknown(ev));
+              if (fromStream.length !== used.length) {
+                used = fromStream;
+                db.patchMessageMeta(assistantMessageId, { used });
+                emit('chat:stream-delta', {
+                  agentId: opts.agentId,
+                  messageId: assistantMessageId,
+                  delta: '',
+                  content: assembled,
+                  used,
+                });
+              }
             }
           } catch {
             /* stream closed */
@@ -1256,6 +1266,7 @@ async function runAgentTurnInner(opts: {
             addImgs(imagesFromUnknown(conv));
             const convCall = todoCallFromDelta(conv);
             if (convCall && !todos.length) applyTodoCall(convCall);
+            used = mergeUsed(used, labelsFromUnknown(conv));
             const fromConv = lastAssistantFromConversation(conv);
             if (fromConv.trim() && fromConv.trim().length >= turnText.trim().length) turnText = fromConv;
             const fromThink = lastThinkingFromConversation(conv);
@@ -1322,6 +1333,7 @@ async function runAgentTurnInner(opts: {
             addImgs(imagesFromUnknown(conv));
             const convCall = todoCallFromDelta(conv);
             if (convCall && !todos.length) applyTodoCall(convCall);
+            used = mergeUsed(used, labelsFromUnknown(conv));
             fromConv = lastAssistantFromConversation(conv);
             const fromThink = lastThinkingFromConversation(conv);
             if (fromThink && fromThink.length >= thinkText.length) thinkText = fromThink;
@@ -1346,6 +1358,7 @@ async function runAgentTurnInner(opts: {
         if (result.status === 'error') {
           const msg = result.error?.message || 'Agent run failed';
           if (customSystemPrompt && isSystemPromptUnsupported(msg)) {
+            console.warn('[TecAdRiseBot] system prompt rejected by SDK:', msg);
             systemPromptRejected = true;
           }
           if (isAnthropicPolicyError(msg)) {
@@ -1375,7 +1388,7 @@ async function runAgentTurnInner(opts: {
         console.warn('[TecAdRiseBot] custom system prompt unavailable, using bounded inline fallback');
         customSystemPrompt = false;
         systemPromptRejected = false;
-        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs, extras?.extraMcp);
+        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs, extras?.extraMcp, mcpForTurn);
         assembled = '';
         usage = null;
         alreadyPublished = await sendOnce(handle);
@@ -1383,7 +1396,7 @@ async function runAgentTurnInner(opts: {
       if (policyBlocked && !stopRequested.has(opts.agentId)) {
         console.warn('[TecAdRiseBot] policy block, retrying once with fresh SDK session', opts.agentId);
         await cancelActive(opts.agentId);
-        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs, extras?.extraMcp);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs, extras?.extraMcp, mcpForTurn);
         assembled = '';
         usage = null;
         policyBlocked = false;
@@ -1401,7 +1414,7 @@ async function runAgentTurnInner(opts: {
           assembled = packAssistantBody(u.thinking, u.answer);
         }
         db.updateMessageContent(assistantMessageId, assembled);
-        if (usage) db.patchMessageMeta(assistantMessageId, { usage });
+        db.patchMessageMeta(assistantMessageId, { ...(usage ? { usage } : {}), used });
         db.updateAgent(opts.agentId, {
           lastSnippet: (unpackAssistantBody(assembled).answer || assembled).slice(0, 120),
         });
@@ -1414,7 +1427,7 @@ async function runAgentTurnInner(opts: {
       } else if (customSystemPrompt && isSystemPromptUnsupported(e)) {
         console.warn('[TecAdRiseBot] custom system prompt unavailable, using bounded inline fallback');
         customSystemPrompt = false;
-        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs, extras?.extraMcp);
+        handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs, extras?.extraMcp, mcpForTurn);
         assembled = '';
         usage = null;
         systemPromptRejected = false;
@@ -1426,7 +1439,7 @@ async function runAgentTurnInner(opts: {
       } else if (isAnthropicPolicyError(e)) {
         console.warn('[TecAdRiseBot] thrown policy block, retrying once with fresh SDK session', opts.agentId);
         db.updateAgent(opts.agentId, { cursorAgentId: null });
-        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs, extras?.extraMcp);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs, extras?.extraMcp, mcpForTurn);
         assembled = '';
         usage = null;
         policyBlocked = false;
@@ -1444,7 +1457,7 @@ async function runAgentTurnInner(opts: {
           await new Promise((r) => setTimeout(r, 2000));
         }
         await cancelActive(opts.agentId);
-        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs, extras?.extraMcp);
+        handle = await getHandle(agent, apiKey, cwd, customSystemPrompt ? hostSystemPrompt : undefined, extraDirs, extras?.extraMcp, mcpForTurn);
         assembled = '';
         usage = null;
         const alreadyPublished = await sendOnce(handle);
@@ -1485,13 +1498,19 @@ async function runAgentTurnInner(opts: {
       db.updateMessageContent(assistantMessageId, text);
     }
     const finishedAt = Date.now();
-    db.patchMessageMeta(assistantMessageId, { finishedAt });
+    db.patchMessageMeta(assistantMessageId, { finishedAt, used });
+    console.log('[TecAdRiseBot] turn holdings', {
+      agent: agent.name,
+      attached: Object.keys(mcpForTurn || {}),
+      used,
+    });
     emit('chat:stream-done', {
       agentId: opts.agentId,
       messageId: assistantMessageId,
       content: text,
       usage,
       todos,
+      used,
       finishedAt,
     });
     if (!opts.deferNotify) {

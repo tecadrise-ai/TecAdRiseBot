@@ -8,7 +8,6 @@ import { ScheduleBuilder } from './ScheduleBuilder';
 import { AGENT_BADGE_COLORS } from '../lib/agentColors';
 import { DEFAULT_SCHEDULE, decodeSchedule, describeSchedule, encodeSchedule, type ScheduleDraft } from '../lib/schedule';
 import { mcpJsonFromConfig, parseMcpJson } from '../lib/mcpConfig';
-import { parseGrants, type AgentGrants } from '../lib/grants';
 import { DEFAULT_AGENT_SOUL, resolveAgentSoul } from '../lib/soul';
 import {
   baseModelId,
@@ -51,9 +50,6 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
   const [soul, setSoul] = useState('');
   const [mcpJson, setMcpJson] = useState('{\n}\n');
   const [mcpBusy, setMcpBusy] = useState(false);
-  const [grants, setGrants] = useState<AgentGrants>({ mcp: [], connectors: [] });
-  const [catalogMcp, setCatalogMcp] = useState<string[]>([]);
-  const [connectorRows, setConnectorRows] = useState<Array<{ id: string; name: string; connected: boolean }>>([]);
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [models, setModels] = useState<CatalogModel[]>([]);
@@ -119,18 +115,6 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
     setLastMessages(readLastMessages(agent.config));
     setSoul(resolveAgentSoul(agent.instructions));
     setMcpJson(mcpJsonFromConfig(agent.config));
-    setGrants(parseGrants(agent.config));
-    void window.tecapi.settings
-      .getGlobalMcp()
-      .then((raw) => {
-        const parsed = parseMcpJson(raw);
-        setCatalogMcp(parsed.ok ? Object.keys(parsed.servers).sort() : []);
-      })
-      .catch(() => setCatalogMcp([]));
-    void window.tecapi.connectors
-      .list()
-      .then((rows) => setConnectorRows(rows.map((r) => ({ id: r.id, name: r.name, connected: r.connected }))))
-      .catch(() => setConnectorRows([]));
     setStatus('');
     setConfirmClear(false);
     setRName('');
@@ -153,9 +137,6 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
   if (!open || !agent) return null;
 
   const ownerEfforts = effortParam(models.find((m) => m.id === ownerModel)).values;
-  const parsedAgentMcp = parseMcpJson(mcpJson);
-  const agentMcpNames = parsedAgentMcp.ok ? Object.keys(parsedAgentMcp.servers) : [];
-  const grantMcpNames = [...new Set([...catalogMcp, ...agentMcpNames])].sort();
 
   async function saveGeneral() {
     setSaving(true);
@@ -186,7 +167,6 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
           effort,
           lastMessages,
           toastEnabled,
-          grants,
           ...(ownerAgentId ? { workflowOwnerAgentId: ownerAgentId } : {}),
           ...(ownerOverride ? { workflowOwnerOverride: ownerOverride } : {}),
         },
@@ -271,17 +251,14 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
     setMcpBusy(true);
     setStatus('');
     const parsed = parseMcpJson(mcpJson);
+    if (!parsed.ok) {
+      setStatus(parsed.error);
+      setMcpBusy(false);
+      return;
+    }
     try {
-      if (!parsed.ok) {
-        await window.tecapi.agents.update(agent!.id, {
-          config: { ...(agent!.config || {}), grants },
-        });
-        setStatus(`Saved attach ticks. JSON not registered: ${parsed.error}`);
-        onSaved();
-        return;
-      }
       await window.tecapi.agents.update(agent!.id, {
-        config: { ...(agent!.config || {}), mcpServers: parsed.servers, grants },
+        config: { ...(agent!.config || {}), mcpServers: parsed.servers },
       });
       const result = await window.tecapi.agents.registerMcp(agent!.id);
       setStatus(result.ok ? result.note || 'Registered.' : result.error || 'Register failed');
@@ -661,53 +638,11 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
           {tab === 'mcp' && (
             <div className="mcp-panel">
               <div className="hint" style={{ marginTop: 0 }}>
-                Nothing in Settings → MCP or Connectors is attached until you tick it here. Workflow
-                tools for a run still attach on their own. Register saves ticks and this agent&apos;s extra JSON.
-              </div>
-              <div className="field">
-                <span>Attach this turn</span>
-                <div className="grant-list">
-                  {grantMcpNames.map((name) => (
-                      <label key={`mcp-${name}`} className="toast-toggle">
-                        <input
-                          type="checkbox"
-                          checked={grants.mcp.includes(name)}
-                          onChange={(e) => {
-                            setGrants((g) => ({
-                              ...g,
-                              mcp: e.target.checked ? [...g.mcp, name] : g.mcp.filter((n) => n !== name),
-                            }));
-                          }}
-                        />
-                        {name}
-                        {catalogMcp.includes(name) ? ' (catalog)' : ' (this agent)'}
-                      </label>
-                    ))}
-                  {grantMcpNames.length === 0 ? (
-                    <div className="muted">No catalog MCP yet. Add servers in Settings → MCP or in the JSON below.</div>
-                  ) : null}
-                  {connectorRows.map((c) => (
-                    <label key={`conn-${c.id}`} className="toast-toggle">
-                      <input
-                        type="checkbox"
-                        checked={grants.connectors.includes(c.id)}
-                        onChange={(e) => {
-                          setGrants((g) => ({
-                            ...g,
-                            connectors: e.target.checked
-                              ? [...g.connectors, c.id]
-                              : g.connectors.filter((n) => n !== c.id),
-                          }));
-                        }}
-                      />
-                      {c.name}
-                      {c.connected ? ' (connected)' : ' (off in Connectors)'}
-                    </label>
-                  ))}
-                </div>
+                Extra MCP for this agent only. Always attached. Settings → MCP and Connectors attach
+                only when this message needs them. Same name wins here. Empty {'{}'} is fine.
               </div>
               <label className="field">
-                <span>Extra mcpServers JSON for this agent</span>
+                <span>mcpServers</span>
                 <textarea
                   className="mcp-editor"
                   spellCheck={false}

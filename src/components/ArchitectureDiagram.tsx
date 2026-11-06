@@ -21,7 +21,7 @@ export function ArchitectureDiagram({
   svg = architectureSvg,
   width: W = 1200,
   height: H = 640,
-  label = 'How agents work: they wake up inside TecAdRiseBot with [App], secrets, connectors, MCP, then work in workspace and memory',
+  label = 'How agents work: the host binds tools for this message, secrets stay in the host, the agent works in its workspace',
   onOpenDoc,
 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);

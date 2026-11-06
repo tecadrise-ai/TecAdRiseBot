@@ -2,7 +2,8 @@ import { memo, useEffect, useRef, useState } from 'react';
 import type { Agent, ChatMessage, WorkflowRunView } from '../types';
 import { WorkflowCard } from './WorkflowCard';
 import { MarkdownBody } from './MarkdownBody';
-import { fmtTs, fmtTurnMeter, fmtUsage, parseMessageUsage, parseTurnMeter } from '../lib/usage';
+import { fmtTs, fmtUsage, parseMessageUsage } from '../lib/usage';
+import { fmtUsed, parseUsed } from '../lib/usedHoldings';
 import { formatModelLabel } from '../lib/modelOptions';
 import { ownerRoleOverride } from '../lib/workflow/definition';
 import { unpackAssistantBody } from '../lib/assistantBody';
@@ -125,10 +126,10 @@ function assistantMetaLine(m: ChatMessage): string {
   const role = meta.role === 'owner' || (wfRole && wfRole !== 'runner') ? 'Owner' : 'Runner';
   const ts = meta.finishedAt || m.createdAt;
   if (ts) bits.push(`${role}: ${fmtTs(ts)}`);
+  const used = fmtUsed(parseUsed(m.meta));
+  if (used) bits.push(used);
   const u = fmtUsage(parseMessageUsage(m.meta));
   if (u) bits.push(u);
-  const meter = fmtTurnMeter(parseTurnMeter(m.meta));
-  if (meter) bits.push(meter);
   return bits.join(' · ');
 }
 
@@ -636,8 +637,8 @@ export function ChatView({
           <div className="welcome">
             <h2>Chat with {agent.name}</h2>
             <p>
-              Messages run locally via the Cursor SDK against this agent&apos;s workspace. App-wide
-              API key lives under Local user; use the gear for this agent&apos;s name and model.
+              Turns run on this PC through the Cursor SDK. The host binds tools for this message.
+              Secrets stay in Settings → API Keys. Use the gear for Soul and model.
             </p>
           </div>
         )}

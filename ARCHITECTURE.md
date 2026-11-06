@@ -1,63 +1,57 @@
 # TecAdRiseBot architecture
 
-Local Windows Electron app. Each agent has its own chat, settings, Soul, routines and workspace. Turns run on this PC via the Cursor SDK. One agent runs one turn at a time.
+Local Windows Electron app. Named agents have chat, Soul, routines, workflows, and a workspace. Turns run on this PC through the Cursor SDK. One agent, one in-flight turn.
 
-**App-aware:** every turn opens with **[App]** (also `GET /api/awareness`). That is the live map of this install: features, secrets.bin names, connectors, MCP, paths, control plane. Agents do not guess, do not decrypt secrets.bin, do not search disk for keys.
+**Host contract:** a capability is a tool already bound for this message. The prompt is identity + Soul + holdings. Secrets stay in `secrets.bin`. The model never decrypts that file.
 
 ```
-You / Routine / Other agent / Local API
+You / Routine / Interbot / Local API
         |
         v
-      AGENT  <-- [App] first, then SYSTEM.md, MEMORY.md, ARCHITECTURE.md, MCP, skills, Soul, chat, message
-        |
+   HOST (Electron)
+        |  1. Pick MCP for THIS message (optional apps + agent JSON + host tools)
+        |  2. Fill MCP ${env:NAME} from secrets.bin
+        |  3. Short holdings prompt + Soul
         v
-  Workspace, shared memory, workflows, connectors, secrets.bin (via GET /api/secrets)
+   Cursor SDK  -->  model
+        v
+   Workspace, memory wiki, skills, connectors
 ```
 
 ```
 User -> UI -> Main process -> Cursor SDK -> model
-              |- Scheduler (5 s): routines, workflow turns
-              |- Workflow service: steps, checks, reviews
-              |- HTTP API 127.0.0.1:8787: control plane, workflow MCP
-              |- SQLite + App data: workspaces, memory, skills
+              |- Scheduler: routines, workflow turns
+              |- Workflow MCP + tecadrise-host MCP on 127.0.0.1:8787
+              |- SQLite + App data: workspaces, memory, skills, secrets.bin
 ```
 
-## Each turn you get
-**[App]** first (capabilities + live secrets/connectors/MCP), SYSTEM.md, todo rules, MEMORY.md, ARCHITECTURE.md, memory dir, skills, your Soul, [MCP] tools, [This turn], recent chat, the message.
+## This message
 
-Host **text** is about 4–5k tokens. Cursor also sends **SDK + MCP tool schemas** every turn (often ~12k). A “hi” with last messages = 0 still bills ~18k input. Chat history is not that cost. MCP tool bodies are extra on top of the name list.
+Greetings bind no optional MCP and no host MCP. Work turns bind `tecadrise-host` (`message_agent`, `list_peers`, `list_secret_names`, `show_connector`). Email binds Zoho, browser binds Playwright, and so on, only if that connector is connected. Disconnected apps get `show_connector` and the Connectors pane, not a dead schema dump.
 
-## Where things live (look here first)
+SYSTEM.md, MEMORY.md, and this file are Settings documents. They are not inlined every turn.
 
-| What | Where | How you use it |
+## Where things live
+
+| What | Where | How it is used |
 | --- | --- | --- |
-| API keys, SSH keys, tokens | `secrets.bin` in App data (Settings → API Keys) | Host decrypts. `GET http://127.0.0.1:8787/api/secrets` lists names. `GET /api/secrets/<NAME>` returns `{ name, value }`. Use the value in memory this turn. |
-| Cursor SDK key | same file, host-only | Not available to agents. Never print it. |
-| Connectors | Settings → Connectors (also in secrets.bin) | MCP servers the host already attached this turn. |
-| MCP extra servers | Settings → MCP catalog + Agent settings → MCP ticks | Only **granted** servers attach this turn (plus workflow tools). `${env:NAME}` in MCP JSON is a **host placeholder** from secrets.bin, not OS env. |
-| Soul | agent `instructions` in SQLite | `[Agent soul]` this turn. PATCH `/api/agents/<id>`. |
-| Shared facts | Memory directory | `[Memory directory]` this turn. `index.md` first. |
-| Your notes | workspace `memory.md` | Workspace path this turn. |
-| Skills | Skills directory | `[Skills]` this turn. |
+| API keys, SSH keys, tokens | `secrets.bin` (Settings → API Keys) | Host fills MCP `${env:NAME}`. `list_secret_names` returns names. HTTP `GET /api/secrets/:name` is 403. |
+| Cursor SDK key | same file, host-only | Never in the model. |
+| Connectors | Settings → Connectors | Bound when the message needs that app and the account is connected. |
+| Extra MCP | Settings → MCP catalog | Attached from this message, not on every bot. Agent JSON always attaches. |
+| Soul | agent `instructions` | In the host prompt. |
+| Shared facts | Memory directory | Path in the prompt; `index.md` first. |
+| Private notes | workspace `memory.md` | Workspace path in the prompt. |
+| Skills | Skills directory | Index in the prompt; open `SKILL.md` when named. Product skill: `tecadrisebot`. |
 
-There is **no OS env** for secrets.bin keys. Do not use `$env:NAME`, `%NAME%`, or `process.env`. Do not decrypt `secrets.bin`. Do not search `~/.ssh` or write key files. Never store secret values in Soul, memory.md, notes, workspace, or chat.
+No OS env for secrets.bin names. Do not decrypt `secrets.bin`. Do not write keys to Soul, memory, disk, or `~/.ssh`.
 
 ## Step workflows
-```
-Runner: step_current -> work -> step_done
-  App: hard checks --fail--> Runner retries (uses a try)
-  review on? --> Owner review --reject--> Runner retries with reason
-  pass --> next step ... --> done
-Runner step_fail or tries used up --> Owner fix: fix_step | retry_step | abort_run (pause)
-  abort_run --> Human Resume / owner resume_run continues from the same step
-```
-- **Runner** (agent whose routine started the run): sees only the current step. Cannot see later steps, approve itself or edit the workflow. Reaches the owner only via `step_fail`.
-- **Owner** (runner's Owner agent, else the workflow creator, may be the same agent with Owner model settings): creates and edits its workflows, reviews and fixes. Never runs workflows. Verdicts and fixes work only inside a review or fix turn the app starts. `resume_run` reopens an aborted run at the open step.
-- **App**: decides whose turn it is, runs hard checks (`file_exists`, `file_contains`, `output_matches`, `command`), counts tries.
-- **Human**: Retry, Skip or Abort a blocked run. Abort pauses at the current step. Resume continues from there; done steps stay done.
-- Limits: 3 owner fixes per run, 3 idle runner turns, 2 idle owner turns, then blocked.
+
+Runner sees only the open step. Owner reviews and fixes. The app runs hard checks. Human Retry / Skip / Abort. Host tool MCP for workflows attaches when the job (or an active run) needs it, not on greetings.
 
 ## Rules
-- Write only in your workspace. Never in the app folder.
-- Interbot: `POST /api/agents/<id>/interbot`, target must be idle. Live state: `GET /api`, `GET /api/agents/<id>/snapshot`.
-- Never print or store the Cursor API key or any secrets.bin value.
+
+- Write only in the agent workspace.
+- Talk to another agent with `message_agent`. Target must be idle.
+- Never print secret values.

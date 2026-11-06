@@ -234,6 +234,7 @@ const api = {
       'routines:fired',
       'workflow:run',
       'workflow:list-changed',
+      'ui:show-connector',
     ];
     if (!allowed.includes(channel)) return () => undefined;
     const wrapped = (_: Electron.IpcRendererEvent, ...args: unknown[]) => listener(...args);

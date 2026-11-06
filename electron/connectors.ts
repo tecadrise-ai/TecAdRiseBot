@@ -1014,6 +1014,12 @@ async function canvaAccessToken(): Promise<string | null> {
   }
 }
 
+let zohoMailMcpFn: () => McpServers = () => ({});
+
+export function setZohoMailMcp(fn: () => McpServers): void {
+  zohoMailMcpFn = fn;
+}
+
 /** Global HTTP MCP from Connectors. Tokens stay here, not in MCP JSON. */
 export async function connectorMcpServers(): Promise<McpServers> {
   const out: McpServers = {};
@@ -1025,8 +1031,7 @@ export async function connectorMcpServers(): Promise<McpServers> {
       headers: { Authorization: `Bearer ${token}` },
     };
   }
-  const { zohoMailMcp } = await import('./zohoMail');
-  Object.assign(out, zohoMailMcp());
+  Object.assign(out, zohoMailMcpFn());
   const ghTok = githubAccess(readStore().github);
   if (ghTok) {
     out.github = {

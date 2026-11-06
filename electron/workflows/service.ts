@@ -20,6 +20,7 @@ import { ownerRoleOverride } from '../../src/lib/workflow/definition';
 import { baseModelId, formatModelLabel, readEffort, readModelMode } from '../../src/lib/modelOptions';
 import { isRunActive } from '../../src/lib/workflow/types';
 import { isAgentBusy, runAgentTurn, setTurnAugmenter, type TurnExtras } from '../agentRunner';
+import { isSmallTalk, needsWorkflowTools } from '../../src/lib/mcpAttach';
 
 /** Owner fix turns allowed per run before a human must step in. */
 const MAX_FIXES_PER_RUN = 3;
@@ -44,7 +45,14 @@ export function configureWorkflows(opts: { getBaseUrl: () => string; getWindow: 
   getWindow = opts.getWindow;
   // Every agent is the owner of its own workflows. The owner tools only touch workflows and runs owned by the
   // calling agent, so a runner can never edit the workflow it runs.
-  setTurnAugmenter((agent) => ownerExtras(agent.id));
+  setTurnAugmenter((agent, ctx) => {
+    if (isSmallTalk(ctx.userText)) return null;
+    if (needsWorkflowTools(ctx.userText)) return ownerExtras(agent.id);
+    if (store.listActiveRuns().some((r) => r.ownerAgentId === agent.id || r.runnerAgentId === agent.id)) {
+      return ownerExtras(agent.id);
+    }
+    return null;
+  });
 }
 
 function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {

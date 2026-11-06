@@ -233,9 +233,8 @@ export function formatSecretsBlock(baseUrl: string): string {
     names.length
       ? 'Names this install:\n' + names.map((n) => `- ${n}`).join('\n')
       : 'No extra API Keys saved yet.',
-    `List names: GET ${base}/api/secrets`,
-    `Read one value: GET ${base}/api/secrets/<NAME>`,
-    'Use the value in memory this turn. Never print it. Never store it in Soul, memory.md, notes, workspace, or chat.',
+    `List names: GET ${base}/api/secrets (no values). Values stay in the host.`,
+    'Put ${env:NAME} in MCP JSON. Never print secrets. Never store them in Soul, memory.md, notes, workspace, or chat.',
     'In MCP JSON, ${env:NAME} is a host placeholder filled from secrets.bin. Same store. Still not OS env.',
     '[/Secrets]',
   ].join('\n');

@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import * as cp from './controlPlane';
 import * as workflows from './workflows/service';
+import { handleHostMcp } from './hostMcp';
 import { handleZohoMcp } from './zohoMail';
 
 let server: http.Server | null = null;
@@ -86,10 +87,12 @@ async function handleMcpRoute(req: IncomingMessage, res: ServerResponse, method:
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
   let route: workflows.McpRoute | null = null;
   let zohoToken: string | null = null;
+  let host: { agentId: string; token: string } | null = null;
   if (parts.length === 4 && parts[1] === 'run') route = { kind: 'run', runId: parts[2], token: parts[3] };
   if (parts.length === 4 && parts[1] === 'owner') route = { kind: 'owner', agentId: parts[2], token: parts[3] };
+  if (parts.length === 4 && parts[1] === 'host') host = { agentId: parts[2], token: parts[3] };
   if (parts.length === 3 && parts[1] === 'zoho') zohoToken = parts[2];
-  if (!route && !zohoToken) {
+  if (!route && !zohoToken && !host) {
     notFound(res);
     return;
   }
@@ -116,7 +119,11 @@ async function handleMcpRoute(req: IncomingMessage, res: ServerResponse, method:
     send(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
     return;
   }
-  const out = zohoToken ? await handleZohoMcp(zohoToken, body) : await workflows.handleMcp(route!, body);
+  const out = zohoToken
+    ? await handleZohoMcp(zohoToken, body)
+    : host
+      ? await handleHostMcp(host.agentId, host.token, body)
+      : await workflows.handleMcp(route!, body);
   if (!out) {
     notFound(res);
     return;
@@ -199,7 +206,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
     if (method === 'GET' && path === '/api/awareness') {
       const agentId = url.searchParams.get('agentId') || cp.listAgents()[0]?.id || '';
-      send(res, 200, { text: cp.formatAppAwareness(agentId) });
+      send(res, 200, cp.holdingsForAgent(agentId));
       return;
     }
 
@@ -507,12 +514,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     {
       const m = match(method, path, 'GET', '/api/secrets/:name');
       if (m) {
-        const result = cp.getSecret(m.name);
-        if (!result.ok) {
-          send(res, result.error === 'Unknown secret name' ? 404 : 403, { error: result.error });
-          return;
-        }
-        send(res, 200, { name: result.name, value: result.value });
+        send(res, 403, {
+          error:
+            'Secret values stay in the host. List names with GET /api/secrets. Put ${env:NAME} in MCP JSON.',
+        });
         return;
       }
     }

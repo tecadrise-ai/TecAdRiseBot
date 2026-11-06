@@ -1191,12 +1191,37 @@
   color: var(--danger);
 }
 
+.connect-banner {
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 32px color-mix(in srgb, CanvasText 18%, transparent);
+  font-size: 14px;
+}
+.connect-banner button {
+  flex-shrink: 0;
+}
+
 .connector-block {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 16px;
   margin: 12px 0;
   background: var(--bg);
+}
+.connector-block.flash {
+  outline: 2px solid var(--accent, #3d9b8f);
+  outline-offset: 2px;
 }
 .connector-row {
   display: flex;

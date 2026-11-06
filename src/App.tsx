@@ -45,6 +45,8 @@ export default function App() {
   const [sidebarLayout, setSidebarLayout] = useState<SidebarLayout>(() => emptyLayout());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'connectors'>('general');
+  const [highlightConnector, setHighlightConnector] = useState<string | null>(null);
+  const [connectPrompt, setConnectPrompt] = useState<{ id: string; name: string } | null>(null);
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const [liveTodos, setLiveTodos] = useState<TodoItem[]>([]);
   const [liveTodoMessageId, setLiveTodoMessageId] = useState<string | null>(null);
@@ -189,10 +191,18 @@ export default function App() {
         );
       }),
       window.tecapi.on('chat:stream-delta', (payload) => {
-        const p = payload as { agentId: string; messageId: string; content: string };
+        const p = payload as { agentId: string; messageId: string; content: string; used?: string[] };
         if (p.agentId !== selectedIdRef.current) return;
         setMessages((prev) =>
-          prev.map((m) => (m.id === p.messageId ? { ...m, content: p.content } : m))
+          prev.map((m) =>
+            m.id === p.messageId
+              ? {
+                  ...m,
+                  content: p.content,
+                  meta: p.used ? mergeMeta(m.meta, { used: p.used }) : m.meta,
+                }
+              : m
+          )
         );
       }),
       window.tecapi.on('chat:todos', (payload) => {
@@ -215,6 +225,7 @@ export default function App() {
           content: string;
           usage?: unknown;
           todos?: TodoItem[];
+          used?: string[];
           finishedAt?: number;
         };
         if (p.agentId === selectedIdRef.current) {
@@ -222,6 +233,7 @@ export default function App() {
           if (p.usage) extra.usage = p.usage;
           if (p.finishedAt) extra.finishedAt = p.finishedAt;
           if (p.todos && p.todos.length) extra.todos = p.todos;
+          if (p.used && p.used.length) extra.used = p.used;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === p.messageId
@@ -252,6 +264,14 @@ export default function App() {
       window.tecapi.on('workflow:run', (payload) => {
         const run = payload as WorkflowRunView;
         if (run?.id) setWfRuns((prev) => ({ ...prev, [run.id]: run }));
+      }),
+      window.tecapi.on('ui:show-connector', (payload) => {
+        const p = payload as { id?: string; name?: string };
+        if (!p?.id) return;
+        setConnectPrompt({ id: p.id, name: p.name || p.id });
+        setHighlightConnector(p.id);
+        setSettingsTab('connectors');
+        setSettingsOpen(true);
       }),
     ];
     return () => offs.forEach((off) => off());
@@ -350,6 +370,7 @@ export default function App() {
           setSettingsOpen(true);
         }}
         onOpenConnectors={() => {
+          setHighlightConnector(null);
           setSettingsTab('connectors');
           setSettingsOpen(true);
         }}
@@ -442,9 +463,32 @@ export default function App() {
           if (selectedIdRef.current === agentId) setStreamingId(null);
         }}
       />
+      {connectPrompt ? (
+        <div className="connect-banner">
+          <span>
+            <strong>{connectPrompt.name}</strong> is not connected. The agent cannot use it until you
+            connect the account.
+          </span>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              setHighlightConnector(connectPrompt.id);
+              setSettingsTab('connectors');
+              setSettingsOpen(true);
+            }}
+          >
+            Connect
+          </button>
+          <button type="button" className="secondary" onClick={() => setConnectPrompt(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       <SettingsModal
         open={settingsOpen}
         initialTab={settingsTab}
+        highlightConnector={highlightConnector}
         onClose={() => setSettingsOpen(false)}
         settings={settings}
         onRefresh={refreshSettings}

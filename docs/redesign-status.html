@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>TecAdRiseBot redesign status</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --ok: #1b7f4a;
+      --wip: #b36b00;
+      --no: #9b1c1c;
+      --skip: #5c5c5c;
+      --bg: Canvas;
+      --fg: CanvasText;
+      --line: color-mix(in srgb, CanvasText 18%, Canvas);
+    }
+    body {
+      font: 15px/1.45 system-ui, Segoe UI, sans-serif;
+      margin: 24px;
+      color: var(--fg);
+      background: var(--bg);
+      max-width: 1100px;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 8px; }
+    p.meta { color: color-mix(in srgb, CanvasText 55%, Canvas); margin: 0 0 20px; }
+    table { border-collapse: collapse; width: 100%; margin: 0 0 28px; }
+    th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .done { color: var(--ok); font-weight: 650; }
+    .partial { color: var(--wip); font-weight: 650; }
+    .open { color: var(--no); font-weight: 650; }
+    .dropped { color: var(--skip); font-weight: 650; }
+    code { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>TecAdRiseBot redesign tracker</h1>
+  <p class="meta">
+    Updated 2026-11-06 (afternoon). Rollback: <code>git checkout pre-redesign</code>.
+    Bind rule: connected apps attach from <strong>this message</strong>, not per-agent ticks.
+    Verify in the Vite/Electron window, not a packaged exe.
+  </p>
+
+  <table>
+    <caption><strong>What actually got fixed (this pass)</strong></caption>
+    <thead>
+      <tr><th>Item</th><th>Status</th><th>Proof</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Hello / hi no longer binds Zoho, Playwright, GitHub, workflow owner MCP</td>
+        <td class="done">Done</td>
+        <td>Live GeneralQA <code>hello</code>: <code>mcp: []</code>, plain greeting, no tool calls</td>
+      </tr>
+      <tr>
+        <td>Empty MCP was treated as “unspecified” and Agent.create attached the whole catalog</td>
+        <td class="done">Done</td>
+        <td><code>mcpServersForAgent</code> now returns <code>{}</code>; send uses that object</td>
+      </tr>
+      <tr>
+        <td>Greeting after an email turn still looked like email work</td>
+        <td class="done">Done</td>
+        <td>Current message small-talk wins; prior “check email” is ignored</td>
+      </tr>
+      <tr>
+        <td>Every turn tried Cursor <code>systemPrompt</code>, failed, then retried</td>
+        <td class="done">Done</td>
+        <td>Account: custom system prompt not enabled. Host text is inlined once</td>
+      </tr>
+      <tr>
+        <td>Holdings prompt instead of <code>[App]</code> + ARCHITECTURE dump</td>
+        <td class="done">Done</td>
+        <td><code>GET /api/awareness</code> is JSON holdings. Prompt builder has no <code>[App]</code></td>
+      </tr>
+      <tr>
+        <td>Secret values off the HTTP plane</td>
+        <td class="done">Done</td>
+        <td><code>GET /api/secrets/:name</code> is 403. Settings still uses Electron main</td>
+      </tr>
+      <tr>
+        <td>Host tools instead of curl (interbot, secret names, connector state)</td>
+        <td class="done">Done</td>
+        <td><code>tecadrise-host</code> MCP on work turns: message_agent, list_peers, list_secret_names, show_connector. Greetings still none</td>
+      </tr>
+      <tr>
+        <td>Product skill <code>tecadrisebot</code></td>
+        <td class="done">Done</td>
+        <td><code>defaults/skills/tecadrisebot/SKILL.md</code> (copies into App data skills if missing)</td>
+      </tr>
+      <tr>
+        <td>Chat footer shows bound MCP</td>
+        <td class="done">Done</td>
+        <td><code>in / out / tot · host N · mcp none</code> or names</td>
+      </tr>
+      <tr>
+        <td>GeneralQA billed “hi” in the low thousands (plan target)</td>
+        <td class="partial">Partial</td>
+        <td>~8.4k input: ~1.3k host + Cursor SDK builtins. Playwright is off. SDK shell/read cannot be stripped</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table>
+    <caption><strong>Plan phases</strong></caption>
+    <thead>
+      <tr><th>Phase</th><th>Goal</th><th>Status</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>0 Instrument</td>
+        <td>Log hostChars, MCP names, input tokens</td>
+        <td class="done">Done</td>
+        <td>Message meta + chat footer</td>
+      </tr>
+      <tr>
+        <td>1 Attach (was “grants”)</td>
+        <td>Stop global Playwright/Zoho on every bot</td>
+        <td class="done">Done (message-scoped)</td>
+        <td>
+          Per-agent grant checkboxes dropped. Optional MCP from this message; agent JSON always; workflow extra when needed.
+        </td>
+      </tr>
+      <tr>
+        <td>2 Secrets in the host</td>
+        <td>Model never sees secret values</td>
+        <td class="done">Done</td>
+        <td>HTTP values 403. Host fills MCP env. No GET-value in catalog or snapshot</td>
+      </tr>
+      <tr>
+        <td>3 Slim prompt</td>
+        <td>Identity + Soul + holdings; no <code>[App]</code></td>
+        <td class="done">Done</td>
+        <td>Work turns still name workspace, skills index, todo spelling. That is holdings, not <code>[App]</code></td>
+      </tr>
+      <tr>
+        <td>4 Host tools</td>
+        <td><code>message_agent</code>, <code>list_secret_names</code>, <code>show_connector</code></td>
+        <td class="done">Done</td>
+        <td><code>tecadrise-host</code> HTTP MCP. Off connectors open Settings</td>
+      </tr>
+      <tr>
+        <td>5 Connector states</td>
+        <td>ready / not_connected / card, not markdown</td>
+        <td class="partial">Partial</td>
+        <td>Only connected connectors attach schemas. <code>show_connector</code> on an off app opens Connectors and a connect banner. No per-agent grant ticks</td>
+      </tr>
+      <tr>
+        <td>6 Product skill</td>
+        <td>Bundled <code>tecadrisebot</code> skill, load on demand</td>
+        <td class="done">Done</td>
+        <td>Not auto-injected. Agent opens SKILL.md when asked</td>
+      </tr>
+      <tr>
+        <td>7 Tool search</td>
+        <td>Survive fat MCP catalogs</td>
+        <td class="done">Done as attach-control</td>
+        <td>No search_tools API on Cursor SDK. Fat catalogs (Playwright) attach only when this message needs a browser</td>
+      </tr>
+      <tr>
+        <td>8 Audit / cache</td>
+        <td>Log sent vs called; stable prompt prefix</td>
+        <td class="partial">Partial</td>
+        <td>Each turn logs attached vs used. Footer shows used. Fresh SDK agent every turn still</td>
+      </tr>
+      <tr>
+        <td>9 Docs / diagram</td>
+        <td>ARCHITECTURE as human docs</td>
+        <td class="done">Done</td>
+        <td>ARCHITECTURE.md + Settings diagram SVG match the running host</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table>
+    <caption><strong>Definition of done</strong></caption>
+    <thead>
+      <tr><th>#</th><th>Bar</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>Competence from bound tools, not a capability essay</td><td class="done">Done for the host contract</td></tr>
+      <tr><td>2</td><td>GeneralQA hi = SDK builtins + ~1–2k host, no Playwright</td><td class="partial">Partial (Playwright off; billed ~8.4k because of SDK builtins)</td></tr>
+      <tr><td>3</td><td>Browser agent gets Playwright because the job needs a browser (not ticks)</td><td class="partial">Partial (hint on this message)</td></tr>
+      <tr><td>4</td><td>No prompt tells the model to read secret values; VPS still works</td><td class="done">Done (HTTP values locked; VPS still host-fill)</td></tr>
+      <tr><td>5</td><td><code>[App]</code>, ARCHITECTURE.md, <code>[MCP]</code> lists not in the turn prompt</td><td class="done">Done for the host builder</td></tr>
+      <tr><td>6</td><td>Interbot and connect-GitHub are tools or UI, not curl</td><td class="done">Done (message_agent + show_connector banner)</td></tr>
+      <tr><td>7</td><td>Product questions load skill, not grep the app folder</td><td class="partial">Partial (skill exists; model still has to open it)</td></tr>
+      <tr><td>8</td><td>Architecture diagram matches the running host</td><td class="done">Done</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>

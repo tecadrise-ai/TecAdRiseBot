@@ -21,108 +21,108 @@
 
   <g transform="translate(40 24)">
     <rect x="0" y="-10" width="11" height="11" rx="3" fill="#3b6fe0"/><text class="legend" x="18" y="0">App-wide</text>
-    <rect x="108" y="-10" width="11" height="11" rx="3" fill="#8b80e0"/><text class="legend" x="126" y="0">Own</text>
-    <rect x="180" y="-10" width="11" height="11" rx="3" fill="#e8743b"/><text class="legend" x="198" y="0">This turn</text>
+    <rect x="108" y="-10" width="11" height="11" rx="3" fill="#8b80e0"/><text class="legend" x="126" y="0">This agent</text>
+    <rect x="210" y="-10" width="11" height="11" rx="3" fill="#e8743b"/><text class="legend" x="228" y="0">This message</text>
   </g>
 
   <text class="col" x="185" y="58">Starts a turn</text>
-  <g data-tip="You type in the chat. The message starts one turn of this agent. If the agent is busy, its current turn is stopped first.">
+  <g data-tip="You type in chat. One agent, one in-flight turn.">
     <rect class="card" x="40" y="70" width="290" height="72" rx="12"/>
     <text class="title" x="60" y="98">You</text><text class="sub" x="60" y="122">Chat message</text>
   </g>
-  <g data-tip="Per-agent schedule: loop, interval, daily, weekly, once or cron. Task mode Off = plain prompt. Force updateTodos = the agent must work through a todo checklist. Step workflow = runs a workflow with this agent as Runner.">
+  <g data-tip="Per-agent schedule. Task, todos, or a step workflow with this agent as Runner.">
     <rect class="card" x="40" y="154" width="290" height="72" rx="12"/>
-    <text class="title" x="60" y="182">Routine</text><text class="sub" x="60" y="206">Schedule, updateTodos, workflow</text>
+    <text class="title" x="60" y="182">Routine</text><text class="sub" x="60" y="206">Schedule, workflow</text>
   </g>
-  <g data-tip="Interbot message from another agent (POST /api/agents/&lt;id&gt;/interbot). Saved in both chats. The target agent must be idle.">
+  <g data-tip="Host tool message_agent. Target must be idle. Do not curl the control plane for this.">
     <rect class="card" x="40" y="238" width="290" height="72" rx="12"/>
-    <text class="title" x="60" y="266">Other agent</text><text class="sub" x="60" y="290">Interbot message</text>
+    <text class="title" x="60" y="266">Other agent</text><text class="sub" x="60" y="290">message_agent</text>
   </g>
-  <g data-tip="http://127.0.0.1:8787, local only. GET /api catalog. GET /api/awareness is the same [App] map. GET /api/secrets lists names, GET /api/secrets/NAME returns a value (host decrypts secrets.bin). Snapshot, PATCH Soul, interbot, routines. Never decrypt secrets.bin yourself. No OS env for those keys.">
+  <g data-tip="http://127.0.0.1:8787, local only. GET /api catalog. GET /api/awareness is JSON holdings (names, no values). GET /api/secrets lists names. GET /api/secrets/NAME is 403. Secrets stay in the host.">
     <rect class="card" x="40" y="322" width="290" height="88" rx="12"/>
     <text class="title" x="60" y="350">Local API :8787</text>
-    <text class="sub" x="60" y="372">awareness, secrets, snapshot</text>
-    <text class="sub" x="60" y="392">Soul PATCH, interbot, routines</text>
+    <text class="sub" x="60" y="372">holdings JSON, secret names</text>
+    <text class="sub" x="60" y="392">host MCP, workflows, chat</text>
   </g>
 
   <path class="arrow" d="M348 250 H392 M384 242 L393 250 L384 258"/>
 
-  <text class="col" x="600" y="48">Host text ~4.7k · billed ~18k (SDK + MCP tools) + message</text>
+  <text class="col" x="600" y="48">Host binds tools for this message</text>
   <rect x="410" y="58" width="380" height="554" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.6"/>
-  <g data-tip="One agent runs one turn at a time. Each agent has its own chat, settings, Soul, routines and workspace. It wakes up already knowing it is inside TecAdRiseBot.">
-    <rect x="420" y="64" width="300" height="24" fill="transparent"/>
-    <text x="426" y="82" class="title">Agent <tspan class="sub" font-weight="400">app-aware, one turn</tspan></text>
+  <g data-tip="Named agent. Prompt is identity + Soul + holdings. Tools are already bound.">
+    <rect x="420" y="64" width="360" height="24" fill="transparent"/>
+    <text x="426" y="82" class="title">Host <tspan class="sub" font-weight="400">Electron + Cursor SDK</tspan></text>
   </g>
 
   <g class="blue">
-    <g data-tip="Live capability map injected first every turn (also GET /api/awareness). Who you are, what this app can do, secrets.bin names, connectors on/off, MCP this turn, workspace, memory, skills, control plane. Trust it. Do not rediscover the host. Do not grep the app folder.">
-      <rect x="426" y="92" width="348" height="32" rx="7"/><text class="lname" x="440" y="113">[App]</text><text class="ldesc" x="760" y="113">live map · ~550 tok</text>
+    <g data-tip="Short identity: you are this agent in TecAdRiseBot, workspace path, write only here. Not ARCHITECTURE.md and not an [App] dump.">
+      <rect x="426" y="92" width="348" height="32" rx="7"/><text class="lname" x="440" y="113">Identity</text><text class="ldesc" x="760" y="113">holdings prompt</text>
     </g>
-    <g data-tip="API keys and SSH keys in secrets.bin (Settings, API Keys). Host decrypts. Names are in [App]. Values: GET /api/secrets/NAME. Use in memory. Never print. Never write to Soul, memory.md, notes or disk. There is no OS env for these keys. Do not decrypt secrets.bin. Do not search ~/.ssh.">
-      <rect x="426" y="128" width="348" height="32" rx="7"/><text class="lname" x="440" y="149">secrets.bin</text><text class="ldesc" x="760" y="149">names in [App]</text>
+    <g data-tip="secrets.bin in App data. Host decrypts and fills MCP ${env:NAME}. list_secret_names returns names. Values never enter the model.">
+      <rect x="426" y="128" width="348" height="32" rx="7"/><text class="lname" x="440" y="149">secrets.bin</text><text class="ldesc" x="760" y="149">host-only values</text>
     </g>
-    <g data-tip="App-wide system prompt for every agent. Edit in Settings, System prompt. Click to open." data-doc="SYSTEM.md">
-      <rect x="426" y="164" width="348" height="32" rx="7"/><text class="lname" x="440" y="185">SYSTEM.md</text><text class="ldesc" x="760" y="185">rules · ~1,150 tok</text>
+    <g data-tip="Human Settings document. Not inlined every turn. Click to open." data-doc="SYSTEM.md">
+      <rect x="426" y="164" width="348" height="32" rx="7"/><text class="lname" x="440" y="185">SYSTEM.md</text><text class="ldesc" x="760" y="185">Settings, not prompt</text>
     </g>
-    <g data-tip="App-wide memory rules: shared memory folder plus private memory.md. Edit in Settings, System memory. Click to open." data-doc="MEMORY.md">
-      <rect x="426" y="200" width="348" height="32" rx="7"/><text class="lname" x="440" y="221">MEMORY.md</text><text class="ldesc" x="760" y="221">memory rules · ~320 tok</text>
+    <g data-tip="Human Settings document for shared vs private memory. Click to open." data-doc="MEMORY.md">
+      <rect x="426" y="200" width="348" height="32" rx="7"/><text class="lname" x="440" y="221">MEMORY.md</text><text class="ldesc" x="760" y="221">Settings, not prompt</text>
     </g>
-    <g data-tip="Short description of how the app, roles and workflows work. Sent to every agent every turn. Click to open." data-doc="ARCHITECTURE.md">
-      <rect x="426" y="236" width="348" height="32" rx="7"/><text class="lname" x="440" y="257">ARCHITECTURE.md</text><text class="ldesc" x="760" y="257">app map · ~720 tok</text>
+    <g data-tip="Human architecture. Click to open. Agents load skill tecadrisebot when asked how the app works." data-doc="ARCHITECTURE.md">
+      <rect x="426" y="236" width="348" height="32" rx="7"/><text class="lname" x="440" y="257">ARCHITECTURE.md</text><text class="ldesc" x="760" y="257">human docs</text>
     </g>
-    <g data-tip="How to use the updateTodos / TodoWrite checklist tool. In workflow runner turns it is replaced by the step rules.">
-      <rect x="426" y="272" width="348" height="32" rx="7"/><text class="lname" x="440" y="293">Todo rules</text><text class="ldesc" x="760" y="293">updateTodos · ~290 tok</text>
+    <g data-tip="Todo spelling only if those tools exist. Workflow turns replace this with step rules.">
+      <rect x="426" y="272" width="348" height="32" rx="7"/><text class="lname" x="440" y="293">Todos</text><text class="ldesc" x="760" y="293">if the tool exists</text>
     </g>
-    <g data-tip="List of shared skills (folder with SKILL.md each, Settings, Computer). The agent reads a SKILL.md when it needs it.">
-      <rect x="426" y="308" width="348" height="32" rx="7"/><text class="lname" x="440" y="329">Skills</text><text class="ldesc" x="760" y="329">catalog · ~400 tok</text>
+    <g data-tip="Skills index (name + one line). Open SKILL.md when the user names a skill. Product skill: tecadrisebot.">
+      <rect x="426" y="308" width="348" height="32" rx="7"/><text class="lname" x="440" y="329">Skills index</text><text class="ldesc" x="760" y="329">body on demand</text>
     </g>
   </g>
   <g class="purple">
-    <g data-tip="This agent's sticky rules. Agent settings, General, Soul. The agent may PATCH /api/agents/id { instructions }. Do not put secrets in Soul.">
-      <rect x="426" y="344" width="348" height="32" rx="7"/><text class="lname" x="440" y="365">Soul</text><text class="ldesc" x="760" y="365">sticky rules · ~100 tok</text>
+    <g data-tip="This agent's sticky rules. Agent gear, Soul. Never put secrets in Soul.">
+      <rect x="426" y="344" width="348" height="32" rx="7"/><text class="lname" x="440" y="365">Soul</text><text class="ldesc" x="760" y="365">this agent</text>
     </g>
-    <g data-tip="[This turn]: agent name, id, workspace path, model. Settings, General for model, last-N chat, effort.">
-      <rect x="426" y="380" width="348" height="32" rx="7"/><text class="lname" x="440" y="401">This turn</text><text class="ldesc" x="760" y="401">turn info · ~80 tok</text>
+    <g data-tip="Optional MCP from this message (email → Zoho, browser → Playwright) plus this agent's MCP JSON. Greetings: none. tecadrise-host on work turns.">
+      <rect x="426" y="380" width="348" height="32" rx="7"/><text class="lname" x="440" y="401">MCP this message</text><text class="ldesc" x="760" y="401">host picks</text>
     </g>
-    <g data-tip="[MCP] names are a few hundred tokens. Cursor still sends every MCP tool schema plus built-in SDK tools (shell, read, grep, todos). That is most of the ~18k input on a hi with last messages = 0. Chat history is not in that bill.">
-      <rect x="426" y="416" width="348" height="32" rx="7"/><text class="lname" x="440" y="437">MCP + SDK tools</text><text class="ldesc" x="760" y="437">schemas · ~12k tok</text>
+    <g data-tip="Cursor SDK builtins (shell, read, grep, todos) cannot be stripped. Extra MCP schemas only if attached this message. Hello is SDK builtins + ~1k host, no Playwright.">
+      <rect x="426" y="416" width="348" height="32" rx="7"/><text class="lname" x="440" y="437">SDK + bound tools</text><text class="ldesc" x="760" y="437">schemas billed</text>
     </g>
   </g>
   <g class="orange">
-    <g data-tip="The last N visible messages of this chat. Agent settings, General, Last messages (default 5). Tokens depend on message length.">
-      <rect x="426" y="452" width="348" height="32" rx="7"/><text class="lname" x="440" y="473">Recent chat</text><text class="ldesc" x="760" y="473">last N · ~1k tok</text>
+    <g data-tip="Last N visible messages. Agent gear, Last messages.">
+      <rect x="426" y="452" width="348" height="32" rx="7"/><text class="lname" x="440" y="473">Recent chat</text><text class="ldesc" x="760" y="473">last N</text>
     </g>
-    <g data-tip="The message that started this turn, attached files, and in workflow turns the step rules for the current step.">
-      <rect x="426" y="488" width="348" height="32" rx="7"/><text class="lname" x="440" y="509">Message</text><text class="ldesc" x="760" y="509">varies</text>
+    <g data-tip="The message that started this turn. Footer lists tools actually called: [Zoho, Playwright].">
+      <rect x="426" y="488" width="348" height="32" rx="7"/><text class="lname" x="440" y="509">Message</text><text class="ldesc" x="760" y="509">used tools in footer</text>
     </g>
   </g>
   <line x1="426" y1="532" x2="774" y2="532" stroke="#e3e3e6"/>
-  <g data-tip="Every turn runs through the Cursor TypeScript SDK on this PC, with the agent workspace as working folder. Trust [App]. Do not rediscover the host.">
-    <rect x="420" y="538" width="340" height="28" fill="transparent"/>
-    <text class="sub" x="426" y="558">Cursor SDK tools + MCP schemas are most of the bill</text>
+  <g data-tip="A capability is a tool the host already bound. Do not grep the app folder. Do not decrypt secrets.bin.">
+    <rect x="420" y="538" width="360" height="28" fill="transparent"/>
+    <text class="sub" x="426" y="558">If it is not in the tool list, you do not have it</text>
   </g>
 
   <path class="arrow" d="M808 250 H852 M844 242 L853 250 L844 258"/>
 
   <text class="col" x="1015" y="58">Works in</text>
-  <g data-tip="App data, workspaces, agent id. The only place the agent writes files. memory.md is its private memory, uploads/ holds attached files. Never write secrets here.">
+  <g data-tip="App data, workspaces, agent id. The only place the agent writes files. memory.md is private. Never write secrets here.">
     <rect class="card" x="870" y="70" width="290" height="72" rx="12"/>
     <text class="title" x="890" y="98">Own workspace</text><text class="sub" x="890" y="122">Files, memory.md</text>
   </g>
-  <g data-tip="App data, memory: index.md, notes/, log.md. Facts every agent should know. No secrets, keys or passwords.">
+  <g data-tip="App data, memory: index.md, notes/, log.md. Facts every agent should know. No secrets.">
     <rect class="card" x="870" y="154" width="290" height="72" rx="12"/>
     <text class="title" x="890" y="182">Shared memory</text><text class="sub" x="890" y="206">All agents · index.md first</text>
   </g>
-  <g data-tip="Runner does one step at a time. The app runs hard checks. The Owner reviews steps (if on) and fixes failed steps, but never runs workflows. Max 3 owner fixes per run.">
+  <g data-tip="Runner does one step. App runs hard checks. Owner reviews and fixes, never runs. Workflow MCP only when the job or an active run needs it.">
     <rect class="card" x="870" y="238" width="290" height="72" rx="12"/>
     <text class="title" x="890" y="266">Workflows</text><text class="sub" x="890" y="290">Runner runs, Owner fixes</text>
   </g>
-  <g data-tip="Settings, Connectors. Canva, Zoho Mail, Treg, GitHub, AgentMail, ElevenLabs, Context. Tokens stay in secrets.bin and attach as MCP tools when connected. On/off listed in [App] every turn.">
+  <g data-tip="Settings → Connectors. Attached when this message needs that app and the account is connected. Off: show_connector opens this pane.">
     <rect class="card" x="870" y="322" width="290" height="72" rx="12"/>
-    <text class="title" x="890" y="350">Connectors</text><text class="sub" x="890" y="374">on/off in [App] · MCP tools</text>
+    <text class="title" x="890" y="350">Connectors</text><text class="sub" x="890" y="374">this message · or Connect UI</text>
   </g>
-  <g data-tip="Settings, API Keys. Stored in secrets.bin. Host decrypts. GET /api/secrets and GET /api/secrets/NAME. Not OS env. Not files on disk. Cursor SDK key is host-only.">
+  <g data-tip="Settings → API Keys. Host decrypts. Names via list_secret_names. GET /api/secrets/:name is 403. Cursor key is host-only.">
     <rect class="card" x="870" y="406" width="290" height="72" rx="12"/>
-    <text class="title" x="890" y="434">secrets.bin</text><text class="sub" x="890" y="458">API Keys · GET /api/secrets</text>
+    <text class="title" x="890" y="434">secrets.bin</text><text class="sub" x="890" y="458">host fills MCP env</text>
   </g>
 </svg>

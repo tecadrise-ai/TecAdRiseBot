@@ -8,12 +8,15 @@ export type HostPromptInput = {
   memoryDir: string;
   skillsIndex: string;
   soul: string;
+  /** SYSTEM.md. Inlined every turn. */
+  system: string;
   extraSystem?: string;
   checklist?: string;
 };
 
 export function buildHostSystemPrompt(input: HostPromptInput): string {
   return [
+    input.system.trim(),
     `You are ${input.agentName} (id ${input.agentId}) in TecAdRiseBot. Model: ${input.modelLabel}.`,
     `Write only in ${input.workspace}. Shared memory: ${input.memoryDir}. Private notes: memory.md in the workspace.`,
     'You decide when memory, files, skills, or tools help the job. If you need a shared fact, open index.md in the memory directory, then the linked note. Do not glob or list the workspace to look around. Do not decrypt secrets.bin. There is no OS env for API keys. The host fills MCP ${env:NAME} from secrets.bin. Never print secrets or write them to Soul, memory, or files.',

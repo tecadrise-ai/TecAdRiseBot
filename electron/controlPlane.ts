@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
 import { listModels as sdkListModels, runAgentTurn, isAgentBusy, cancelAgentRun, dropAgentHandle } from './agentRunner';
+import { unpackAssistantBody } from '../src/lib/assistantBody';
 import { formatModelLabel, cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 import { startFromRoutine } from './workflows/service';
 import { listConnectors } from './connectors';
@@ -310,7 +311,12 @@ export async function sendInterbot(fromId: string, toId: string, text: string) {
   const from = db.getAgent(fromId);
   const to = db.getAgent(toId);
   if (!from || !to) throw new Error('Agent not found');
-  const envelope = `Message from agent "${from.name}":\n\n${text}`;
+  const envelope = [
+    `Message from agent "${from.name}". Answer them in this turn.`,
+    'The host returns your assistant reply to that agent. Do not message them back.',
+    '',
+    text,
+  ].join('\n');
   db.addMessage({
     id: uuid(),
     agentId: fromId,
@@ -318,7 +324,16 @@ export async function sendInterbot(fromId: string, toId: string, text: string) {
     content: `→ ${to.name}: ${text}`,
     meta: JSON.stringify({ toAgentId: toId, direction: 'out' }),
   });
-  return sendChat(toId, envelope, { source: 'interbot' });
+  const sent = await sendChat(toId, envelope, { source: 'interbot' });
+  const reply = unpackAssistantBody(String(sent.assistant?.content || '')).answer.trim();
+  db.addMessage({
+    id: uuid(),
+    agentId: fromId,
+    role: 'interbot',
+    content: `← ${to.name}: ${reply || '(empty)'}`,
+    meta: JSON.stringify({ toAgentId: toId, direction: 'in' }),
+  });
+  return { ...sent, ok: true as const, to: to.name, toAgentId: toId, reply };
 }
 
 export function getPublicSettings() {
@@ -520,6 +535,7 @@ export function snapshotForAgent(agentId: string): AgentSnapshot {
         model: a.model,
         lastSnippet: a.lastSnippet,
         enabled: a.enabled,
+        status: isAgentBusy(a.id) ? ('busy' as const) : ('idle' as const),
       })),
     routines: db.listRoutines(agentId).map((r) => ({
       id: r.id,

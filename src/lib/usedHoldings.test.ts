@@ -8,6 +8,7 @@ describe('labelUsed', () => {
     assert.equal(labelUsed('browser_navigate'), 'Playwright');
     assert.equal(labelUsed('mcp_playwright_browser_click'), 'Playwright');
     assert.equal(labelUsed('message_agent'), 'Host');
+    assert.equal(labelUsed('tecadrise-host'), 'Host');
     assert.equal(labelUsed('Shell'), 'Shell');
     assert.equal(labelUsed('mcp'), null);
     assert.equal(labelUsed('Search Designs'), 'Search Designs');

@@ -181,7 +181,9 @@ function createWindow() {
     console.error('did-fail-load', code, desc, url);
   });
   mainWindow.webContents.on('console-message', (event) => {
-    console.log('[renderer]', event.message);
+    const level = String(event.level);
+    if (level !== 'error' && level !== '3') return;
+    console.error('[renderer]', event.message);
   });
   const devUrl = VITE_DEV_SERVER_URL || 'http://localhost:5173/';
   const useDevUi = Boolean(process.defaultApp) || Boolean(VITE_DEV_SERVER_URL);
@@ -310,28 +312,8 @@ function registerIpc() {
     return cancelAgentRun(agentId);
   });
 
-  ipcMain.handle(
-    'interbot:send',
-    async (_e, fromAgentId: string, toAgentId: string, text: string) => {
-      const from = db.getAgent(fromAgentId);
-      const to = db.getAgent(toAgentId);
-      if (!from || !to) throw new Error('Agent not found');
-      const envelope = `Message from agent "${from.name}":\n\n${text}`;
-      // Persist outbound note on sender
-      db.addMessage({
-        id: uuid(),
-        agentId: fromAgentId,
-        role: 'interbot',
-        content: `-> ${to.name}: ${text}`,
-        meta: JSON.stringify({ toAgentId, direction: 'out' }),
-      });
-      return runAgentTurn({
-        agentId: toAgentId,
-        userText: envelope,
-        win: mainWindow,
-        source: 'interbot',
-      });
-    }
+  ipcMain.handle('interbot:send', (_e, fromAgentId: string, toAgentId: string, text: string) =>
+    sendInterbot(fromAgentId, toAgentId, text)
   );
 
   ipcMain.handle('settings:get', () => {
@@ -496,8 +478,7 @@ app.whenReady().then(async () => {
   setZohoMailMcp(zohoMailMcp);
   configureHostMcp({ getBaseUrl, isAgentBusy, sendInterbot });
   try {
-    const info = await startHttpApi(8787);
-    console.log('[TecAdRiseBot] Control plane', info);
+    await startHttpApi(8787);
   } catch (e) {
     console.error('[TecAdRiseBot] Control plane failed', e);
   }

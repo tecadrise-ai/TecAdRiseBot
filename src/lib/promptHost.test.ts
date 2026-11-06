@@ -12,7 +12,9 @@ describe('buildHostSystemPrompt', () => {
       memoryDir: 'C:/mem',
       skillsIndex: '- foo: bar',
       soul: 'Stay on the VPS.',
+      system: 'Global rule. SAFEWORD=unittest',
     });
+    assert.match(text, /Global rule\. SAFEWORD=unittest/);
     assert.match(text, /VPSAgent/);
     assert.match(text, /C:\/ws/);
     assert.match(text, /Stay on the VPS/);

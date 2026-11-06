@@ -61,8 +61,8 @@
     <g data-tip="secrets.bin in App data. Host decrypts and fills MCP ${env:NAME}. list_secret_names returns names. Values never enter the model.">
       <rect x="426" y="128" width="348" height="32" rx="7"/><text class="lname" x="440" y="149">secrets.bin</text><text class="ldesc" x="760" y="149">host-only values</text>
     </g>
-    <g data-tip="Human Settings document. Not inlined every turn. Click to open." data-doc="SYSTEM.md">
-      <rect x="426" y="164" width="348" height="32" rx="7"/><text class="lname" x="440" y="185">SYSTEM.md</text><text class="ldesc" x="760" y="185">Settings, not prompt</text>
+    <g data-tip="Global system prompt. Inlined every turn. Click to open." data-doc="SYSTEM.md">
+      <rect x="426" y="164" width="348" height="32" rx="7"/><text class="lname" x="440" y="185">SYSTEM.md</text><text class="ldesc" x="760" y="185">inlined every turn</text>
     </g>
     <g data-tip="Human Settings document for shared vs private memory. Click to open." data-doc="MEMORY.md">
       <rect x="426" y="200" width="348" height="32" rx="7"/><text class="lname" x="440" y="221">MEMORY.md</text><text class="ldesc" x="760" y="221">Settings, not prompt</text>

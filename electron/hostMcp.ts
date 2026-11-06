@@ -18,7 +18,11 @@ export const HOST_MCP_NAME = 'tecadrise-host';
 type HostPlane = {
   getBaseUrl: () => string;
   isAgentBusy: (id: string) => boolean;
-  sendInterbot: (fromId: string, toId: string, text: string) => Promise<unknown>;
+  sendInterbot: (
+    fromId: string,
+    toId: string,
+    text: string
+  ) => Promise<{ ok: true; to: string; toAgentId: string; reply: string }>;
 };
 
 let plane: HostPlane = {
@@ -75,19 +79,24 @@ function tools(fromAgentId: string): McpTool[] {
   return [
     {
       name: 'list_peers',
-      description: 'Other TecAdRiseBot agents on this PC (id and name). Use before message_agent.',
+      description:
+        'Other TecAdRiseBot agents on this PC. id, name, idle or busy. Call this, then message_agent. This is the agent directory. Do not curl.',
       inputSchema: S({}),
       run: () =>
         db
           .listAgents()
           .filter((a) => a.id !== fromAgentId && a.enabled)
-          .map((a) => ({ id: a.id, name: a.name })),
+          .map((a) => ({
+            id: a.id,
+            name: a.name,
+            status: plane.isAgentBusy(a.id) ? ('busy' as const) : ('idle' as const),
+          })),
     },
     {
       name: 'message_agent',
       description:
-        'Send a message to another idle agent. You keep this turn. Do not curl the control plane.',
-      inputSchema: S({ toAgentId: STR('Peer id from list_peers'), text: STR('Message body') }, [
+        'Ask another idle agent and wait. Returns { reply } with their answer. This is the interbot API. Do not curl. Do not poll. Do not guess from memory.',
+      inputSchema: S({ toAgentId: STR('Peer id from list_peers'), text: STR('Question or task') }, [
         'toAgentId',
         'text',
       ]),
@@ -97,9 +106,12 @@ function tools(fromAgentId: string): McpTool[] {
         if (!toAgentId || !text) return { ok: false, error: 'toAgentId and text are required' };
         if (toAgentId === fromAgentId) return { ok: false, error: 'Cannot message yourself' };
         if (plane.isAgentBusy(toAgentId)) return { ok: false, error: 'Target agent is busy' };
-        await plane.sendInterbot(fromAgentId, toAgentId, text);
-        const to = db.getAgent(toAgentId);
-        return { ok: true, to: to?.name || toAgentId };
+        try {
+          const sent = await plane.sendInterbot(fromAgentId, toAgentId, text);
+          return { ok: true, to: sent.to, reply: sent.reply };
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
       },
     },
     {
@@ -142,7 +154,7 @@ export async function handleHostMcp(
     name: HOST_MCP_NAME,
     version: '1.0.0',
     instructions:
-      'TecAdRiseBot host tools. Secret values are never returned. Interbot uses message_agent, not curl.',
+      'TecAdRiseBot host. list_peers then message_agent: that call waits and returns { reply }. list_secret_names returns names only. show_connector for app accounts. Do not curl 127.0.0.1.',
     tools: tools(agentId),
   };
   const batch = Array.isArray(body) ? body : [body];

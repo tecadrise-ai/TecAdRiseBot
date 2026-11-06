@@ -103,7 +103,7 @@ The SDK call list **is** the capability list. Connector MCP is attached only if 
 - **Context:** Soul. Skills **index** (name + one line). Optional product skill name, not the body.  
 - **Volatile (last):** today UTC, this-turn workflow step, “GitHub connected / off”. Small. Last on purpose so the prefix cache lives.
 
-ARCHITECTURE.md, SYSTEM.md, MEMORY.md, control-plane curl, `[App]`, `[MCP]` name lists **leave the default prompt**. They remain Settings pages and `GET /api` for humans and scripts.
+ARCHITECTURE.md, MEMORY.md, control-plane curl, `[App]`, `[MCP]` name lists **leave the default prompt**. They remain Settings pages and `GET /api` for humans and scripts. SYSTEM.md is the global system prompt and is inlined every turn.
 
 ### 4.2 How app info is passed (the professional mapping)
 
@@ -135,7 +135,7 @@ One story, chosen by what this run holds. Two stories in one prompt is how model
 | `mcpServersForAgent` = global MCP ∪ agent JSON ∪ **all connected connectors** ∪ extra | Same merge **intersected with this agent’s grants** |
 | Playwright in Settings → MCP hits GeneralQA | Default agents: no browser MCP |
 | `[App]` ~500 tokens of live map + curl | ~150–250 tokens identity + holdings |
-| ARCHITECTURE.md + SYSTEM.md + MEMORY.md in every system prompt | Settings documents; prompt cites paths only if needed |
+| ARCHITECTURE.md + MEMORY.md in every system prompt | Settings documents; prompt cites paths. SYSTEM.md is inlined every turn. |
 | `[MCP]` repeats server names already in tool schemas | Delete the block |
 | Skills: `formatSkillsCatalog()` dump | Names + one-liners; body on demand |
 | `GET /api/secrets/:name` for agents | Keep for **human/scripts** if we must; **agents do not use it**. Prefer remove agent access to values |

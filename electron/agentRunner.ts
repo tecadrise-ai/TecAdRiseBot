@@ -588,16 +588,12 @@ async function mcpServersForAgent(
   const always = mergeMcpServers(serversFromUnknown(config?.mcpServers ?? {}), extraMcp || {});
   const shared = mergeMcpServers(loadGlobalMcpServers(), await connectorMcpServers());
   const merged = mergeMcpServers(shared, always);
-  if (!Object.keys(merged).length) {
-    console.log('[TecAdRiseBot] mcp this turn: (none)');
-    return {};
-  }
+  if (!Object.keys(merged).length) return {};
   const pinned: McpServers = {};
   for (const [name, server] of Object.entries(expandEnvRefs(merged))) {
     const stdio = Boolean(server.command) && !server.url && server.type !== 'http' && server.type !== 'sse';
     pinned[name] = stdio ? { ...server, cwd: server.cwd || cwd } : server;
   }
-  console.log('[TecAdRiseBot] mcp this turn:', Object.keys(pinned).join(',') || '(none)');
   return pinned;
 }
 
@@ -978,6 +974,7 @@ async function runAgentTurnInner(opts: {
     memoryDir: db.ensureMemoryDir(),
     skillsIndex: db.formatSkillsCatalog(),
     soul: instructions,
+    system: readSystemPrompt(),
     extraSystem: extras?.extraSystem,
     checklist: extras?.checklistBlock,
   });
@@ -1069,7 +1066,6 @@ async function runAgentTurnInner(opts: {
         }
         if (!call.todos.length) return;
         todos = applyTodoCallToList(todos, call);
-        console.log('[TecAdRiseBot] todos', todos.map((t) => t.status + ':' + t.content).join(' | '));
         db.patchMessageMeta(assistantMessageId, { todos, todoError: null });
         emit('chat:todos', {
           agentId: opts.agentId,
@@ -1185,20 +1181,9 @@ async function runAgentTurnInner(opts: {
       };
 
       const modelSel = toSdkModel(agent.model || DEFAULT_MODEL_ID, agent.config, modelCatalog);
-      console.log('[TecAdRiseBot] sdk model', JSON.stringify(modelSel));
       const sdkPrompt = customSystemPrompt
         ? turnPrompt
         : [hostSystemPrompt, turnPrompt].filter(Boolean).join('\n\n');
-      console.log(
-        '[TecAdRiseBot] sdk prompt',
-        JSON.stringify({
-          independentRun: true,
-          customSystemPrompt,
-          systemChars: hostSystemPrompt.length,
-          turnChars: turnPrompt.length,
-          recoveredChatChars: recoveredChat.length,
-        })
-      );
       const run = await h.send(
         imageParts.length
           ? { text: sdkPrompt, images: imageParts }
@@ -1488,7 +1473,6 @@ async function runAgentTurnInner(opts: {
     const finishedAt = Date.now();
     db.patchMessageMeta(assistantMessageId, { finishedAt, used });
     const attached = Object.keys(mcpForTurn || {});
-    console.log('[TecAdRiseBot] turn holdings', { agent: agent.name, attached, used });
     const billed: TokenUsage | null = usage as TokenUsage | null;
     auditTurn({
       agentId: opts.agentId,
@@ -1567,7 +1551,6 @@ export async function runAgentTurn(opts: {
     if (!unattended && !last.stalled && last.answer) break;
     if (last.stalled) closeHandle(opts.agentId);
     const cont = last;
-    console.log('[TecAdRiseBot] auto-continue', n, opts.agentId, open.length, 'open');
     last = (await enqueue(opts.agentId, () =>
       runAgentTurnInner({
         agentId: opts.agentId,

@@ -11,7 +11,9 @@ const SERVER_LABEL: Record<string, string> = {
   agentmail: 'AgentMail',
   context: 'Context',
   treg: 'Treg',
+  tecadrise_host: 'Host',
   'tecadrise-host': 'Host',
+  tecadrise_workflows: 'Workflow',
   'tecadrise-workflows': 'Workflow',
 };
 

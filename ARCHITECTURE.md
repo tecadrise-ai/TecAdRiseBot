@@ -11,7 +11,7 @@ You / Routine / Interbot / Local API
    HOST (Electron)
         |  1. Bind connected apps + catalog + this agent’s JSON + host tools. The model chooses tools.
         |  2. Fill MCP ${env:NAME} from secrets.bin
-        |  3. Short holdings prompt + Soul
+        |  3. SYSTEM.md + holdings paths + Soul
         v
    Cursor SDK  -->  model
         v
@@ -29,7 +29,7 @@ User -> UI -> Main process -> Cursor SDK -> model
 
 Every turn binds **every connected app**, the **MCP catalog**, this agent’s JSON, and `tecadrise-host` (`message_agent`, `list_peers`, `list_secret_names`, `show_connector`). No per-agent ticks. A new catalog server is for every agent once it is in Settings → MCP. Disconnected apps get `show_connector` and the Connectors pane, not a dead schema dump. The model decides whether to call a tool.
 
-SYSTEM.md, MEMORY.md, and this file are Settings documents. They are not inlined every turn.
+SYSTEM.md is the global system prompt. It is inlined every turn. MEMORY.md and this file stay as files; the agent opens memory when a fact is needed.
 
 ## Where things live
 
@@ -53,5 +53,5 @@ Runner sees only the open step. Owner reviews and fixes. The app runs hard check
 ## Rules
 
 - Write only in the agent workspace.
-- Talk to another agent with `message_agent`. Target must be idle.
+- Talk to another agent with `list_peers` then `message_agent`. That call waits and returns `{ reply }`. Target must be idle. Do not curl the control plane.
 - Never print secret values.

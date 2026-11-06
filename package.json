@@ -1,7 +1,7 @@
 {
   "name": "tecadrise-bot",
   "productName": "TecAdRiseBot",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "TecAdRiseBot - a free open-source alternative to Grok Bot.",
   "main": "dist-electron/main.js",
   "author": "TecAdRise",
@@ -74,6 +74,11 @@
     "win": {
       "icon": "resources/tecadrisebot-v2.ico",
       "target": ["nsis", "dir"]
+    },
+    "nsis": {
+      "installerIcon": "resources/tecadrisebot-v2.ico",
+      "uninstallerIcon": "resources/tecadrisebot-v2.ico",
+      "installerHeaderIcon": "resources/tecadrisebot-v2.ico"
     }
   }
 }

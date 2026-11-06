@@ -5,6 +5,7 @@ import { MarkdownBody } from './MarkdownBody';
 import { fmtTs, fmtUsage, parseMessageUsage } from '../lib/usage';
 import { fmtUsed, parseUsed } from '../lib/usedHoldings';
 import { formatModelLabel } from '../lib/modelOptions';
+import { readAgentRuntime, readByokModelId, RUNTIME_BYOK } from '../lib/byok';
 import { ownerRoleOverride } from '../lib/workflow/definition';
 import { unpackAssistantBody } from '../lib/assistantBody';
 import { parseMessageTodos, type TodoItem, type TodoStatus } from '../lib/todos';
@@ -253,6 +254,7 @@ function EditableName({ name, onRename }: { name: string; onRename?: (name: stri
 
 /** Owner settings live on the runner: its own model settings plus the Owner row overrides. */
 function ownerModelLabel(runner: Agent): string {
+  if (readAgentRuntime(runner.config) === RUNTIME_BYOK) return `BYOK · ${readByokModelId(runner.config)}`;
   const o = ownerRoleOverride(runner.config) ?? {};
   return formatModelLabel(o.model || runner.model, { ...runner.config, ...o });
 }
@@ -551,7 +553,9 @@ export function ChatView({
             <div className="title-sub">
               {effectiveRole === 'owner'
                 ? `Owner${ownerAgent ? ` ${ownerAgent.name}` : ''} · ${ownerModelLabel(agent)}`
-                : `Runner · ${formatModelLabel(agent.model, agent.config)}`}
+                : readAgentRuntime(agent.config) === RUNTIME_BYOK
+                  ? `BYOK · ${readByokModelId(agent.config)}`
+                  : `Runner · ${formatModelLabel(agent.model, agent.config)}`}
             </div>
           </div>
         </div>

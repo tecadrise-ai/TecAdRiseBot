@@ -9,7 +9,9 @@ import { restoreFlattenedMarkdown } from '../src/lib/markdown';
 import { finalizeAssistantBody, packAssistantBody, unpackAssistantBody } from '../src/lib/assistantBody';
 import { addUsage, type TokenUsage } from '../src/lib/usage';
 import { resolveAgentSoul } from '../src/lib/soul';
-import { getApiKey, getEnvMap } from './secrets';
+import { getApiKey, getByokProvider, getEnvMap } from './secrets';
+import { pickByokModelId, readAgentRuntime, readByokModelId, readByokProviderId, RUNTIME_BYOK } from '../src/lib/byok';
+import { abortByokTurn, runByokCompletion } from './byok/runner';
 import { DEFAULT_MODEL_ID, formatModelLabel, readLastMessages, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
@@ -494,6 +496,7 @@ function enqueue(agentId: string, task: () => Promise<unknown>): Promise<unknown
 
 export async function cancelAgentRun(agentId: string): Promise<{ ok: true }> {
   const hadRun = claimed.has(agentId) || activeRuns.has(agentId) || liveTurns.has(agentId);
+  abortByokTurn(agentId);
   if (hadRun) stopRequested.add(agentId);
   const wake = stopWaiters.get(agentId);
   if (wake) wake();
@@ -750,8 +753,15 @@ export async function listModels(): Promise<CatalogModel[]> {
 export type TurnExtras = {
   /** Extra MCP servers merged over global + agent MCP for this turn only. */
   extraMcp?: McpServers;
-  /** Model, mode and effort override for this turn only. */
-  modelOverride?: { model?: string; modelMode?: string; effort?: string };
+  /** Model, mode, effort, and optional BYOK runtime override for this turn only. */
+  modelOverride?: {
+    model?: string;
+    modelMode?: string;
+    effort?: string;
+    runtime?: string;
+    byokProviderId?: string;
+    byokModelId?: string;
+  };
   /** Replaces the default [Checklist tool] block. */
   checklistBlock?: string;
   /** Appended to the system prompt. */
@@ -797,6 +807,9 @@ function withExtras(agent: db.AgentRow, extras: TurnExtras | undefined): db.Agen
   const o = extras.modelOverride;
   if (o?.modelMode) config.modelMode = o.modelMode;
   if (o?.effort) config.effort = o.effort;
+  if (o?.runtime) config.runtime = o.runtime;
+  if (o?.byokProviderId) config.byokProviderId = o.byokProviderId;
+  if (o?.byokModelId) config.byokModelId = o.byokModelId;
   return { ...agent, model: o?.model || agent.model, config };
 }
 
@@ -886,19 +899,6 @@ async function runAgentTurnInner(opts: {
   claimed.add(opts.agentId);
   liveTurns.set(opts.agentId, { assistantMessageId, win: opts.win });
 
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    const err =
-      'No Cursor API key saved. Open Settings, API Keys, paste the Cursor key, then try again.';
-    db.updateMessageContent(assistantMessageId, err);
-    db.updateAgent(opts.agentId, { lastSnippet: err.slice(0, 120) });
-    emit('chat:stream-error', { agentId: opts.agentId, messageId: assistantMessageId, error: err });
-    emit('chat:stream-done', { agentId: opts.agentId, messageId: assistantMessageId, content: err });
-    claimed.delete(opts.agentId);
-    liveTurns.delete(opts.agentId);
-    return { userMessageId, assistantMessageId, failed: true };
-  }
-
   const cwd = db.agentWorkspacePath(opts.agentId);
   try {
     const readme = path.join(cwd, 'README.md');
@@ -966,10 +966,14 @@ async function runAgentTurnInner(opts: {
     cwd
   );
 
+  const runtime = readAgentRuntime(agent.config);
   const hostSystemPrompt = buildHostSystemPrompt({
     agentName: agent.name,
     agentId: opts.agentId,
-    modelLabel: formatModelLabel(agent.model, agent.config),
+    modelLabel:
+      runtime === RUNTIME_BYOK
+        ? readByokModelId(agent.config)
+        : formatModelLabel(agent.model, agent.config),
     workspace: cwd,
     memoryDir: db.ensureMemoryDir(),
     skillsIndex: db.formatSkillsCatalog(),
@@ -999,6 +1003,62 @@ async function runAgentTurnInner(opts: {
   let customSystemPrompt = false;
   let lastActivity = Date.now();
   try {
+    if (runtime === RUNTIME_BYOK) {
+      const providerId = readByokProviderId(agent.config);
+      if (!providerId) {
+        assembled =
+          'Agent error: This agent is set to BYOK. Open agent settings, pick a provider from Settings → BYOK. Tokens stay in secrets.bin.';
+        db.updateMessageContent(assistantMessageId, assembled);
+        db.updateAgent(opts.agentId, { lastSnippet: assembled.slice(0, 120) });
+        emit('chat:stream-error', { agentId: opts.agentId, messageId: assistantMessageId, error: assembled });
+      } else {
+        const provider = getByokProvider(providerId);
+        assembled = packAssistantBody(`Contacting ${provider?.name || 'BYOK'}…`, '');
+        db.updateMessageContent(assistantMessageId, assembled);
+        emit('chat:stream-delta', {
+          agentId: opts.agentId,
+          messageId: assistantMessageId,
+          content: assembled,
+        });
+        const result = await runByokCompletion({
+          agentId: opts.agentId,
+          providerId,
+          modelId: pickByokModelId(readByokModelId(agent.config), provider?.models),
+          system: hostSystemPrompt,
+          user: turnPrompt,
+          images: imageParts,
+          mcpServers: mcpForTurn,
+          onDelta: (text) => {
+            assembled = packAssistantBody('', text);
+            db.updateMessageContent(assistantMessageId, assembled);
+            emit('chat:stream-delta', {
+              agentId: opts.agentId,
+              messageId: assistantMessageId,
+              content: assembled,
+            });
+          },
+          shouldStop: () => stopRequested.has(opts.agentId),
+        });
+        usage = result.usage;
+        if (result.error) {
+          assembled = `Agent error: ${result.error}`;
+          emit('chat:stream-error', { agentId: opts.agentId, messageId: assistantMessageId, error: assembled });
+        } else {
+          assembled = result.text.trim() || '(No response text from agent.)';
+        }
+        db.updateMessageContent(assistantMessageId, assembled);
+        db.patchMessageMeta(assistantMessageId, { ...(usage ? { usage } : {}) });
+        db.updateAgent(opts.agentId, { lastSnippet: assembled.slice(0, 120) });
+      }
+    } else {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      assembled =
+        'No Cursor API key saved. Open Settings, API Keys, paste the Cursor key, then try again.';
+      db.updateMessageContent(assistantMessageId, assembled);
+      db.updateAgent(opts.agentId, { lastSnippet: assembled.slice(0, 120) });
+      emit('chat:stream-error', { agentId: opts.agentId, messageId: assistantMessageId, error: assembled });
+    } else {
     let handle = await getHandle(agent, apiKey, cwd, undefined, extraDirs, extras?.extraMcp, mcpForTurn);
 
     const sendOnce = async (h: CursorAgent) => {
@@ -1440,6 +1500,8 @@ async function runAgentTurnInner(opts: {
           db.updateMessageContent(assistantMessageId, assembled);
         }
       }
+    }
+    }
     }
 
     if (stopRequested.has(opts.agentId)) {

@@ -21,6 +21,16 @@ import {
   type CatalogModel,
   type ModelMode,
 } from '../lib/modelOptions';
+import {
+  parseByokModels,
+  pickByokModelId,
+  readAgentRuntime,
+  readByokModelId,
+  readByokProviderId,
+  RUNTIME_BYOK,
+  RUNTIME_CURSOR,
+  type AgentRuntime,
+} from '../lib/byok';
 
 type SettingsTab = 'general' | 'routines' | 'workflows' | 'mcp';
 
@@ -55,6 +65,12 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
   const [models, setModels] = useState<CatalogModel[]>([]);
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
+  const [runtime, setRuntime] = useState<AgentRuntime>(RUNTIME_CURSOR);
+  const [byokProviderId, setByokProviderId] = useState('');
+  const [byokModelId, setByokModelId] = useState('');
+  const [byokProviders, setByokProviders] = useState<
+    Array<{ id: string; name: string; baseUrl: string; hasKey: boolean; models: string }>
+  >([]);
 
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [rName, setRName] = useState('');
@@ -112,6 +128,19 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
       .list()
       .then(setAllAgents)
       .catch(() => setAllAgents([]));
+    setRuntime(readAgentRuntime(agent.config));
+    const savedProviderId = readByokProviderId(agent.config);
+    const savedModelId = readByokModelId(agent.config);
+    setByokProviderId(savedProviderId);
+    setByokModelId(savedModelId);
+    void window.tecapi.secrets
+      .byokList()
+      .then((list) => {
+        setByokProviders(list);
+        const modelsRaw = list.find((p) => p.id === savedProviderId)?.models;
+        setByokModelId(pickByokModelId(savedModelId, modelsRaw));
+      })
+      .catch(() => setByokProviders([]));
     setLastMessages(readLastMessages(agent.config));
     setSoul(resolveAgentSoul(agent.instructions));
     setMcpJson(mcpJsonFromConfig(agent.config));
@@ -149,13 +178,16 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
         workflowOwnerAgentId: _oldOwnerAgent,
         ...keptConfig
       } = agent!.config || {};
-      const ownerOverride = normalizeSettings({
-        owner: {
-          model: ownerModel !== model ? ownerModel : undefined,
-          modelMode: ownerMode !== modelMode ? ownerMode : undefined,
-          effort: ownerEffort !== effort ? ownerEffort : undefined,
-        },
-      }).owner;
+      const ownerOverride =
+        runtime === RUNTIME_BYOK
+          ? undefined
+          : normalizeSettings({
+              owner: {
+                model: ownerModel !== model ? ownerModel : undefined,
+                modelMode: ownerMode !== modelMode ? ownerMode : undefined,
+                effort: ownerEffort !== effort ? ownerEffort : undefined,
+              },
+            }).owner;
       await window.tecapi.agents.update(agent!.id, {
         name: name.trim() || agent!.name,
         model: baseModelId(model.trim() || agent!.model),
@@ -163,6 +195,9 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
         instructions: soul.trim() ? soul : null,
         config: {
           ...keptConfig,
+          runtime,
+          byokProviderId,
+          byokModelId,
           modelMode,
           effort,
           lastMessages,
@@ -355,6 +390,59 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
                   </label>
                 </div>
               </div>
+              <label className="field">
+                <span>Runtime</span>
+                <select value={runtime} onChange={(e) => setRuntime(e.target.value as AgentRuntime)}>
+                  <option value={RUNTIME_CURSOR}>Cursor SDK</option>
+                  <option value={RUNTIME_BYOK}>BYOK</option>
+                </select>
+                <span className="hint">
+                  Cursor SDK is the default. BYOK uses a provider and token from Settings → BYOK (secrets.bin only).
+                </span>
+              </label>
+              {runtime === RUNTIME_BYOK ? (
+                <div className="field">
+                  <span>BYOK provider and model</span>
+                  <div className="byok-runtime-fields">
+                    <span>Provider</span>
+                    <select
+                      value={byokProviderId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setByokProviderId(id);
+                        setByokModelId(pickByokModelId(byokModelId, byokProviders.find((p) => p.id === id)?.models));
+                      }}
+                    >
+                      <option value="">Select provider</option>
+                      {byokProviders.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.hasKey ? '' : ' (no key)'}
+                        </option>
+                      ))}
+                    </select>
+                    <span>Model</span>
+                    <select value={byokModelId} onChange={(e) => setByokModelId(e.target.value)}>
+                      {(() => {
+                        const ids = parseByokModels(byokProviders.find((p) => p.id === byokProviderId)?.models);
+                        return ids.length ? (
+                          ids.map((id) => (
+                            <option key={id} value={id}>
+                              {id}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="">Add models in Settings → BYOK</option>
+                        );
+                      })()}
+                    </select>
+                  </div>
+                  <span className="hint">
+                    Runner and Owner both use this model. Edit the list in Settings → BYOK.
+                  </span>
+                </div>
+              ) : null}
+              {runtime === RUNTIME_BYOK ? null : (
               <div className="field">
                 <span>Model, mode and effort</span>
                 <div className="wf-overrides wf-overrides-general">
@@ -427,6 +515,7 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
                   Changing Runner does not change Owner. Fast, high, and max cost more.
                 </span>
               </div>
+              )}
               <label className="field">
                 <span>Last messages</span>
                 <input

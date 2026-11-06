@@ -3,6 +3,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import type { McpServers } from '../src/lib/mcpConfig';
 import { parseMcpJson } from '../src/lib/mcpConfig';
+import { handleMcpMessage, S, STR, type JsonRpcMessage, type JsonRpcReply } from '../src/lib/workflow/mcpProtocol';
 import * as db from './db';
 import { deleteEnvValue, getConnectors, getEnvMap, keepSecret, MASK, setConnectors } from './secrets';
 const CANVA_MCP_URL = 'https://mcp.canva.com/mcp';
@@ -745,6 +746,118 @@ function githubAccess(g: GithubGrant | undefined): string {
   return String(g?.accessToken || g?.token || '');
 }
 
+export async function githubRest(pathname: string, query?: Record<string, string>): Promise<unknown> {
+  const token = githubAccess(readStore().github);
+  if (!token) return { error: 'GitHub is not connected. Connect it in Settings → Connectors.' };
+  const path = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  const url = new URL(`https://api.github.com${path}`);
+  for (const [k, v] of Object.entries(query || {})) {
+    if (v) url.searchParams.set(k, v);
+  }
+  const res = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'TecAdRiseBot',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+    signal: AbortSignal.timeout(20_000),
+  });
+  const text = await res.text();
+  let body: unknown = text;
+  try {
+    body = JSON.parse(text) as unknown;
+  } catch {
+    /* keep text */
+  }
+  if (!res.ok) return { error: `GitHub ${res.status}`, body };
+  return body;
+}
+
+function githubMcpToken(): string {
+  const t = githubAccess(readStore().github);
+  return t ? crypto.createHash('sha256').update(`github-mcp:${t}`).digest('hex').slice(0, 32) : '';
+}
+
+function githubMcpTools() {
+  return [
+    {
+      name: 'me',
+      description:
+        'GitHub connector is ON. Returns the signed-in GitHub user. Call this for GitHub access. Do not say GitHub is disconnected.',
+      inputSchema: S({}),
+      run: () => githubRest('/user'),
+    },
+    {
+      name: 'list_repos',
+      description: 'List GitHub repositories for the connected account, recently pushed first.',
+      inputSchema: S({}),
+      run: () =>
+        githubRest('/user/repos', {
+          per_page: '20',
+          sort: 'pushed',
+          affiliation: 'owner,collaborator,organization_member',
+        }),
+    },
+    {
+      name: 'list_commits',
+      description: 'Recent commits on a repo. If owner/repo omitted, uses the most recently pushed repo.',
+      inputSchema: S({ owner: STR('Repo owner'), repo: STR('Repo name') }),
+      run: async (args: Record<string, unknown>) => {
+        let owner = String(args.owner || '').trim();
+        let repo = String(args.repo || '').trim();
+        if (!owner || !repo) {
+          const repos = (await githubRest('/user/repos', {
+            per_page: '1',
+            sort: 'pushed',
+            affiliation: 'owner,collaborator,organization_member',
+          })) as Array<{ owner?: { login?: string }; name?: string }>;
+          if (!Array.isArray(repos) || !repos[0]?.name) return { error: 'No repositories found' };
+          owner = String(repos[0].owner?.login || owner);
+          repo = String(repos[0].name);
+        }
+        const commits = await githubRest(
+          `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits`,
+          { per_page: '5' }
+        );
+        return { owner, repo, commits };
+      },
+    },
+    {
+      name: 'get_file',
+      description: 'Read a file from a GitHub repository.',
+      inputSchema: S(
+        { owner: STR('Repo owner'), repo: STR('Repo name'), path: STR('File path') },
+        ['owner', 'repo', 'path']
+      ),
+      run: (args: Record<string, unknown>) =>
+        githubRest(
+          `/repos/${encodeURIComponent(String(args.owner || ''))}/${encodeURIComponent(String(args.repo || ''))}/contents/${String(args.path || '').replace(/^\/+/, '')}`
+        ),
+    },
+  ];
+}
+
+export async function handleGithubMcp(token: string, body: unknown): Promise<{ replies: JsonRpcReply[] } | null> {
+  const expect = githubMcpToken();
+  if (!expect || !token || expect.length !== token.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(expect), Buffer.from(token))) return null;
+  const server = {
+    name: 'github',
+    version: '1.0.0',
+    instructions:
+      'GitHub is connected. Use me, list_repos, list_commits, get_file. Do not tell the user to open Settings.',
+    tools: githubMcpTools(),
+  };
+  const batch = Array.isArray(body) ? body : [body];
+  const replies: JsonRpcReply[] = [];
+  for (const msg of batch) {
+    const reply = await handleMcpMessage((msg || {}) as JsonRpcMessage, server);
+    if (reply) replies.push(reply);
+  }
+  return { replies };
+}
+
 export async function connectGithub(
   input: { clientId?: string; clientSecret?: string } = {}
 ): Promise<{ ok: boolean; error?: string }> {
@@ -1020,7 +1133,8 @@ export function setZohoMailMcp(fn: () => McpServers): void {
   zohoMailMcpFn = fn;
 }
 
-/** Global HTTP MCP from Connectors. Tokens stay here, not in MCP JSON. */
+/** Global HTTP MCP from Connectors. Tokens stay here, not in MCP JSON.
+ * Never add npx/stdio connectors. BYOK cannot attach those; ship HTTP like Zoho, AgentMail, GitHub. */
 export async function connectorMcpServers(): Promise<McpServers> {
   const out: McpServers = {};
   const token = await canvaAccessToken();
@@ -1034,11 +1148,10 @@ export async function connectorMcpServers(): Promise<McpServers> {
   Object.assign(out, zohoMailMcpFn());
   const ghTok = githubAccess(readStore().github);
   if (ghTok) {
+    const { getBaseUrl } = await import('./controlPlane');
     out.github = {
-      type: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-github'],
-      env: { GITHUB_PERSONAL_ACCESS_TOKEN: ghTok },
+      type: 'http',
+      url: `${getBaseUrl()}/mcp/github/${githubMcpToken()}`,
     };
   }
   const ctx = readStore().context;

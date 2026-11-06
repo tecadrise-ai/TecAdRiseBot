@@ -132,6 +132,11 @@ function normalizeRole(raw: unknown): RoleOverride | undefined {
   if (str(o.model)) out.model = str(o.model);
   if (str(o.modelMode) === 'fast' || str(o.modelMode) === 'usual') out.modelMode = str(o.modelMode);
   if (str(o.effort)) out.effort = str(o.effort).toLowerCase();
+  if (str(o.runtime) === 'byok') {
+    out.runtime = 'byok';
+    if (str(o.byokProviderId)) out.byokProviderId = str(o.byokProviderId);
+    if (str(o.byokModelId)) out.byokModelId = str(o.byokModelId);
+  }
   return Object.keys(out).length ? out : undefined;
 }
 

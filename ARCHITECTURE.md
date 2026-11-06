@@ -1,6 +1,6 @@
 # TecAdRiseBot architecture
 
-Local Windows Electron app. Named agents have chat, Soul, routines, workflows, and a workspace. Turns run on this PC through the Cursor SDK. One agent, one in-flight turn. Each chat or routine turn is a **new** SDK agent; the previous one is deleted. The UI keeps chat history. We do not reuse SDK sessions.
+Local Windows Electron app. Named agents have chat, Soul, routines, workflows, and a workspace. Turns run on this PC through the Cursor SDK, or BYOK (OpenAI-compatible provider). One agent, one in-flight turn. Each Cursor SDK chat or routine turn is a **new** SDK agent; the previous one is deleted. The UI keeps chat history. We do not reuse SDK sessions.
 
 **Host contract:** connected apps and catalog tools are available to every agent. Tool schemas are the capability list. Secrets stay in `secrets.bin`. The model never decrypts that file.
 
@@ -13,15 +13,15 @@ You / Routine / Interbot / Local API
         |  2. Fill MCP ${env:NAME} from secrets.bin
         |  3. SYSTEM.md + MEMORY.md + holdings paths + Soul
         v
-   Cursor SDK  -->  model
+   Cursor SDK or BYOK  -->  model
         v
    Workspace, memory wiki, skills, connectors
 ```
 
 ```
-User -> UI -> Main process -> Cursor SDK -> model
+User -> UI -> Main process -> Cursor SDK or BYOK -> model
               |- Scheduler: routines, workflow turns
-              |- Workflow MCP + tecadrise-host MCP on 127.0.0.1:8787
+              |- Workflow MCP + tecadrise-host MCP + HTTP connectors on 127.0.0.1:8787
               |- SQLite + App data: workspaces, memory, skills, secrets.bin
 ```
 
@@ -37,7 +37,8 @@ SYSTEM.md and MEMORY.md are inlined every turn. This file stays a Settings docum
 | --- | --- | --- |
 | API keys, SSH keys, tokens | `secrets.bin` (Settings → API Keys) | Host fills MCP `${env:NAME}`. `list_secret_names` returns names. HTTP `GET /api/secrets/:name` is 403. |
 | Cursor SDK key | same file, host-only | Never in the model. |
-| Connectors | Settings → Connectors | Bound every turn when the account is connected. Every agent can use them. |
+| BYOK provider keys | same file, Settings → BYOK | Host-decrypt only. Never git, Soul, Memory, or OS env. Connectors are HTTP, never npx. |
+| Connectors | Settings → Connectors | Bound every turn when the account is connected. Every agent can use them. HTTP MCP only. |
 | Extra MCP | Settings → MCP catalog | Bound every turn for every agent. Agent JSON is extra for that agent. |
 | Soul | agent `instructions` | In the host prompt. |
 | Shared facts | Memory directory | Path in the prompt. MEMORY.md (inlined) says how to use it. |

@@ -1,6 +1,7 @@
 import { safeStorage, app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 const SECRETS_FILE = 'secrets.bin';
 const OLD_KEY_FILE = 'cursor-api-key.bin';
@@ -18,10 +19,21 @@ const CONNECTOR_ENV_NAMES = new Set([
   'GITHUB_TOKEN',
 ]);
 
+export type ByokProviderSecret = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  /** Comma-separated OpenAI-compatible model ids. Not secret. */
+  models?: string;
+};
+
 export type SecretsBlob = {
   cursorApiKey?: string;
   env?: Record<string, string>;
   connectors?: Record<string, unknown>;
+  /** OpenAI-compatible providers. Keys never leave this file. */
+  byokProviders?: ByokProviderSecret[];
 };
 
 type Meta = {
@@ -98,6 +110,7 @@ function migrateInto(blob: SecretsBlob): { blob: SecretsBlob; dirty: boolean } {
     cursorApiKey: blob.cursorApiKey,
     env: { ...(blob.env || {}) },
     connectors: { ...(blob.connectors || {}) },
+    byokProviders: Array.isArray(blob.byokProviders) ? blob.byokProviders : [],
   };
   if (!next.cursorApiKey) {
     const old = readOldApiKey();
@@ -166,6 +179,7 @@ export function readSecrets(): SecretsBlob {
   }
   if (!blob.env) blob.env = {};
   if (!blob.connectors) blob.connectors = {};
+  if (!Array.isArray(blob.byokProviders)) blob.byokProviders = [];
   const migrated = migrateInto(blob);
   blob = migrated.blob;
   cache = blob;
@@ -184,6 +198,7 @@ export function writeSecrets(patch: Partial<SecretsBlob>): SecretsBlob {
     cursorApiKey: patch.cursorApiKey !== undefined ? patch.cursorApiKey : cur.cursorApiKey,
     env: patch.env !== undefined ? patch.env : { ...(cur.env || {}) },
     connectors: patch.connectors !== undefined ? patch.connectors : { ...(cur.connectors || {}) },
+    byokProviders: patch.byokProviders !== undefined ? patch.byokProviders : [...(cur.byokProviders || [])],
   };
   persist(next);
   return next;
@@ -312,4 +327,69 @@ export function writeMeta(patch: Partial<Meta>): Meta {
   const next = { ...readMeta(), ...patch };
   fs.writeFileSync(metaPath(), JSON.stringify(next, null, 2));
   return next;
+}
+
+function byokList(): ByokProviderSecret[] {
+  return [...(readSecrets().byokProviders || [])];
+}
+
+export function listByokPublic(): Array<{
+  id: string;
+  name: string;
+  baseUrl: string;
+  hasKey: boolean;
+  masked: string;
+  models: string;
+}> {
+  return byokList().map((p) => ({
+    id: p.id,
+    name: p.name,
+    baseUrl: p.baseUrl,
+    hasKey: Boolean(p.apiKey),
+    masked: p.apiKey ? MASK : '',
+    models: String(p.models || ''),
+  }));
+}
+
+export function getByokProvider(id: string): ByokProviderSecret | null {
+  return byokList().find((p) => p.id === id) || null;
+}
+
+export function upsertByokProvider(input: {
+  id?: string;
+  name: string;
+  baseUrl: string;
+  apiKey?: string;
+  models?: string;
+}): { ok: boolean; error?: string; id?: string } {
+  const name = String(input.name || '').trim();
+  const baseUrl = String(input.baseUrl || '').trim().replace(/\/+$/, '');
+  if (!name) return { ok: false, error: 'Provider name is required' };
+  if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, error: 'URL must start with http:// or https://' };
+  const list = byokList();
+  const id = String(input.id || '').trim() || crypto.randomUUID();
+  const prev = list.find((p) => p.id === id);
+  const keyIn = String(input.apiKey ?? '');
+  const apiKey = keepSecret(keyIn, prev?.apiKey);
+  if (!apiKey) return { ok: false, error: 'Paste the API key. It is stored only in secrets.bin.' };
+  const models =
+    input.models !== undefined
+      ? String(input.models || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .join(',')
+      : String(prev?.models || '');
+  const next: ByokProviderSecret = { id, name, baseUrl, apiKey, models };
+  writeSecrets({ byokProviders: prev ? list.map((p) => (p.id === id ? next : p)) : [...list, next] });
+  return { ok: true, id };
+}
+
+export function deleteByokProvider(id: string): { ok: true } {
+  writeSecrets({ byokProviders: byokList().filter((p) => p.id !== String(id || '')) });
+  return { ok: true };
+}
+
+export function revealByokKey(id: string): string {
+  return getByokProvider(id)?.apiKey || '';
 }

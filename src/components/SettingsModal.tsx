@@ -15,10 +15,12 @@ import {
   type LatestRelease,
   type UpdateStatus,
 } from '../lib/appUpdate';
+import { BYOK_PRESETS, HF_BYOK_NAME, HF_BYOK_URL } from '../lib/byok';
 
 type Tab =
   | 'general'
   | 'keys'
+  | 'byok'
   | 'architecture'
   | 'system'
   | 'memory'
@@ -1259,6 +1261,192 @@ function ApiKeysBody({
   );
 }
 
+function ByokBody() {
+  type Row = { id: string; name: string; baseUrl: string; hasKey: boolean; masked: string; models: string };
+  const [rows, setRows] = useState<Row[]>([]);
+  const [name, setName] = useState(HF_BYOK_NAME);
+  const [baseUrl, setBaseUrl] = useState(HF_BYOK_URL);
+  const [apiKey, setApiKey] = useState('');
+  const [modelsText, setModelsText] = useState('');
+  const [editId, setEditId] = useState('');
+  const [show, setShow] = useState(false);
+  const [status, setStatus] = useState('');
+
+  async function refresh() {
+    try {
+      const list = await window.tecapi.secrets.byokList();
+      setRows(list);
+      setEditId((cur) => cur || list[0]?.id || '');
+    } catch {
+      setRows([]);
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  function targetId(): string {
+    if (editId) return editId;
+    const hit = rows.find((r) => r.name === name && r.baseUrl.replace(/\/+$/, '') === baseUrl.replace(/\/+$/, ''));
+    return hit?.id || rows[0]?.id || '';
+  }
+
+  async function toggleShow() {
+    if (show) {
+      setShow(false);
+      setApiKey('');
+      return;
+    }
+    const id = targetId();
+    if (!id) {
+      setShow(true);
+      return;
+    }
+    const v = await window.tecapi.secrets.byokReveal(id);
+    setEditId(id);
+    setApiKey(v);
+    setShow(true);
+  }
+
+  async function save() {
+    const res = await window.tecapi.secrets.byokUpsert({
+      id: editId || undefined,
+      name,
+      baseUrl,
+      apiKey,
+      models: modelsText,
+    });
+    setStatus(res.ok ? 'Saved in secrets.bin only.' : res.error || 'Save failed');
+    if (res.ok) {
+      setApiKey('');
+      setShow(false);
+      setEditId(res.id || '');
+      await refresh();
+    }
+  }
+
+  return (
+    <section>
+      <h2>BYOK</h2>
+      <p className="hint">
+        OpenAI-compatible providers. The token is encrypted in this install&apos;s secrets.bin. It is never written to
+        Soul, Memory, git, or environment variables. Use a preset to fill Provider and Base URL, then paste the key.
+      </p>
+      <label className="field">
+        <span>Provider</span>
+        <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+      </label>
+      <label className="field">
+        <span>Base URL</span>
+        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} autoComplete="off" spellCheck={false} />
+      </label>
+      <label className="field">
+        <span>API key</span>
+        <div className="row">
+          <input
+            type={show ? 'text' : 'password'}
+            placeholder={editId && rows.find((r) => r.id === editId)?.hasKey ? SECRET_MASK : 'Paste token'}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button type="button" className="secondary" onClick={() => void toggleShow()}>
+            {show ? 'Hide' : 'Show'}
+          </button>
+          <button type="button" className="primary" onClick={() => void save()}>
+            Save
+          </button>
+        </div>
+      </label>
+      <label className="field">
+        <span>Models</span>
+        <input
+          value={modelsText}
+          onChange={(e) => setModelsText(e.target.value)}
+          placeholder="z-ai/glm-5.3-flash, moonshotai/kimi-k3.1-pro"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <span className="hint">Comma-separated model ids. These fill the agent Model dropdown for this provider.</span>
+      </label>
+      <div className="row byok-preset-row">
+        {BYOK_PRESETS.map((p) => (
+          <button
+            key={p.name}
+            type="button"
+            className="secondary"
+            onClick={() => {
+              setName(p.name);
+              setBaseUrl(p.baseUrl);
+              setEditId('');
+              setApiKey('');
+              setModelsText('');
+              setShow(false);
+            }}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+      {rows.length ? (
+        <table className="keys-table byok-providers-table">
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th>URL</th>
+              <th>Key</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td className="keys-name">{r.name}</td>
+                <td>{r.baseUrl}</td>
+                <td>{r.hasKey ? r.masked : '—'}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setEditId(r.id);
+                      setName(r.name);
+                      setBaseUrl(r.baseUrl);
+                      setApiKey('');
+                      setModelsText(r.models || '');
+                      setShow(false);
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() =>
+                      void (async () => {
+                        await window.tecapi.secrets.byokDelete(r.id);
+                        if (editId === r.id) setEditId('');
+                        await refresh();
+                      })()
+                    }
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="hint">No BYOK providers yet.</p>
+      )}
+      {status ? <p className={`status${status.toLowerCase().includes('fail') ? ' error' : ''}`}>{status}</p> : null}
+    </section>
+  );
+}
+
 function UpdatesBody({ localVersion }: { localVersion: string }) {
   const [latest, setLatest] = useState<LatestRelease | null>(null);
   const [error, setError] = useState('');
@@ -1480,9 +1668,9 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
 
   function saveModel() {
     return guarded(async () => {
-      await window.tecapi.settings.setModel(model);
-      setStatus(`Default model set to ${model}`);
-      await onRefresh();
+    await window.tecapi.settings.setModel(model);
+    setStatus(`Default model set to ${model}`);
+    await onRefresh();
     });
   }
 
@@ -1497,9 +1685,9 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
 
   function saveName() {
     return guarded(async () => {
-      await window.tecapi.settings.setAccountName(accountName.trim() || 'Local user');
-      await onRefresh();
-      setStatus('Account name updated.');
+    await window.tecapi.settings.setAccountName(accountName.trim() || 'Local user');
+    await onRefresh();
+    setStatus('Account name updated.');
     });
   }
 
@@ -1559,6 +1747,7 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
                 ['memory', 'System memory'],
                 ['mcp', 'MCP'],
                 ['keys', 'API Keys'],
+                ['byok', 'BYOK'],
                 ['connectors', 'Connectors'],
                 ['computer', 'Computer'],
                 ['usage', 'Usage & Billing'],
@@ -1640,6 +1829,7 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
             )}
 
             {tab === 'keys' && <ApiKeysBody settings={settings} onRefresh={onRefresh} />}
+            {tab === 'byok' && <ByokBody />}
 
             {tab === 'system' && (
               <section className="system-prompt-section">
@@ -1768,16 +1958,16 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
                   </span>
                 </label>
                 <div className="row">
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() =>
-                      settings?.userDataPath &&
-                      void window.tecapi.app.openPath(settings.userDataPath)
-                    }
-                  >
-                    Open data folder
-                  </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() =>
+                    settings?.userDataPath &&
+                    void window.tecapi.app.openPath(settings.userDataPath)
+                  }
+                >
+                  Open data folder
+                </button>
                   <button
                     type="button"
                     className="secondary"

@@ -343,6 +343,14 @@ function registerIpc() {
   ipcMain.handle('secrets:env-set', (_e, name: string, value: string) => secrets.setEnvValue(name, value));
   ipcMain.handle('secrets:env-delete', (_e, name: string) => secrets.deleteEnvValue(name));
   ipcMain.handle('secrets:reveal', (_e, name: string) => secrets.revealSecret(String(name || '')));
+  ipcMain.handle('secrets:byok-list', () => secrets.listByokPublic());
+  ipcMain.handle(
+    'secrets:byok-upsert',
+    (_e, input: { id?: string; name: string; baseUrl: string; apiKey?: string; models?: string }) =>
+      secrets.upsertByokProvider(input)
+  );
+  ipcMain.handle('secrets:byok-delete', (_e, id: string) => secrets.deleteByokProvider(String(id || '')));
+  ipcMain.handle('secrets:byok-reveal', (_e, id: string) => secrets.revealByokKey(String(id || '')));
   ipcMain.handle('settings:setModel', (_e, model: string) => {
     secrets.writeMeta({ selectedModel: model });
     for (const a of db.listAgents()) {

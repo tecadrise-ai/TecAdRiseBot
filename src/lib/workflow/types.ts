@@ -22,7 +22,14 @@ export type WorkflowDefinition = {
   steps: StepDef[];
 };
 
-export type RoleOverride = { model?: string; modelMode?: string; effort?: string };
+export type RoleOverride = {
+  model?: string;
+  modelMode?: string;
+  effort?: string;
+  runtime?: string;
+  byokProviderId?: string;
+  byokModelId?: string;
+};
 
 export type WorkflowSettings = {
   runner?: RoleOverride;

@@ -5,6 +5,7 @@ import * as cp from './controlPlane';
 import * as workflows from './workflows/service';
 import { handleHostMcp } from './hostMcp';
 import { handleZohoMcp } from './zohoMail';
+import { handleGithubMcp } from './connectors';
 
 let server: http.Server | null = null;
 let boundPort = 0;
@@ -87,12 +88,14 @@ async function handleMcpRoute(req: IncomingMessage, res: ServerResponse, method:
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
   let route: workflows.McpRoute | null = null;
   let zohoToken: string | null = null;
+  let githubToken: string | null = null;
   let host: { agentId: string; token: string } | null = null;
   if (parts.length === 4 && parts[1] === 'run') route = { kind: 'run', runId: parts[2], token: parts[3] };
   if (parts.length === 4 && parts[1] === 'owner') route = { kind: 'owner', agentId: parts[2], token: parts[3] };
   if (parts.length === 4 && parts[1] === 'host') host = { agentId: parts[2], token: parts[3] };
   if (parts.length === 3 && parts[1] === 'zoho') zohoToken = parts[2];
-  if (!route && !zohoToken && !host) {
+  if (parts.length === 3 && parts[1] === 'github') githubToken = parts[2];
+  if (!route && !zohoToken && !githubToken && !host) {
     notFound(res);
     return;
   }
@@ -121,9 +124,11 @@ async function handleMcpRoute(req: IncomingMessage, res: ServerResponse, method:
   }
   const out = zohoToken
     ? await handleZohoMcp(zohoToken, body)
-    : host
-      ? await handleHostMcp(host.agentId, host.token, body)
-      : await workflows.handleMcp(route!, body);
+    : githubToken
+      ? await handleGithubMcp(githubToken, body)
+      : host
+        ? await handleHostMcp(host.agentId, host.token, body)
+        : await workflows.handleMcp(route!, body);
   if (!out) {
     notFound(res);
     return;

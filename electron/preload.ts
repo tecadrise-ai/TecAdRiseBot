@@ -156,6 +156,18 @@ const api = {
     envDelete: (name: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('secrets:env-delete', name),
     reveal: (name: string): Promise<string> => ipcRenderer.invoke('secrets:reveal', name),
+    byokList: (): Promise<
+      Array<{ id: string; name: string; baseUrl: string; hasKey: boolean; masked: string; models: string }>
+    > => ipcRenderer.invoke('secrets:byok-list'),
+    byokUpsert: (input: {
+      id?: string;
+      name: string;
+      baseUrl: string;
+      apiKey?: string;
+      models?: string;
+    }): Promise<{ ok: boolean; error?: string; id?: string }> => ipcRenderer.invoke('secrets:byok-upsert', input),
+    byokDelete: (id: string): Promise<{ ok: true }> => ipcRenderer.invoke('secrets:byok-delete', id),
+    byokReveal: (id: string): Promise<string> => ipcRenderer.invoke('secrets:byok-reveal', id),
   },
   updates: {
     check: (): Promise<{

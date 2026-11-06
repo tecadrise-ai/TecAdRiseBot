@@ -17,6 +17,7 @@ import { handleMcpMessage, MAP, S, STR, type JsonRpcMessage, type JsonRpcReply, 
 import type { RoleOverride, Workflow, WorkflowRun } from '../../src/lib/workflow/types';
 import { ownerRoleOverride } from '../../src/lib/workflow/definition';
 import { baseModelId, formatModelLabel, readEffort, readModelMode } from '../../src/lib/modelOptions';
+import { byokRoleFromConfig } from '../../src/lib/byok';
 import { isRunActive } from '../../src/lib/workflow/types';
 import { isAgentBusy, runAgentTurn, setTurnAugmenter, type TurnExtras } from '../agentRunner';
 
@@ -633,10 +634,14 @@ function dispatch(run: WorkflowRun): void {
 function ownerOverride(run: WorkflowRun, wf: Workflow | null): RoleOverride | undefined {
   const runner = db.getAgent(run.runnerAgentId);
   if (!runner) return wf?.settings.owner;
+  const byok = byokRoleFromConfig(runner.config);
+  if (byok) return byok;
   return { ...runnerSettings(runner), ...wf?.settings.owner, ...ownerRoleOverride(runner.config) };
 }
 
 function runnerSettings(runner: db.AgentRow): RoleOverride {
+  const byok = byokRoleFromConfig(runner.config);
+  if (byok) return byok;
   return {
     model: baseModelId(runner.model),
     modelMode: readModelMode(runner.config, runner.model),
@@ -663,9 +668,10 @@ async function runTurn(run: WorkflowRun, role: 'runner' | 'review' | 'fix', wf: 
   if (role === 'runner') {
     const started = run.currentIndex === 0 && run.steps[0].attempts === 0 && !run.steps[0].result && run.idleTurns === 0;
     userText = runnerKickoff(run, engine.runnerView(run), started ? 'start' : 'resume');
+    const runnerAgent = db.getAgent(run.runnerAgentId);
     extras = {
       extraMcp: { [RUNNER_MCP_NAME]: { type: 'http', url: runnerUrl(run) } },
-      modelOverride: wf?.settings.runner,
+      modelOverride: byokRoleFromConfig(runnerAgent?.config) || wf?.settings.runner,
       checklistBlock: RUNNER_RULES,
       meta: { workflow: { runId: run.id, role } },
       noTodoSeed: true,

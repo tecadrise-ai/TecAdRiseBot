@@ -50,11 +50,11 @@
 
   <text class="col" x="600" y="48">Host binds, then writes the prompt</text>
   <rect x="410" y="58" width="380" height="510" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.6"/>
-  <text x="426" y="80" class="title">Host <tspan class="sub" font-weight="400">Electron + Cursor SDK</tspan></text>
+  <text x="426" y="80" class="title">Host <tspan class="sub" font-weight="400">Electron · Cursor SDK or BYOK</tspan></text>
 
   <text class="sect" x="426" y="102">BINDS · not in the prompt</text>
   <g class="blue">
-    <g data-tip="secrets.bin in App data. Host decrypts and fills MCP ${env:NAME}. list_secret_names returns names. Values never enter the model or the prompt.">
+    <g data-tip="secrets.bin in App data. Host decrypts Cursor key, BYOK provider keys, and MCP ${env:NAME}. list_secret_names returns names. Values never enter the model, git, Soul, or OS env.">
       <rect x="426" y="110" width="348" height="28" rx="6"/><text class="lname" x="440" y="129">secrets.bin</text><text class="ldesc" x="760" y="129">host-only values</text>
     </g>
     <g data-tip="Human architecture. Not inlined. Click to open. Agents load skill tecadrisebot when asked how the app works." data-doc="ARCHITECTURE.md">
@@ -62,11 +62,11 @@
     </g>
   </g>
   <g class="purple">
-    <g data-tip="Connected apps + MCP catalog for every agent, plus this agent's JSON and tecadrise-host. Bound as tools, not pasted as a name list.">
-      <rect x="426" y="174" width="348" height="28" rx="6"/><text class="lname" x="440" y="193">MCP shared</text><text class="ldesc" x="760" y="193">tool schemas</text>
+    <g data-tip="Connected apps + MCP catalog for every agent, plus this agent's JSON and tecadrise-host. HTTP connectors only, never npx. Bound as tools, not pasted as a name list.">
+      <rect x="426" y="174" width="348" height="28" rx="6"/><text class="lname" x="440" y="193">MCP shared</text><text class="ldesc" x="760" y="193">HTTP tools</text>
     </g>
-    <g data-tip="Cursor SDK builtins plus bound MCP. Schemas are billed by the SDK. If a tool is not in the list, the agent does not have it.">
-      <rect x="426" y="206" width="348" height="28" rx="6"/><text class="lname" x="440" y="225">SDK + bound tools</text><text class="ldesc" x="760" y="225">schemas billed</text>
+    <g data-tip="Agent gear Runtime: Cursor SDK (default) or BYOK. BYOK uses a provider and token from Settings → BYOK in secrets.bin. Same host prompt and HTTP connectors either way.">
+      <rect x="426" y="206" width="348" height="28" rx="6"/><text class="lname" x="440" y="225">Cursor SDK or BYOK</text><text class="ldesc" x="760" y="225">this agent</text>
     </g>
   </g>
 
@@ -121,12 +121,12 @@
     <rect class="card" x="870" y="238" width="290" height="72" rx="12"/>
     <text class="title" x="890" y="266">Workflows</text><text class="sub" x="890" y="290">Runner runs, Owner fixes</text>
   </g>
-  <g data-tip="Settings → Connectors. Attached on every work turn when connected. Every agent can use them. Off: show_connector opens this pane.">
+  <g data-tip="Settings → Connectors. HTTP MCP only, never npx. Attached on every work turn when connected. Every agent can use them. Off: show_connector opens this pane.">
     <rect class="card" x="870" y="322" width="290" height="72" rx="12"/>
-    <text class="title" x="890" y="350">Connectors</text><text class="sub" x="890" y="374">all agents · or Connect UI</text>
+    <text class="title" x="890" y="350">Connectors</text><text class="sub" x="890" y="374">HTTP · all agents</text>
   </g>
-  <g data-tip="Settings → API Keys. Host decrypts. Names via list_secret_names. GET /api/secrets/:name is 403. Cursor key is host-only.">
+  <g data-tip="Settings → API Keys and Settings → BYOK. Host decrypts. Names via list_secret_names. GET /api/secrets/:name is 403. Cursor key and BYOK tokens are host-only.">
     <rect class="card" x="870" y="406" width="290" height="72" rx="12"/>
-    <text class="title" x="890" y="434">secrets.bin</text><text class="sub" x="890" y="458">host fills MCP env</text>
+    <text class="title" x="890" y="434">secrets.bin</text><text class="sub" x="890" y="458">keys, BYOK, MCP env</text>
   </g>
 </svg>

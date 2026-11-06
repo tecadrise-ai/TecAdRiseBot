@@ -1264,8 +1264,8 @@ function ApiKeysBody({
 function ByokBody() {
   type Row = { id: string; name: string; baseUrl: string; hasKey: boolean; masked: string; models: string };
   const [rows, setRows] = useState<Row[]>([]);
-  const [name, setName] = useState(HF_BYOK_NAME);
-  const [baseUrl, setBaseUrl] = useState(HF_BYOK_URL);
+  const [name, setName] = useState<string>(HF_BYOK_NAME);
+  const [baseUrl, setBaseUrl] = useState<string>(HF_BYOK_URL);
   const [apiKey, setApiKey] = useState('');
   const [modelsText, setModelsText] = useState('');
   const [editId, setEditId] = useState('');

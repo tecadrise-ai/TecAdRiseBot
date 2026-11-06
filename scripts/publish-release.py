@@ -200,8 +200,13 @@ def main() -> None:
         tmp_json = f"{REMOTE_DIR}/latest.json.part"
         sftp.putfo(io.BytesIO((json.dumps(payload, indent=2) + "\n").encode("utf-8")), tmp_json)
         ssh(client, f"mv {tmp_json} {REMOTE_DIR}/latest.json")
+        ssh(
+            client,
+            f"ln -sfn {remote_exe} {REMOTE_DIR}/TecAdRiseBot-Setup-win64.exe",
+        )
         sftp.close()
         print("Published", payload["setupUrl"])
+        print("win64", f"{PUBLIC_BASE}/TecAdRiseBot-Setup-win64.exe")
         print("latest.json", f"{PUBLIC_BASE}/latest.json")
     finally:
         client.close()

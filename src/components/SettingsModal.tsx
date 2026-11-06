@@ -7,6 +7,14 @@ import workflowsSvg from '../assets/workflows.svg?raw';
 import todosSvg from '../assets/todos.svg?raw';
 import { EMPTY_MCP_JSON } from '../lib/mcpConfig';
 import { fmtTok } from '../lib/usage';
+import {
+  GITHUB_REPO_URL,
+  PRODUCT_PAGE_URL,
+  githubTreeUrl,
+  statusFor,
+  type LatestRelease,
+  type UpdateStatus,
+} from '../lib/appUpdate';
 
 type Tab =
   | 'general'
@@ -1251,6 +1259,126 @@ function ApiKeysBody({
   );
 }
 
+function UpdatesBody({ localVersion }: { localVersion: string }) {
+  const [latest, setLatest] = useState<LatestRelease | null>(null);
+  const [error, setError] = useState('');
+  const [status, setStatus] = useState<UpdateStatus>('loading');
+
+  function applyCheck(r: { ok: boolean; latest: LatestRelease | null; error?: string }) {
+    setLatest(r.latest);
+    setError(r.ok ? '' : r.error || 'Could not reach tecadrise.ai');
+    setStatus(statusFor(localVersion, r.latest, !r.ok));
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus('loading');
+    void window.tecapi.updates
+      .check()
+      .then((r) => {
+        if (!cancelled) applyCheck(r);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setLatest(null);
+          setError(e instanceof Error ? e.message : 'Could not reach tecadrise.ai');
+          setStatus('error');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [localVersion]);
+
+  const headline =
+    status === 'loading'
+      ? 'Checking tecadrise.ai for the latest installer…'
+      : status === 'available'
+        ? `Version ${latest?.version} is available.`
+        : status === 'current'
+          ? 'You are on the latest published installer.'
+          : status === 'ahead'
+            ? 'This build is newer than the installer on tecadrise.ai.'
+            : 'Could not check for updates.';
+
+  return (
+    <section>
+      <h2>Updates</h2>
+      <p className="lede">This app is {localVersion || 'unknown'}.</p>
+      <div className={`update-card update-${status}`}>
+        <p className="update-headline">{headline}</p>
+        {latest ? (
+          <>
+            <p className="hint">
+              Published {latest.version}
+              {latest.gitTag ? ` (${latest.gitTag})` : ''}
+              {latest.releasedAt ? ` · ${latest.releasedAt.slice(0, 10)}` : ''}. GitHub commit must match this
+              installer.
+            </p>
+            {latest.sha256 ? <p className="sha-line">SHA-256 {latest.sha256}</p> : null}
+          </>
+        ) : null}
+        {error ? <p className="status error">{error}</p> : null}
+        <div className="update-actions">
+          {latest?.setupUrl ? (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void window.tecapi.app.openExternal(latest.setupUrl)}
+            >
+              Download installer
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void window.tecapi.app.openExternal(latest ? githubTreeUrl(latest) : GITHUB_REPO_URL)}
+          >
+            GitHub at this version
+          </button>
+          <button type="button" onClick={() => void window.tecapi.app.openExternal(PRODUCT_PAGE_URL)}>
+            Product page
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStatus('loading');
+              void window.tecapi.updates.check().then(applyCheck);
+            }}
+          >
+            Check again
+          </button>
+        </div>
+      </div>
+      <p className="hint">
+        Auto-install inside the app is not wired. Download the Setup exe from tecadrise.ai. The file on the site and
+        the git tag on GitHub are published together.
+      </p>
+      <p className="hint powered-by">
+        Powered by:{' '}
+        <a
+          href="https://tecadrise.ai"
+          onClick={(e) => {
+            e.preventDefault();
+            void window.tecapi.app.openExternal('https://tecadrise.ai');
+          }}
+        >
+          https://tecadrise.ai
+        </a>
+        , we do web development, coding and AI automations, need help? Contact us:{' '}
+        <a
+          href="mailto:info@tecadrise.ai"
+          onClick={(e) => {
+            e.preventDefault();
+            void window.tecapi.app.openExternal('mailto:info@tecadrise.ai');
+          }}
+        >
+          info@tecadrise.ai
+        </a>
+      </p>
+    </section>
+  );
+}
+
 type Props = {
   open: boolean;
   initialTab?: Tab;
@@ -1718,35 +1846,7 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
 
             {tab === 'usage' && <UsageBillingBody />}
 
-            {tab === 'updates' && (
-              <section>
-                <h2>Updates</h2>
-                <p className="lede">Version {settings?.version ?? '0.1.0'} (MVP).</p>
-                <p className="hint">Auto-update is not wired yet. Pull the latest project and rebuild.</p>
-                <p className="hint powered-by">
-                  Powered by:{' '}
-                  <a
-                    href="https://tecadrise.ai"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      void window.tecapi.app.openExternal('https://tecadrise.ai');
-                    }}
-                  >
-                    https://tecadrise.ai
-                  </a>
-                  , we do web development, coding and AI automations, need help? Contact us:{' '}
-                  <a
-                    href="mailto:info@tecadrise.ai"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      void window.tecapi.app.openExternal('mailto:info@tecadrise.ai');
-                    }}
-                  >
-                    info@tecadrise.ai
-                  </a>
-                </p>
-              </section>
-            )}
+            {tab === 'updates' && <UpdatesBody localVersion={settings?.version ?? ''} />}
           </div>
         </div>
       </div>

@@ -1,48 +1,78 @@
 # TecAdRiseBot — release and build
 
-Ship **binaries**, not a GitHub clone. The installer name, zip name, and Windows ProductVersion all come from **`package.json` `"version"`**. Never reuse a version that already left this folder.
+The Setup.exe, GitHub `master` + tag, and `https://tecadrise.ai/downloads/tecadrisebot/latest.json` must be the **same commit**. Never reuse a version that already left this folder. Do not upload an exe if git is dirty or the tag is on another commit.
 
 | Current | Value |
 | --- | --- |
 | Product | TecAdRiseBot |
-| Version in git | **0.1.2** (`package.json`) |
+| Version in git | **0.1.3** (`package.json`) |
 | Repo | `C:\TecAdRise\projects-git\TecAdRiseBot` |
 | Remote | `https://github.com/tecadrise-ai/TecAdRiseBot.git` |
 | Branch | `master` |
 | Commit prefix | `V02:` |
-| This folder | `C:\TecAdRise\tecadrise-bot-release\` |
+| Binaries folder | `C:\TecAdRise\tecadrise-bot-release\` |
+| Public latest | `https://tecadrise.ai/downloads/tecadrisebot/latest.json` |
+| Public Setup | `https://tecadrise.ai/downloads/tecadrisebot/TecAdRiseBot-Setup-<version>.exe` |
+| Product page | `https://tecadrise.ai/products/tecadrisebot` |
 | App id | `com.tecadrise.bot` |
 
-Dev work stays `npm run dev` (Vite 5173, API 8787). Do not use a packaged exe to iterate.
+Dev work stays `npm run dev`. Do not iterate on a packaged exe.
 
 ---
 
-## Version control (do this first)
+## Version control (required before any exe)
 
-1. Working tree **clean**. `git status` empty except the files for this release.
-2. **Bump** `"version"` in `package.json` (semver).  
-   - Patch (icon, installer, small fix): `0.1.2` → `0.1.3`  
-   - Behaviour users will notice: `0.2.0`  
-   If `TecAdRiseBot Setup 0.1.2.exe` already exists here, **do not build 0.1.2 again**.
-3. Commit on `master` with prefix **`V02:`** and the version in the subject, for example:  
-   `V02: 0.1.3 — …`
-4. **Tag** the same commit (annotated):
+1. Working tree **clean**.
+2. **Bump** `"version"` in `package.json`. If `TecAdRiseBot Setup 0.1.3.exe` already exists, do not build 0.1.3 again.
+3. Commit on `master`: `V02: 0.1.x — …`
+4. **Annotated tag on that commit:**
 
 ```bat
 git tag -a v0.1.3 -m "TecAdRiseBot 0.1.3"
+```
+
+5. Publish script pushes `master` and the tag, then uploads. If you build by hand, push both **before** you copy the exe anywhere:
+
+```bat
 git push origin master
 git push origin v0.1.3
 ```
 
-5. Build **after** the version commit exists. The exe must match git. Do not stamp a new exe on an unpushed bump.
+The Settings → Updates check reads `latest.json` (`version`, `gitCommit`, `sha256`, `setupUrl`). GitHub at `gitCommit` must be this release.
 
 ---
 
-## Windows build
+## One command (preferred)
 
-Node **≥ 22.13**. Close TecAdRiseBot and anything locking `win-unpacked` (Explorer preview, Double Commander in that dir). A lock on `release\win-unpacked.tmp` is `EPERM`.
+From a clean `master` with `package.json` version matching tag `v<version>` at HEAD:
 
-Default `npm run dist` writes to the repo `release\` folder and often fails when that folder is open. **Write here instead:**
+```bat
+cd /d C:\TecAdRise\projects-git\TecAdRiseBot
+python scripts/publish-release.py
+```
+
+That script:
+
+1. Refuses dirty git, wrong branch, or a tag that is not HEAD
+2. `git push origin master` and `git push origin v<version>`
+3. Builds NSIS + unpacked dir into `C:\TecAdRise\tecadrise-bot-release\`
+4. SHA-256 of the Setup exe
+5. Uploads `TecAdRiseBot-Setup-<version>.exe`, `.sha256`, and `latest.json` to the VPS path `/var/www/TecAdRise/downloads/tecadrisebot/` (outside the website `client/build`, so a site rebuild does not delete it)
+6. Ensures nginx serves `/downloads/tecadrisebot/`
+
+VPS login is **not** in this repo. It uses `TECADRISE_VPS_PASSWORD` or the same host/user/password assignments as `website2026/python/commit_and_deploy_vps.py` on this PC. `pip install paramiko`.
+
+Already built:
+
+```bat
+python scripts/publish-release.py --skip-build --exe "C:\TecAdRise\tecadrise-bot-release\TecAdRiseBot Setup 0.1.3.exe"
+```
+
+---
+
+## Manual Windows build
+
+Node **≥ 22.13**. Close TecAdRiseBot and anything locking `win-unpacked`. Default `npm run dist` writes `release\` in the repo and can `EPERM`.
 
 ```bat
 cd /d C:\TecAdRise\projects-git\TecAdRiseBot
@@ -50,14 +80,7 @@ npm run build
 npx electron-builder --win nsis dir --config.directories.output=C:/TecAdRise/tecadrise-bot-release
 ```
 
-That produces:
-
-- `TecAdRiseBot Setup 0.1.x.exe` — NSIS installer (what you copy to another PC)
-- `TecAdRiseBot Setup 0.1.x.exe.blockmap` — updater map, keep next to the Setup
-- `latest.yml` — electron-builder metadata
-- `win-unpacked\` — portable tree (`TecAdRiseBot.exe`)
-
-Zip the unpacked tree so the zip name matches the version:
+Zip:
 
 ```powershell
 $ver = (Get-Content C:\TecAdRise\projects-git\TecAdRiseBot\package.json | ConvertFrom-Json).version
@@ -65,42 +88,30 @@ $out = "C:\TecAdRise\tecadrise-bot-release"
 Compress-Archive -Path "$out\win-unpacked\*" -DestinationPath "$out\TecAdRiseBot-$ver-win-unpacked.zip" -Force
 ```
 
-Leave older `Setup 0.1.0.exe` / `0.1.1.exe` in place. Do not overwrite them.
+Leave older Setup files in place.
 
 ---
 
-## Icon (do not skip)
+## Icon
 
-Windows cannot show a **PNG-only** `.ico` on the Setup file, and cannot load a taskbar icon from **inside `app.asar`**.
-
-- Source icon: `resources/tecadrisebot-v2.ico` — classic **BMP/DIB** sizes (16–256). Rebuild with `python scripts/write-win-ico.py` if someone saves a PNG ico again.
-- `build.win.icon` and `build.nsis.installerIcon` / `uninstallerIcon` / `installerHeaderIcon` must point at that file.
-- `extraResources` copies it to `win-unpacked\resources\tecadrisebot-v2.ico` (next to the asar, not inside it).
-
-Check before you copy the build off this PC:
-
-- Double Commander / Explorer: **Setup 0.1.x.exe** shows the orange TecAdRise mark (refresh F2).
-- `win-unpacked\TecAdRiseBot.exe` shows the same mark.
-- `win-unpacked\resources\tecadrisebot-v2.ico` exists.
-- After install: taskbar + Start shortcut. If the old blank icon sticks, unpin, delete `%APPDATA%\Microsoft\Windows\Start Menu\Programs\TecAdRiseBot.lnk`, reinstall, pin again.
+- `resources/tecadrisebot-v2.ico` must be classic **BMP/DIB** (not PNG-only). Rebuild: `python scripts/write-win-ico.py`
+- `extraResources` copies it next to the asar as `resources/tecadrisebot-v2.ico`
 
 ---
 
-## What to give another PC
+## Website product page
 
-1. `TecAdRiseBot Setup <version>.exe`  
-   or `TecAdRiseBot-<version>-win-unpacked.zip`
-2. Do **not** send the git repo as the product.
-3. User data stays in `%APPDATA%\TecAdRiseBot` (`secrets.bin`, chats). Installing a new version does not replace that folder.
+The React page fetches `latest.json` for the Download button. After changing `website2026/src/pages/ProductsTecAdRiseBot.js`, deploy the **site** with `python C:\TecAdRise\website2026\python\commit_and_deploy_vps.py`. That deploy must **not** overwrite `/var/www/TecAdRise/downloads/`.
 
 ---
 
 ## Checklist
 
-- [ ] `package.json` version is **new** (no Setup file with that number already)
+- [ ] New `package.json` version
 - [ ] Commit `V02: <version> — …` on `master`
-- [ ] Tag `v<version>` and `git push` branch + tag
-- [ ] `electron-builder` output is this folder, not a locked `release\`
-- [ ] Setup.exe, `TecAdRiseBot.exe`, and `resources\tecadrisebot-v2.ico` all branded
-- [ ] Zip named with the **same** version
-- [ ] Copy **only** the new Setup/zip to the other machine
+- [ ] Tag `v<version>` **on that commit**
+- [ ] `python scripts/publish-release.py` (push + build + SHA-256 + VPS)
+- [ ] `https://tecadrise.ai/downloads/tecadrisebot/latest.json` version, `gitCommit`, `sha256` match the tag
+- [ ] GitHub `tree/<gitCommit>` is this source
+- [ ] Settings → Updates shows the new version
+- [ ] Product page Download matches the same file

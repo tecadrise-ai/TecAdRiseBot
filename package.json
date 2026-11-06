@@ -1,7 +1,7 @@
 {
   "name": "tecadrise-bot",
   "productName": "TecAdRiseBot",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "TecAdRiseBot - a free open-source alternative to Grok Bot.",
   "main": "dist-electron/main.js",
   "author": "TecAdRise",
@@ -12,7 +12,8 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --no-warnings --test src/lib/workflow/workflow.test.ts src/lib/sidebarSections.test.ts src/lib/rewriteChatImages.test.ts src/lib/promptHost.test.ts src/lib/assistantBody.test.ts src/lib/usedHoldings.test.ts electron/workflows/checks.test.ts",
+    "test": "node --experimental-strip-types --no-warnings --test src/lib/workflow/workflow.test.ts src/lib/sidebarSections.test.ts src/lib/rewriteChatImages.test.ts src/lib/promptHost.test.ts src/lib/assistantBody.test.ts src/lib/usedHoldings.test.ts src/lib/appUpdate.test.ts electron/workflows/checks.test.ts",
+    "publish-release": "python scripts/publish-release.py",
     "postinstall": "electron-builder install-app-deps || true",
     "stamp-icon": "node scripts/stamp-dev-icon.mjs",
     "dist": "npm run build && electron-builder --win nsis dir"

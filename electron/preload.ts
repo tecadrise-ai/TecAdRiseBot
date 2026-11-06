@@ -157,6 +157,23 @@ const api = {
       ipcRenderer.invoke('secrets:env-delete', name),
     reveal: (name: string): Promise<string> => ipcRenderer.invoke('secrets:reveal', name),
   },
+  updates: {
+    check: (): Promise<{
+      ok: boolean;
+      localVersion: string;
+      latest: {
+        name: string;
+        version: string;
+        gitTag: string;
+        gitCommit: string;
+        gitRepo: string;
+        setupUrl: string;
+        sha256: string;
+        releasedAt: string;
+      } | null;
+      error?: string;
+    }> => ipcRenderer.invoke('updates:check'),
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     setApiKey: (key: string) => ipcRenderer.invoke('settings:setApiKey', key),

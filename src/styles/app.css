@@ -1025,6 +1025,40 @@
   text-decoration: underline;
 }
 
+.update-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+  margin: 12px 0 16px;
+  background: var(--bg-sidebar);
+}
+.update-card.update-available {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+.update-card.update-current {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+}
+.update-headline {
+  margin: 0 0 8px;
+  font-weight: 650;
+  color: var(--text);
+}
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.sha-line {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--text-secondary);
+  margin: 6px 0 0;
+}
+
 .small-modal,
 .medium-modal {
   padding: 22px 24px 18px;

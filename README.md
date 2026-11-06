@@ -141,8 +141,9 @@ curl -X PATCH http://127.0.0.1:8787/api/agents/<AGENT_ID> `
 - `npm run dev` : Electron + Vite
 - `npm run build` : typecheck + production build
 - `npm run dist` : Windows NSIS + unpacked dir (default output `release\`; see [docs/RELEASE.md](docs/RELEASE.md))
+- `python scripts/publish-release.py` : push git tag, build, SHA-256, upload exe to tecadrise.ai
 
-Windows shipping (version bump, git tag, installer icon, output folder): [docs/RELEASE.md](docs/RELEASE.md). Binaries are written to `C:\TecAdRise\tecadrise-bot-release\`.
+Windows shipping (version bump, **git tag must match the exe**, installer on the VPS): [docs/RELEASE.md](docs/RELEASE.md). Settings → Updates reads `https://tecadrise.ai/downloads/tecadrisebot/latest.json`.
 
 ## Security
 

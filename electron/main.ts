@@ -36,6 +36,7 @@ import { configureHostMcp } from './hostMcp';
 import { handleChatImages, registerChatImageScheme } from './chatImages';
 import { cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 import { APP_USER_MODEL_ID, APP_DISPLAY_NAME, appIconPath, ensureWindowsToastIdentity } from './notify';
+import { fetchLatestRelease } from './appUpdate';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -330,6 +331,7 @@ function registerIpc() {
       missedGraceMinutes: db.getMissedGraceMinutes(),
     };
   });
+  ipcMain.handle('updates:check', () => fetchLatestRelease(app.getVersion()));
   ipcMain.handle('settings:setMissedGraceMinutes', (_e, min: number) => db.setMissedGraceMinutes(min));
 
   ipcMain.handle('settings:setApiKey', (_e, apiKey: string) => secrets.saveApiKey(apiKey.trim()));

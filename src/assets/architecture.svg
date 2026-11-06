@@ -7,6 +7,7 @@
     .arrow { fill: none; stroke: #6b6b70; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .lname { font-size: 13px; }
     .ldesc { font-size: 12px; text-anchor: end; }
+    .sect { font-size: 12px; font-weight: 600; fill: #6b6b70; letter-spacing: 0.02em; }
     .blue rect { fill: #dbe6fd; } .blue text { fill: #1e3a8a; }
     .purple rect { fill: #e8e6fb; } .purple text { fill: #4c3f91; }
     .orange rect { fill: #fbdccc; } .orange text { fill: #9a3412; }
@@ -34,7 +35,7 @@
     <rect class="card" x="40" y="154" width="290" height="72" rx="12"/>
     <text class="title" x="60" y="182">Routine</text><text class="sub" x="60" y="206">Schedule, workflow</text>
   </g>
-  <g data-tip="Host tool message_agent. Target must be idle. Do not curl the control plane for this.">
+  <g data-tip="Host tool message_agent. Waits for { reply }. Target must be idle. Do not curl.">
     <rect class="card" x="40" y="238" width="290" height="72" rx="12"/>
     <text class="title" x="60" y="266">Other agent</text><text class="sub" x="60" y="290">message_agent</text>
   </g>
@@ -47,59 +48,62 @@
 
   <path class="arrow" d="M348 250 H392 M384 242 L393 250 L384 258"/>
 
-  <text class="col" x="600" y="48">Host binds this agent’s holdings</text>
-  <rect x="410" y="58" width="380" height="554" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.6"/>
-  <g data-tip="Named agent. Prompt is identity + Soul + holdings. Tools are already bound.">
-    <rect x="420" y="64" width="360" height="24" fill="transparent"/>
-    <text x="426" y="82" class="title">Host <tspan class="sub" font-weight="400">Electron + Cursor SDK</tspan></text>
+  <text class="col" x="600" y="48">Host binds, then writes the prompt</text>
+  <rect x="410" y="58" width="380" height="510" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.6"/>
+  <text x="426" y="80" class="title">Host <tspan class="sub" font-weight="400">Electron + Cursor SDK</tspan></text>
+
+  <text class="sect" x="426" y="102">BINDS · not in the prompt</text>
+  <g class="blue">
+    <g data-tip="secrets.bin in App data. Host decrypts and fills MCP ${env:NAME}. list_secret_names returns names. Values never enter the model or the prompt.">
+      <rect x="426" y="110" width="348" height="28" rx="6"/><text class="lname" x="440" y="129">secrets.bin</text><text class="ldesc" x="760" y="129">host-only values</text>
+    </g>
+    <g data-tip="Human architecture. Not inlined. Click to open. Agents load skill tecadrisebot when asked how the app works." data-doc="ARCHITECTURE.md">
+      <rect x="426" y="142" width="348" height="28" rx="6"/><text class="lname" x="440" y="161">ARCHITECTURE.md</text><text class="ldesc" x="760" y="161">human docs</text>
+    </g>
+  </g>
+  <g class="purple">
+    <g data-tip="Connected apps + MCP catalog for every agent, plus this agent's JSON and tecadrise-host. Bound as tools, not pasted as a name list.">
+      <rect x="426" y="174" width="348" height="28" rx="6"/><text class="lname" x="440" y="193">MCP shared</text><text class="ldesc" x="760" y="193">tool schemas</text>
+    </g>
+    <g data-tip="Cursor SDK builtins plus bound MCP. Schemas are billed by the SDK. If a tool is not in the list, the agent does not have it.">
+      <rect x="426" y="206" width="348" height="28" rx="6"/><text class="lname" x="440" y="225">SDK + bound tools</text><text class="ldesc" x="760" y="225">schemas billed</text>
+    </g>
   </g>
 
+  <text class="sect" x="426" y="258">IN THE AGENT PROMPT</text>
+
   <g class="blue">
-    <g data-tip="Short identity: you are this agent in TecAdRiseBot, workspace path, write only here. Not ARCHITECTURE.md and not an [App] dump.">
-      <rect x="426" y="92" width="348" height="32" rx="7"/><text class="lname" x="440" y="113">Identity</text><text class="ldesc" x="760" y="113">holdings prompt</text>
+    <g data-tip="Global system prompt (SYSTEM.md). Inlined every turn. Click to open." data-doc="SYSTEM.md">
+      <rect x="426" y="268" width="348" height="28" rx="6"/><text class="lname" x="440" y="287">SYSTEM.md</text><text class="ldesc" x="760" y="287">full text</text>
     </g>
-    <g data-tip="secrets.bin in App data. Host decrypts and fills MCP ${env:NAME}. list_secret_names returns names. Values never enter the model.">
-      <rect x="426" y="128" width="348" height="32" rx="7"/><text class="lname" x="440" y="149">secrets.bin</text><text class="ldesc" x="760" y="149">host-only values</text>
+    <g data-tip="How to use shared vs private memory (MEMORY.md). Inlined every turn. Click to open." data-doc="MEMORY.md">
+      <rect x="426" y="300" width="348" height="28" rx="6"/><text class="lname" x="440" y="319">MEMORY.md</text><text class="ldesc" x="760" y="319">full text</text>
     </g>
-    <g data-tip="Global system prompt. Inlined every turn. Click to open." data-doc="SYSTEM.md">
-      <rect x="426" y="164" width="348" height="32" rx="7"/><text class="lname" x="440" y="185">SYSTEM.md</text><text class="ldesc" x="760" y="185">inlined every turn</text>
+    <g data-tip="You are this agent (name, id, model). Live workspace path and shared memory directory path.">
+      <rect x="426" y="332" width="348" height="28" rx="6"/><text class="lname" x="440" y="351">Identity + paths</text><text class="ldesc" x="760" y="351">this install</text>
     </g>
-    <g data-tip="Human Settings document for shared vs private memory. Click to open." data-doc="MEMORY.md">
-      <rect x="426" y="200" width="348" height="32" rx="7"/><text class="lname" x="440" y="221">MEMORY.md</text><text class="ldesc" x="760" y="221">Settings, not prompt</text>
-    </g>
-    <g data-tip="Human architecture. Click to open. Agents load skill tecadrisebot when asked how the app works." data-doc="ARCHITECTURE.md">
-      <rect x="426" y="236" width="348" height="32" rx="7"/><text class="lname" x="440" y="257">ARCHITECTURE.md</text><text class="ldesc" x="760" y="257">human docs</text>
-    </g>
-    <g data-tip="Todo spelling only if those tools exist. Workflow turns replace this with step rules.">
-      <rect x="426" y="272" width="348" height="32" rx="7"/><text class="lname" x="440" y="293">Todos</text><text class="ldesc" x="760" y="293">if the tool exists</text>
-    </g>
-    <g data-tip="Skills index (name + one line). Open SKILL.md when the user names a skill. Product skill: tecadrisebot.">
-      <rect x="426" y="308" width="348" height="32" rx="7"/><text class="lname" x="440" y="329">Skills index</text><text class="ldesc" x="760" y="329">body on demand</text>
+    <g data-tip="Skills index: name + one line. The agent opens SKILL.md when that skill helps. Product skill: tecadrisebot.">
+      <rect x="426" y="364" width="348" height="28" rx="6"/><text class="lname" x="440" y="383">Skills index</text><text class="ldesc" x="760" y="383">names</text>
     </g>
   </g>
   <g class="purple">
     <g data-tip="This agent's sticky rules. Agent gear, Soul. Never put secrets in Soul.">
-      <rect x="426" y="344" width="348" height="32" rx="7"/><text class="lname" x="440" y="365">Soul</text><text class="ldesc" x="760" y="365">this agent</text>
+      <rect x="426" y="396" width="348" height="28" rx="6"/><text class="lname" x="440" y="415">Soul</text><text class="ldesc" x="760" y="415">this agent</text>
     </g>
-    <g data-tip="Connected apps + MCP catalog for every agent, plus this agent's JSON and tecadrise-host. The model chooses whether to call a tool.">
-      <rect x="426" y="380" width="348" height="32" rx="7"/><text class="lname" x="440" y="401">MCP shared</text><text class="ldesc" x="760" y="401">all agents</text>
-    </g>
-    <g data-tip="Cursor SDK builtins (shell, read, grep, todos) cannot be stripped. Connected apps and catalog schemas attach every turn. Use a tool only when the task needs it.">
-      <rect x="426" y="416" width="348" height="32" rx="7"/><text class="lname" x="440" y="437">SDK + bound tools</text><text class="ldesc" x="760" y="437">schemas billed</text>
+    <g data-tip="Workflow checklist or kickoff/review/fix text. Empty on a normal chat turn.">
+      <rect x="426" y="428" width="348" height="28" rx="6"/><text class="lname" x="440" y="447">Turn extra</text><text class="ldesc" x="760" y="447">workflow only</text>
     </g>
   </g>
   <g class="orange">
+    <g data-tip="Today UTC date. Last in the host block so the rest can cache.">
+      <rect x="426" y="460" width="348" height="28" rx="6"/><text class="lname" x="440" y="479">Today UTC</text><text class="ldesc" x="760" y="479">last</text>
+    </g>
     <g data-tip="Last N visible messages. Agent gear, Last messages.">
-      <rect x="426" y="452" width="348" height="32" rx="7"/><text class="lname" x="440" y="473">Recent chat</text><text class="ldesc" x="760" y="473">last N</text>
+      <rect x="426" y="492" width="348" height="28" rx="6"/><text class="lname" x="440" y="511">Recent chat</text><text class="ldesc" x="760" y="511">last N</text>
     </g>
-    <g data-tip="The message that started this turn. Footer lists tools actually called: [Zoho, Playwright].">
-      <rect x="426" y="488" width="348" height="32" rx="7"/><text class="lname" x="440" y="509">Message</text><text class="ldesc" x="760" y="509">used tools in footer</text>
+    <g data-tip="The user, routine, or interbot text that started this turn. Footer lists tools actually called.">
+      <rect x="426" y="524" width="348" height="28" rx="6"/><text class="lname" x="440" y="543">This message</text><text class="ldesc" x="760" y="543">user text</text>
     </g>
-  </g>
-  <line x1="426" y1="532" x2="774" y2="532" stroke="#e3e3e6"/>
-  <g data-tip="A capability is a tool the host already bound. Do not grep the app folder. Do not decrypt secrets.bin.">
-    <rect x="420" y="538" width="360" height="28" fill="transparent"/>
-    <text class="sub" x="426" y="558">If it is not in the tool list, you do not have it</text>
   </g>
 
   <path class="arrow" d="M808 250 H852 M844 242 L853 250 L844 258"/>
@@ -109,11 +113,11 @@
     <rect class="card" x="870" y="70" width="290" height="72" rx="12"/>
     <text class="title" x="890" y="98">Own workspace</text><text class="sub" x="890" y="122">Files, memory.md</text>
   </g>
-  <g data-tip="App data, memory: index.md, notes/, log.md. Facts every agent should know. No secrets.">
+  <g data-tip="App data, memory: index.md, notes/, log.md. Path is in the prompt. The agent decides when to read. No secrets.">
     <rect class="card" x="870" y="154" width="290" height="72" rx="12"/>
-    <text class="title" x="890" y="182">Shared memory</text><text class="sub" x="890" y="206">All agents · index.md first</text>
+    <text class="title" x="890" y="182">Shared memory</text><text class="sub" x="890" y="206">All agents · MEMORY.md</text>
   </g>
-  <g data-tip="Runner does one step. App runs hard checks. Owner reviews and fixes, never runs. Workflow MCP only when the job or an active run needs it.">
+  <g data-tip="Runner does one step. App runs hard checks. Owner reviews and fixes, never runs. Workflow MCP attaches every turn.">
     <rect class="card" x="870" y="238" width="290" height="72" rx="12"/>
     <text class="title" x="890" y="266">Workflows</text><text class="sub" x="890" y="290">Runner runs, Owner fixes</text>
   </g>

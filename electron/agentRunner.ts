@@ -975,6 +975,7 @@ async function runAgentTurnInner(opts: {
     skillsIndex: db.formatSkillsCatalog(),
     soul: instructions,
     system: readSystemPrompt(),
+    memory: readSystemMemory(),
     extraSystem: extras?.extraSystem,
     checklist: extras?.checklistBlock,
   });

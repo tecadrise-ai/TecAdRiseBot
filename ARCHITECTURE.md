@@ -11,7 +11,7 @@ You / Routine / Interbot / Local API
    HOST (Electron)
         |  1. Bind connected apps + catalog + this agent’s JSON + host tools. The model chooses tools.
         |  2. Fill MCP ${env:NAME} from secrets.bin
-        |  3. SYSTEM.md + holdings paths + Soul
+        |  3. SYSTEM.md + MEMORY.md + holdings paths + Soul
         v
    Cursor SDK  -->  model
         v
@@ -29,7 +29,7 @@ User -> UI -> Main process -> Cursor SDK -> model
 
 Every turn binds **every connected app**, the **MCP catalog**, this agent’s JSON, and `tecadrise-host` (`message_agent`, `list_peers`, `list_secret_names`, `show_connector`). No per-agent ticks. A new catalog server is for every agent once it is in Settings → MCP. Disconnected apps get `show_connector` and the Connectors pane, not a dead schema dump. The model decides whether to call a tool.
 
-SYSTEM.md is the global system prompt. It is inlined every turn. MEMORY.md and this file stay as files; the agent opens memory when a fact is needed.
+SYSTEM.md and MEMORY.md are inlined every turn. This file stays a Settings document. The memory directory path is in the prompt; MEMORY.md says how to use it.
 
 ## Where things live
 
@@ -40,7 +40,7 @@ SYSTEM.md is the global system prompt. It is inlined every turn. MEMORY.md and t
 | Connectors | Settings → Connectors | Bound every turn when the account is connected. Every agent can use them. |
 | Extra MCP | Settings → MCP catalog | Bound every turn for every agent. Agent JSON is extra for that agent. |
 | Soul | agent `instructions` | In the host prompt. |
-| Shared facts | Memory directory | Path in the prompt. The agent decides when to read `index.md` and notes. |
+| Shared facts | Memory directory | Path in the prompt. MEMORY.md (inlined) says how to use it. |
 | Private notes | workspace `memory.md` | Workspace path in the prompt. |
 | Skills | Skills directory | Index in the prompt. The agent opens `SKILL.md` when that skill helps. Product skill: `tecadrisebot`. |
 

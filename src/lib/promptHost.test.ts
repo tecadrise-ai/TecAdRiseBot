@@ -13,10 +13,13 @@ describe('buildHostSystemPrompt', () => {
       skillsIndex: '- foo: bar',
       soul: 'Stay on the VPS.',
       system: 'Global rule. SAFEWORD=unittest',
+      memory: 'Open index.md then the linked note.',
     });
     assert.match(text, /Global rule\. SAFEWORD=unittest/);
+    assert.match(text, /Open index\.md then the linked note/);
     assert.match(text, /VPSAgent/);
     assert.match(text, /C:\/ws/);
+    assert.match(text, /C:\/mem/);
     assert.match(text, /Stay on the VPS/);
     assert.match(text, /Skills:\n- foo: bar/);
     assert.doesNotMatch(text, /MCP available this turn/);
@@ -25,10 +28,7 @@ describe('buildHostSystemPrompt', () => {
     assert.doesNotMatch(text, /\/api\/secrets\//);
     assert.doesNotMatch(text, /ARCHITECTURE/);
     assert.doesNotMatch(text, /TodoWrite/);
-    assert.doesNotMatch(text, /read index\.md first/);
     assert.doesNotMatch(text, /unless the user asked/);
-    assert.match(text, /You decide when memory, files, skills, or tools help/);
-    assert.match(text, /Do not glob or list the workspace to look around/);
     assert.match(text, /Today UTC: \d{4}-\d{2}-\d{2}\.$/);
   });
 });

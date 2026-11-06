@@ -1396,7 +1396,7 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
     try {
       await window.tecapi.settings.setSystemMemory(systemMemory);
       setMemoryDirty(false);
-      setStatus('MEMORY.md saved. Next agent turn uses this memory block.');
+      setStatus('MEMORY.md saved. Next agent turn inlines this file.');
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1549,9 +1549,9 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
               <section className="system-prompt-section">
                 <h2>System memory</h2>
                 <p className="hint">
-                  One file for all agents: MEMORY.md in the app root. Point it at a generic memory
-                  skill. The store itself is the Memory directory under Computer (App data\memory).
-                  Each agent turn injects both.
+                  One file for all agents: MEMORY.md in the app root. Inlined every turn. This is
+                  how agents use shared vs private memory. The store is the Memory directory under
+                  Computer (App data\memory); the prompt also has that path.
                 </p>
                 <textarea
                   className="system-prompt-editor"
@@ -1631,7 +1631,7 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
                 <label className="field">
                   <span>Memory directory</span>
                   <code className="path">{settings?.memoryPath || (settings?.userDataPath ? `${settings.userDataPath}\\memory` : '')}</code>
-                  <span className="hint">Shared by all agents. MEMORY.md tells them how to use it. Injected every turn.</span>
+                  <span className="hint">Shared by all agents. Path is in the prompt. How to use it is MEMORY.md.</span>
                 </label>
                 <label className="field">
                   <span>Skills directory</span>

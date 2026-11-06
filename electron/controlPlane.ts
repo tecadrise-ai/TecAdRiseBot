@@ -439,7 +439,7 @@ export function holdingsForAgent(agentId: string) {
       agent: mcpConfigNames(agent?.config?.mcpServers),
     },
     attach:
-      'Host binds optional MCP from the current message. Agent JSON and tecadrise-host attach on work turns. Greetings get none.',
+      'Every turn binds connected apps, the MCP catalog, this agent’s JSON, and tecadrise-host. The model chooses whether to call a tool.',
     memoryDir: db.ensureMemoryDir(),
     skillsDir: db.ensureSkillsDir(),
   };

@@ -3,7 +3,6 @@ import crypto from 'node:crypto';
 import * as db from './db';
 import * as secrets from './secrets';
 import { listConnectors } from './connectors';
-import { isSmallTalk } from '../src/lib/mcpAttach';
 import {
   handleMcpMessage,
   S,
@@ -61,8 +60,7 @@ function safeEqual(a: string, b: string): boolean {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
-export function hostMcpExtras(agentId: string, userText: string): { extraMcp: McpServers } | null {
-  if (isSmallTalk(userText)) return null;
+export function hostMcpExtras(agentId: string): { extraMcp: McpServers } {
   return {
     extraMcp: {
       [HOST_MCP_NAME]: {
@@ -113,7 +111,7 @@ function tools(fromAgentId: string): McpTool[] {
     },
     {
       name: 'show_connector',
-      description: 'Connector account state. Chris connects apps in Settings → Connectors. No secret values.',
+      description: 'Connector account state. Connect apps in Settings → Connectors. No secret values.',
       inputSchema: S({ id: STR('Optional connector id, e.g. github or zoho') }),
       run: (args) => {
         const rows = listConnectors().map((c) => ({
@@ -121,7 +119,7 @@ function tools(fromAgentId: string): McpTool[] {
           name: c.name,
           connected: c.connected,
           state: c.connected ? ('ready' as const) : ('not_connected' as const),
-          action: c.connected ? 'ready' : 'Chris connects this in Settings → Connectors',
+          action: c.connected ? 'ready' : 'Connect this in Settings → Connectors',
         }));
         const id = String(args.id || '').trim().toLowerCase();
         if (!id) return rows;

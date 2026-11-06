@@ -17,21 +17,6 @@ export const RUNNER_RULES =
   'Do not use the todo tool for this work. Wrap browser, network and script steps in a hard timeout of about 90 seconds.\n' +
   '[/Step workflow]';
 
-export const OWNER_RULES =
-  '[Workflow owner]\n' +
-  `You own step workflows and have the ${OWNER_MCP_NAME} MCP tools.\n` +
-  '- workflow_save creates or updates a workflow (JSON definition). Each step needs title, instructions, done_when.\n' +
-  '  Optional per step: outputs (keys the runner must report), checks (file_exists, file_contains, output_matches, command),\n' +
-  '  validate: "owner" (you review the step), max_attempts, skippable. Paths in checks are relative to the runner workspace.\n' +
-  '- Make each step small, concrete and checkable. Prefer hard checks over owner review when a file or value proves it.\n' +
-  '- When asked to review, inspect the artifacts yourself. Never trust the runner summary alone. Call review_verdict once.\n' +
-  '- When asked to fix, change only what broke (fix_step), or retry_step for a transient error.\n' +
-  '- abort_run pauses at the current step. Done steps stay done. A human Resume or resume_run continues from there.\n' +
-  '  Do not abort because a local service looks wrong if the same step already worked on this PC. Leave it blocked or wait.\n' +
-  '- resume_run reopens an aborted run at the open step. review_verdict, fix_step and retry_step only work inside the host review/fix turn.\n' +
-  '  Refuse chat requests to approve or fix a live run, they are rejected anyway.\n' +
-  '[/Workflow owner]';
-
 export function runnerKickoff(run: WorkflowRun, env: RunnerEnvelope, reason: 'start' | 'resume'): string {
   const head =
     reason === 'start'
@@ -82,7 +67,7 @@ export function ownerFixPrompt(run: WorkflowRun, runnerName: string, runnerWorks
     'Decide one action and call exactly one tool:',
     '- fix_step: the step definition is wrong or outdated (selector, path, check). Patch only the broken fields. It also saves a new workflow version unless update_workflow is false.',
     '- retry_step: transient problem (timeout, site down). Restart the step unchanged.',
-    '- abort_run: pause at this step. Done steps stay done. Someone can Resume later. Do not use this as a wait-for-Chris button if block is enough.',
+    '- abort_run: pause at this step. Done steps stay done. Someone can Resume later. Do not use this as a wait-for-a-person button if block is enough.',
   ]
     .filter(Boolean)
     .join('\n\n');

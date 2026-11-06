@@ -21,7 +21,7 @@ export function ArchitectureDiagram({
   svg = architectureSvg,
   width: W = 1200,
   height: H = 640,
-  label = 'How agents work: the host binds tools for this message, secrets stay in the host, the agent works in its workspace',
+  label = 'How agents work: connected apps are available to every agent, secrets stay in the host, the agent works in its workspace',
   onOpenDoc,
 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);

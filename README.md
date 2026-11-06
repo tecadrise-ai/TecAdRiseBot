@@ -26,7 +26,7 @@ Local desktop multi-agent chat (Electron + React + TypeScript + Cursor SDK). Age
 
 ![Workflows diagram](docs/screenshots/workflows-diagram.png)
 
-**Shared memory in chat.** Agents can save lasting facts (here: nickname MrSpock) into the host memory wiki so other agents can reuse them.
+**Shared memory in chat.** Agents can save lasting facts into the host memory wiki so other agents can reuse them.
 
 ![Chat with shared memory](docs/screenshots/chat-shared-memory.png)
 

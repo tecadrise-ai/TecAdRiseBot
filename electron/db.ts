@@ -885,10 +885,6 @@ function skillBlurb(text: string): string {
 
 export function formatSkillsCatalog(): string {
   const root = ensureSkillsDir();
-  const lines: string[] = [
-    `Root: ${root}`,
-    'When the user names a skill (for example "use seo skill"), open that subfolder and read SKILL.md first, then follow it. Do not invent a skill that is not listed. If none match, say so.',
-  ];
   let entries: fs.Dirent[] = [];
   try {
     entries = fs.readdirSync(root, { withFileTypes: true });
@@ -906,14 +902,9 @@ export function formatSkillsCatalog(): string {
     } catch {
       body = '';
     }
-    skills.push(`- ${ent.name}: ${skillBlurb(body)} | ${skillFile}`);
+    skills.push(`- ${ent.name}: ${skillBlurb(body)}`);
   }
-  if (!skills.length) {
-    lines.push('No skill folders yet. Add a subfolder with SKILL.md inside this root.');
-  } else {
-    lines.push(...skills);
-  }
-  return lines.join('\n');
+  return skills.join('\n');
 }
 
 export function agentWorkspaceDataPath(agentId: string, userDataPath?: string): string {

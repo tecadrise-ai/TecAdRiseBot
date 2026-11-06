@@ -1583,9 +1583,8 @@ export function SettingsModal({ open, initialTab, highlightConnector, onClose, s
               <section>
                 <h2>Common MCP</h2>
                 <p className="hint">
-                  Catalog of extra servers. The host attaches a server only when this message needs it
-                  (email → Zoho, browser → Playwright). Agent MCP JSON always attaches. Greetings get
-                  none of these. Same name: agent JSON wins.
+                  Catalog for every agent. Connected apps and these servers attach for every agent.
+                  Agent MCP JSON is extra for that agent. Same name: agent JSON wins.
                 </p>
                 <label className="field">
                   <span>mcpServers</span>

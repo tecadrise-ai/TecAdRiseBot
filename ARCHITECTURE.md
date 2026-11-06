@@ -2,14 +2,14 @@
 
 Local Windows Electron app. Named agents have chat, Soul, routines, workflows, and a workspace. Turns run on this PC through the Cursor SDK. One agent, one in-flight turn. Each chat or routine turn is a **new** SDK agent; the previous one is deleted. The UI keeps chat history. We do not reuse SDK sessions.
 
-**Host contract:** a capability is a tool already bound for this message. The prompt is identity + Soul + holdings. Secrets stay in `secrets.bin`. The model never decrypts that file.
+**Host contract:** connected apps and catalog tools are available to every agent. Tool schemas are the capability list. Secrets stay in `secrets.bin`. The model never decrypts that file.
 
 ```
 You / Routine / Interbot / Local API
         |
         v
    HOST (Electron)
-        |  1. Pick MCP for THIS message (optional apps + agent JSON + host tools)
+        |  1. Bind connected apps + catalog + this agent’s JSON + host tools. The model chooses tools.
         |  2. Fill MCP ${env:NAME} from secrets.bin
         |  3. Short holdings prompt + Soul
         v
@@ -27,7 +27,7 @@ User -> UI -> Main process -> Cursor SDK -> model
 
 ## This message
 
-Greetings bind no optional MCP and no host MCP. Work turns bind `tecadrise-host` (`message_agent`, `list_peers`, `list_secret_names`, `show_connector`). Email binds Zoho, browser binds Playwright, and so on, only if that connector is connected. Disconnected apps get `show_connector` and the Connectors pane, not a dead schema dump.
+Every turn binds **every connected app**, the **MCP catalog**, this agent’s JSON, and `tecadrise-host` (`message_agent`, `list_peers`, `list_secret_names`, `show_connector`). No per-agent ticks. A new catalog server is for every agent once it is in Settings → MCP. Disconnected apps get `show_connector` and the Connectors pane, not a dead schema dump. The model decides whether to call a tool.
 
 SYSTEM.md, MEMORY.md, and this file are Settings documents. They are not inlined every turn.
 
@@ -37,18 +37,18 @@ SYSTEM.md, MEMORY.md, and this file are Settings documents. They are not inlined
 | --- | --- | --- |
 | API keys, SSH keys, tokens | `secrets.bin` (Settings → API Keys) | Host fills MCP `${env:NAME}`. `list_secret_names` returns names. HTTP `GET /api/secrets/:name` is 403. |
 | Cursor SDK key | same file, host-only | Never in the model. |
-| Connectors | Settings → Connectors | Bound when the message needs that app and the account is connected. |
-| Extra MCP | Settings → MCP catalog | Attached from this message, not on every bot. Agent JSON always attaches. |
+| Connectors | Settings → Connectors | Bound every turn when the account is connected. Every agent can use them. |
+| Extra MCP | Settings → MCP catalog | Bound every turn for every agent. Agent JSON is extra for that agent. |
 | Soul | agent `instructions` | In the host prompt. |
-| Shared facts | Memory directory | Path in the prompt; `index.md` first. |
+| Shared facts | Memory directory | Path in the prompt. The agent decides when to read `index.md` and notes. |
 | Private notes | workspace `memory.md` | Workspace path in the prompt. |
-| Skills | Skills directory | Index in the prompt; open `SKILL.md` when named. Product skill: `tecadrisebot`. |
+| Skills | Skills directory | Index in the prompt. The agent opens `SKILL.md` when that skill helps. Product skill: `tecadrisebot`. |
 
 No OS env for secrets.bin names. Do not decrypt `secrets.bin`. Do not write keys to Soul, memory, disk, or `~/.ssh`.
 
 ## Step workflows
 
-Runner sees only the open step. Owner reviews and fixes. The app runs hard checks. Human Retry / Skip / Abort. Host tool MCP for workflows attaches when the job (or an active run) needs it, not on greetings.
+Runner sees only the open step. Owner reviews and fixes. The app runs hard checks. Human Retry / Skip / Abort. Host tool MCP for workflows attaches every turn. Kickoff, review, and fix prompts are the job, not a standing essay.
 
 ## Rules
 

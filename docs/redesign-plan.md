@@ -1,6 +1,6 @@
 # TecAdRiseBot — professional agent-host redesign
 
-Status: in progress. Tracker: `docs/redesign-status.html`. Rollback: `git checkout pre-redesign`. Host binds MCP from this message (no per-agent ticks). Prompt is holdings-aware.  
+Status: in progress. Tracker: `docs/redesign-status.html`. Rollback: `git checkout pre-redesign`. Connected apps and the MCP catalog attach for every agent. No per-agent ticks. No greeting classifier.  
 Sources: CopilotKit OpenBot, Nous Hermes Agent, and our current Electron + Cursor SDK host.
 
 ---

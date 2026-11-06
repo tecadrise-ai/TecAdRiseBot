@@ -637,7 +637,7 @@ export function ChatView({
           <div className="welcome">
             <h2>Chat with {agent.name}</h2>
             <p>
-              Turns run on this PC through the Cursor SDK. The host binds tools for this message.
+              Turns run on this PC through the Cursor SDK. Connected apps are available to every agent.
               Secrets stay in Settings → API Keys. Use the gear for Soul and model.
             </p>
           </div>

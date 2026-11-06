@@ -9,6 +9,8 @@ describe('labelUsed', () => {
     assert.equal(labelUsed('mcp_playwright_browser_click'), 'Playwright');
     assert.equal(labelUsed('message_agent'), 'Host');
     assert.equal(labelUsed('Shell'), 'Shell');
+    assert.equal(labelUsed('mcp'), null);
+    assert.equal(labelUsed('Search Designs'), 'Search Designs');
   });
 });
 
@@ -23,11 +25,58 @@ describe('labelsFromUnknown', () => {
     assert.deepEqual(labels, ['Zoho']);
   });
 
+  it('names Canva from the MCP providerIdentifier the host attached', () => {
+    assert.deepEqual(
+      labelsFromUnknown({
+        update: {
+          type: 'tool-call-started',
+          toolCall: {
+            type: 'mcp',
+            args: { providerIdentifier: 'canva', toolName: 'search-designs' },
+          },
+        },
+      }),
+      ['Canva']
+    );
+    assert.deepEqual(
+      labelsFromUnknown({
+        name: 'CallMcpTool',
+        arguments: { providerIdentifier: 'canva', toolName: 'Get Logged In Account Details' },
+      }),
+      ['Canva']
+    );
+  });
+
+  it('does not guess Canva from a tool title', () => {
+    assert.deepEqual(
+      labelsFromUnknown({
+        type: 'tool-call-started',
+        toolCall: { name: 'Search Designs' },
+      }),
+      ['Search Designs']
+    );
+  });
+
+  it('pretty-prints an unknown MCP key the host attached this turn', () => {
+    assert.deepEqual(
+      labelsFromUnknown(
+        {
+          type: 'mcp',
+          args: { providerIdentifier: 'my_crm', toolName: 'list-records' },
+        },
+        0,
+        new Set(),
+        ['my_crm', 'canva']
+      ),
+      ['My Crm']
+    );
+  });
+
   it('names a skill from a Read path', () => {
     const labels = labelsFromUnknown({
       type: 'tool-call-completed',
       name: 'Read',
-      arguments: { path: 'C:/Users/Chris/AppData/Roaming/TecAdRiseBot/skills/tecadrisebot/SKILL.md' },
+      arguments: { path: 'C:/Users/AppUser/AppData/Roaming/TecAdRiseBot/skills/tecadrisebot/SKILL.md' },
     });
     assert.ok(labels.includes('tecadrisebot'));
     assert.ok(labels.includes('Read'));

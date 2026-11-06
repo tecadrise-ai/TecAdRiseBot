@@ -37,7 +37,7 @@
   <h1>TecAdRiseBot redesign tracker</h1>
   <p class="meta">
     Updated 2026-11-06 (afternoon). Rollback: <code>git checkout pre-redesign</code>.
-    Bind rule: connected apps attach from <strong>this message</strong>, not per-agent ticks.
+    Bind rule: every turn attaches <strong>connected apps + catalog</strong> for every agent. No per-agent ticks. No greeting classifier.
     Verify in the Vite/Electron window, not a packaged exe.
   </p>
 
@@ -48,9 +48,9 @@
     </thead>
     <tbody>
       <tr>
-        <td>Hello / hi no longer binds Zoho, Playwright, GitHub, workflow owner MCP</td>
+        <td>No greeting classifier in the host</td>
         <td class="done">Done</td>
-        <td>Live GeneralQA <code>hello</code>: <code>mcp: []</code>, plain greeting, no tool calls</td>
+        <td>Connected apps + catalog attach every turn. The model chooses tools. Prompt says use a tool only if the task needs it</td>
       </tr>
       <tr>
         <td>Empty MCP was treated as “unspecified” and Agent.create attached the whole catalog</td>
@@ -58,9 +58,9 @@
         <td><code>mcpServersForAgent</code> now returns <code>{}</code>; send uses that object</td>
       </tr>
       <tr>
-        <td>Greeting after an email turn still looked like email work</td>
+        <td>Independent SDK agent every turn (no session reuse)</td>
         <td class="done">Done</td>
-        <td>Current message small-talk wins; prior “check email” is ignored</td>
+        <td>UI chat is history. Cursor gets a new run. Prior email does not keep an SDK thread</td>
       </tr>
       <tr>
         <td>Every turn tried Cursor <code>systemPrompt</code>, failed, then retried</td>
@@ -80,7 +80,7 @@
       <tr>
         <td>Host tools instead of curl (interbot, secret names, connector state)</td>
         <td class="done">Done</td>
-        <td><code>tecadrise-host</code> MCP on work turns: message_agent, list_peers, list_secret_names, show_connector. Greetings still none</td>
+        <td><code>tecadrise-host</code> MCP: message_agent, list_peers, list_secret_names, show_connector</td>
       </tr>
       <tr>
         <td>Product skill <code>tecadrisebot</code></td>
@@ -93,9 +93,9 @@
         <td><code>in / out / tot · host N · mcp none</code> or names</td>
       </tr>
       <tr>
-        <td>GeneralQA billed “hi” in the low thousands (plan target)</td>
-        <td class="partial">Partial</td>
-        <td>~8.4k input: ~1.3k host + Cursor SDK builtins. Playwright is off. SDK shell/read cannot be stripped</td>
+        <td>Billed input includes SDK builtins plus attached catalog/connectors</td>
+        <td class="partial">Expected</td>
+        <td>No greeting shortcut. Cursor builtins cannot be stripped. Fat MCP (Playwright) costs on every turn while it is in the catalog</td>
       </tr>
     </tbody>
   </table>
@@ -113,11 +113,11 @@
         <td>Message meta + chat footer</td>
       </tr>
       <tr>
-        <td>1 Attach (was “grants”)</td>
-        <td>Stop global Playwright/Zoho on every bot</td>
-        <td class="done">Done (message-scoped)</td>
+        <td>1 Attach</td>
+        <td>Connected apps + catalog for every agent</td>
+        <td class="done">Done (shared)</td>
         <td>
-          Per-agent grant checkboxes dropped. Optional MCP from this message; agent JSON always; workflow extra when needed.
+          Every turn, every agent. No per-agent ticks. No greeting regex. The model chooses tools.
         </td>
       </tr>
       <tr>
@@ -154,7 +154,7 @@
         <td>7 Tool search</td>
         <td>Survive fat MCP catalogs</td>
         <td class="done">Done as attach-control</td>
-        <td>No search_tools API on Cursor SDK. Fat catalogs (Playwright) attach only when this message needs a browser</td>
+        <td>No search_tools API on Cursor SDK. Fat catalogs attach on work turns for every agent. Hello still none.</td>
       </tr>
       <tr>
         <td>8 Audit / prefix</td>
@@ -181,12 +181,12 @@
     </thead>
     <tbody>
       <tr><td>1</td><td>Competence from bound tools, not a capability essay</td><td class="done">Done for the host contract</td></tr>
-      <tr><td>2</td><td>GeneralQA hi = SDK builtins + ~1–2k host, no Playwright</td><td class="partial">Partial (Playwright off; billed ~8.4k because of SDK builtins)</td></tr>
-      <tr><td>3</td><td>Browser agent gets Playwright because the job needs a browser (not ticks)</td><td class="partial">Partial (hint on this message)</td></tr>
+      <tr><td>2</td><td>GeneralQA billed input = SDK builtins + host + attached catalog/connectors</td><td class="partial">Partial (SDK builtins cannot be stripped; catalog/connectors attach every turn)</td></tr>
+      <tr><td>3</td><td>Any agent can use Playwright/Zoho when those apps are connected/in catalog (no ticks)</td><td class="done">Done</td></tr>
       <tr><td>4</td><td>No prompt tells the model to read secret values; VPS still works</td><td class="done">Done (HTTP values locked; VPS still host-fill)</td></tr>
       <tr><td>5</td><td><code>[App]</code>, ARCHITECTURE.md, <code>[MCP]</code> lists not in the turn prompt</td><td class="done">Done for the host builder</td></tr>
       <tr><td>6</td><td>Interbot and connect-GitHub are tools or UI, not curl</td><td class="done">Done (message_agent + show_connector banner)</td></tr>
-      <tr><td>7</td><td>Product questions load skill, not grep the app folder</td><td class="done">Done (host names SKILL.md and allows Read there)</td></tr>
+      <tr><td>7</td><td>Product skill is in the skills folder; no phrase match to open it</td><td class="done">Done (skills dir readable every turn; catalog in the prompt)</td></tr>
       <tr><td>8</td><td>Architecture diagram matches the running host</td><td class="done">Done</td></tr>
     </tbody>
   </table>

@@ -47,7 +47,7 @@
 
   <path class="arrow" d="M348 250 H392 M384 242 L393 250 L384 258"/>
 
-  <text class="col" x="600" y="48">Host binds tools for this message</text>
+  <text class="col" x="600" y="48">Host binds this agent’s holdings</text>
   <rect x="410" y="58" width="380" height="554" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.6"/>
   <g data-tip="Named agent. Prompt is identity + Soul + holdings. Tools are already bound.">
     <rect x="420" y="64" width="360" height="24" fill="transparent"/>
@@ -81,10 +81,10 @@
     <g data-tip="This agent's sticky rules. Agent gear, Soul. Never put secrets in Soul.">
       <rect x="426" y="344" width="348" height="32" rx="7"/><text class="lname" x="440" y="365">Soul</text><text class="ldesc" x="760" y="365">this agent</text>
     </g>
-    <g data-tip="Optional MCP from this message (email → Zoho, browser → Playwright) plus this agent's MCP JSON. Greetings: none. tecadrise-host on work turns.">
-      <rect x="426" y="380" width="348" height="32" rx="7"/><text class="lname" x="440" y="401">MCP this message</text><text class="ldesc" x="760" y="401">host picks</text>
+    <g data-tip="Connected apps + MCP catalog for every agent, plus this agent's JSON and tecadrise-host. The model chooses whether to call a tool.">
+      <rect x="426" y="380" width="348" height="32" rx="7"/><text class="lname" x="440" y="401">MCP shared</text><text class="ldesc" x="760" y="401">all agents</text>
     </g>
-    <g data-tip="Cursor SDK builtins (shell, read, grep, todos) cannot be stripped. Extra MCP schemas only if attached this message. Hello is SDK builtins + ~1k host, no Playwright.">
+    <g data-tip="Cursor SDK builtins (shell, read, grep, todos) cannot be stripped. Connected apps and catalog schemas attach every turn. Use a tool only when the task needs it.">
       <rect x="426" y="416" width="348" height="32" rx="7"/><text class="lname" x="440" y="437">SDK + bound tools</text><text class="ldesc" x="760" y="437">schemas billed</text>
     </g>
   </g>
@@ -117,9 +117,9 @@
     <rect class="card" x="870" y="238" width="290" height="72" rx="12"/>
     <text class="title" x="890" y="266">Workflows</text><text class="sub" x="890" y="290">Runner runs, Owner fixes</text>
   </g>
-  <g data-tip="Settings → Connectors. Attached when this message needs that app and the account is connected. Off: show_connector opens this pane.">
+  <g data-tip="Settings → Connectors. Attached on every work turn when connected. Every agent can use them. Off: show_connector opens this pane.">
     <rect class="card" x="870" y="322" width="290" height="72" rx="12"/>
-    <text class="title" x="890" y="350">Connectors</text><text class="sub" x="890" y="374">this message · or Connect UI</text>
+    <text class="title" x="890" y="350">Connectors</text><text class="sub" x="890" y="374">all agents · or Connect UI</text>
   </g>
   <g data-tip="Settings → API Keys. Host decrypts. Names via list_secret_names. GET /api/secrets/:name is 403. Cursor key is host-only.">
     <rect class="card" x="870" y="406" width="290" height="72" rx="12"/>

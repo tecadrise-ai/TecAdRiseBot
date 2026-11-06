@@ -14,7 +14,6 @@ import { DEFAULT_MODEL_ID, formatModelLabel, readLastMessages, readToastEnabled,
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
 import { buildHostSystemPrompt } from '../src/lib/promptHost';
-import { needsProductSkill, pickMcpServers } from '../src/lib/mcpAttach';
 import { labelsFromUnknown, mergeUsed } from '../src/lib/usedHoldings';
 import { hostMcpExtras } from './hostMcp';
 import { auditTurn } from './audit';
@@ -379,7 +378,7 @@ function formatRecentChat(
   useful.reverse();
   if (!useful.length) return '';
   return (
-    '[Recent chat]\nThese are the last messages in this thread, oldest first. Use them for follow-ups like "smaller one".\n\n' +
+    '[Recent chat]\n' +
     useful.map((m) => `${m.role}: ${m.body}`).join('\n\n') +
     '\n[/Recent chat]'
   );
@@ -584,16 +583,11 @@ function expandEnvRefs(servers: McpServers): McpServers {
 async function mcpServersForAgent(
   config: Record<string, unknown> | null | undefined,
   cwd: string,
-  extraMcp?: McpServers,
-  userText?: string,
-  priorText = ''
+  extraMcp?: McpServers
 ): Promise<McpServers | undefined> {
   const always = mergeMcpServers(serversFromUnknown(config?.mcpServers ?? {}), extraMcp || {});
-  const optional = mergeMcpServers(loadGlobalMcpServers(), await connectorMcpServers());
-  const merged =
-    userText == null
-      ? mergeMcpServers(optional, always)
-      : pickMcpServers(always, optional, userText, priorText);
+  const shared = mergeMcpServers(loadGlobalMcpServers(), await connectorMcpServers());
+  const merged = mergeMcpServers(shared, always);
   if (!Object.keys(merged).length) {
     console.log('[TecAdRiseBot] mcp this turn: (none)');
     return {};
@@ -605,16 +599,6 @@ async function mcpServersForAgent(
   }
   console.log('[TecAdRiseBot] mcp this turn:', Object.keys(pinned).join(',') || '(none)');
   return pinned;
-}
-
-function productSkillExtras(userText: string): TurnExtras | null {
-  if (!needsProductSkill(userText)) return null;
-  const dir = path.join(db.ensureSkillsDir(), 'tecadrisebot');
-  const skill = path.join(dir, 'SKILL.md');
-  return {
-    extraDirs: [dir],
-    extraSystem: `How this host works is in ${skill}. Read that file before answering. Do not decrypt secrets.bin.`,
-  };
 }
 
 function localAgentOpts(cwd: string, extraDirs: string[] = []) {
@@ -850,9 +834,9 @@ async function runAgentTurnInner(opts: {
   const extras = opts.extras?.noAugment
     ? opts.extras
     : mergeExtras(
-        productSkillExtras(opts.userText),
+        { extraDirs: [db.ensureSkillsDir()] },
         mergeExtras(
-          hostMcpExtras(baseAgent.id, opts.userText),
+          hostMcpExtras(baseAgent.id),
           mergeExtras(turnAugmenter?.(baseAgent, { userText: opts.userText, source: opts.source }), opts.extras)
         )
       );
@@ -974,18 +958,9 @@ async function runAgentTurnInner(opts: {
     userBody = offloadLongText(cwd, 'last_user.md', userBody);
   }
 
-  const priorUser = db
-    .listMessages(opts.agentId, { limit: 8 })
-    .filter((m) => m.role === 'user' && m.id !== userMessageId)
-    .slice(0, 3)
-    .map((m) => m.content.slice(0, 400));
-  const mcpForTurn = await mcpServersForAgent(
-    agent.config,
-    cwd,
-    extras?.extraMcp,
-    opts.userText,
-    priorUser.join('\n')
-  );
+  const mcpForTurn = await mcpServersForAgent(agent.config, cwd, extras?.extraMcp);
+  const attachedMcp = Object.keys(mcpForTurn || {});
+  const labelsOf = (node: unknown) => labelsFromUnknown(node, 0, new Set(), attachedMcp);
 
   const recoveredChat = formatRecentChat(
     opts.agentId,
@@ -1003,10 +978,8 @@ async function runAgentTurnInner(opts: {
     memoryDir: db.ensureMemoryDir(),
     skillsIndex: db.formatSkillsCatalog(),
     soul: instructions,
-    mcpNames: Object.keys(mcpForTurn || {}),
     extraSystem: extras?.extraSystem,
     checklist: extras?.checklistBlock,
-    userText: opts.userText,
   });
 
   const turnPrompt = [recoveredChat, userBody ? `User:\n${userBody}` : ''].filter(Boolean).join('\n\n');
@@ -1161,7 +1134,7 @@ async function runAgentTurnInner(opts: {
         }
         const incomingCall = todoCallFromDelta(update) || todoCallFromDelta(delta);
         if (incomingCall) applyTodoCall(incomingCall);
-        const nextUsed = mergeUsed(used, labelsFromUnknown(delta));
+        const nextUsed = mergeUsed(used, labelsOf(delta));
         if (nextUsed.length !== used.length) {
           used = nextUsed;
           db.patchMessageMeta(assistantMessageId, { used });
@@ -1246,7 +1219,7 @@ async function runAgentTurnInner(opts: {
               lastActivity = Date.now();
               const incoming = todoCallFromDelta(ev);
               if (incoming) applyTodoCall(incoming);
-              const fromStream = mergeUsed(used, labelsFromUnknown(ev));
+              const fromStream = mergeUsed(used, labelsOf(ev));
               if (fromStream.length !== used.length) {
                 used = fromStream;
                 db.patchMessageMeta(assistantMessageId, { used });
@@ -1281,7 +1254,7 @@ async function runAgentTurnInner(opts: {
             addImgs(imagesFromUnknown(conv));
             const convCall = todoCallFromDelta(conv);
             if (convCall && !todos.length) applyTodoCall(convCall);
-            used = mergeUsed(used, labelsFromUnknown(conv));
+            used = mergeUsed(used, labelsOf(conv));
             const fromConv = lastAssistantFromConversation(conv);
             if (fromConv.trim() && fromConv.trim().length >= turnText.trim().length) turnText = fromConv;
             const fromThink = lastThinkingFromConversation(conv);
@@ -1348,7 +1321,7 @@ async function runAgentTurnInner(opts: {
             addImgs(imagesFromUnknown(conv));
             const convCall = todoCallFromDelta(conv);
             if (convCall && !todos.length) applyTodoCall(convCall);
-            used = mergeUsed(used, labelsFromUnknown(conv));
+            used = mergeUsed(used, labelsOf(conv));
             fromConv = lastAssistantFromConversation(conv);
             const fromThink = lastThinkingFromConversation(conv);
             if (fromThink && fromThink.length >= thinkText.length) thinkText = fromThink;

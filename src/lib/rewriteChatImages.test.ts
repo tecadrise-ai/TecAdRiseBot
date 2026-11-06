@@ -4,7 +4,7 @@ import { rewriteChatImageSrc, rewriteMarkdownImages } from './rewriteChatImages.
 
 const opts = {
   agentId: 'agt1',
-  userDataPath: 'C:\\Users\\Chris\\AppData\\Roaming\\TecAdRiseBot',
+  userDataPath: 'C:\\Users\\AppUser\\AppData\\Roaming\\TecAdRiseBot',
 };
 
 test('https images go through tecimg proxy', () => {
@@ -22,7 +22,7 @@ test('workspace relative path uses w/agentId', () => {
 
 test('absolute path under userData becomes tecimg file url', () => {
   assert.equal(
-    rewriteChatImageSrc('C:\\Users\\Chris\\AppData\\Roaming\\TecAdRiseBot\\w\\agt1\\generated\\x.png', opts),
+    rewriteChatImageSrc('C:\\Users\\AppUser\\AppData\\Roaming\\TecAdRiseBot\\w\\agt1\\generated\\x.png', opts),
     'tecimg://u/w/agt1/generated/x.png'
   );
 });

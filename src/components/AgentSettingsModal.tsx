@@ -638,8 +638,8 @@ export function AgentSettingsModal({ open, agent, initialTab = 'general', onClos
           {tab === 'mcp' && (
             <div className="mcp-panel">
               <div className="hint" style={{ marginTop: 0 }}>
-                Extra MCP for this agent only. Always attached. Settings → MCP and Connectors attach
-                only when this message needs them. Same name wins here. Empty {'{}'} is fine.
+                Extra MCP for this agent only. Connected apps and Settings → MCP already attach for
+                every agent. Same name wins here. Empty {'{}'} is fine.
               </div>
               <label className="field">
                 <span>mcpServers</span>

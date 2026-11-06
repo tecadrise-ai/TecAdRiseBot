@@ -16,22 +16,44 @@ function appRoot(): string {
 function findResource(names: string[][]): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const extra = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
-  const roots = [appRoot(), here, path.join(here, '..'), process.cwd(), extra].filter(Boolean);
-  for (const root of roots) {
+  const roots = app.isPackaged
+    ? [extra, path.join(extra, 'app.asar.unpacked'), appRoot(), here]
+    : [appRoot(), here, path.join(here, '..'), process.cwd(), extra];
+  for (const root of roots.filter(Boolean)) {
     for (const parts of names) {
       const p = path.join(root, ...parts);
+      if (fs.existsSync(p) && !p.includes(`${path.sep}app.asar${path.sep}`) && !p.endsWith(`${path.sep}app.asar`)) {
+        return p;
+      }
       if (fs.existsSync(p)) return p;
     }
   }
   return '';
 }
 
+function isAsarPath(p: string): boolean {
+  return p.includes(`${path.sep}app.asar${path.sep}`) || p.includes(`${path.sep}app.asar`);
+}
+
+/** Windows taskbar/shortcuts cannot load an icon from inside app.asar. */
 export function appIconPath(): string {
-  return findResource([
+  const found = findResource([
+    ['tecadrisebot-v2.ico'],
     ['resources', 'tecadrisebot-v2.ico'],
     ['resources', 'icon.png'],
-    ['tecadrisebot-v2.ico'],
   ]);
+  if (found && !isAsarPath(found)) return found;
+  if (!found) return '';
+  try {
+    const dest = path.join(app.getPath('userData'), 'tecadrisebot-v2.ico');
+    if (!fs.existsSync(dest) || fs.statSync(dest).size !== fs.statSync(found).size) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(found, dest);
+    }
+    return dest;
+  } catch {
+    return found;
+  }
 }
 
 /** Windows shows the AUMID string unless a Start Menu shortcut owns that AUMID. */

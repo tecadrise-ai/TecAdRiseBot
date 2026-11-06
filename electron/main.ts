@@ -133,7 +133,7 @@ function createWindow() {
     title: APP_DISPLAY_NAME,
     backgroundColor: '#f7f7f8',
     show: false,
-    ...(hasIcon ? { icon: image } : {}),
+    ...(hasIcon ? { icon: iconPath } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

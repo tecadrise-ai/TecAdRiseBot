@@ -53,6 +53,13 @@ function ThinkingSection({
   userDataPath?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const el = boxRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [open, text]);
   return (
     <div className="think-fold">
       <button
@@ -65,11 +72,13 @@ function ThinkingSection({
         Thinking
       </button>
       {open ? (
-        streaming ? (
-          <div className="md-thinking md-thinking-raw think-fold-body">{text}</div>
-        ) : (
-          <MarkdownBody className="md-thinking think-fold-body" text={text} agentId={agentId} userDataPath={userDataPath} />
-        )
+        <div className="think-fold-body" ref={boxRef}>
+          {streaming ? (
+            <div className="md-thinking md-thinking-raw">{text}</div>
+          ) : (
+            <MarkdownBody className="md-thinking" text={text} agentId={agentId} userDataPath={userDataPath} />
+          )}
+        </div>
       ) : null}
     </div>
   );

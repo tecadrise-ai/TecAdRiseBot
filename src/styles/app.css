@@ -625,7 +625,17 @@
   transform: rotate(90deg);
 }
 .think-fold-body {
+  max-height: 300px;
+  overflow: auto;
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border: 1px solid #e3e3e6;
+  background: #f7f7f8;
+  border-radius: 10px;
   animation: think-reveal 0.18s ease-out;
+}
+.think-fold-body .md-thinking {
+  margin-bottom: 0;
 }
 @keyframes think-reveal {
   from {

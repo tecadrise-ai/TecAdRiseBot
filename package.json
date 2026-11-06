@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "test": "node --experimental-strip-types --no-warnings --test src/lib/workflow/workflow.test.ts src/lib/sidebarSections.test.ts src/lib/rewriteChatImages.test.ts src/lib/promptHost.test.ts src/lib/assistantBody.test.ts src/lib/usedHoldings.test.ts electron/workflows/checks.test.ts",
     "postinstall": "electron-builder install-app-deps || true",
-    "stamp-icon": "node scripts/stamp-dev-icon.mjs"
+    "stamp-icon": "node scripts/stamp-dev-icon.mjs",
+    "dist": "npm run build && electron-builder --win nsis dir"
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.31",
@@ -65,7 +66,8 @@
       "package.json"
     ],
     "win": {
-      "icon": "resources/tecadrisebot-v2.ico"
+      "icon": "resources/tecadrisebot-v2.ico",
+      "target": ["nsis", "dir"]
     }
   }
 }

@@ -8,11 +8,11 @@ The Setup.exe, GitHub `master` + annotated tag, and `https://tecadrise.ai/downlo
 | --- | --- |
 | Version | **0.1.4** |
 | Git tag | `v0.1.4` |
-| Git commit | see `latest.json` `gitCommit` after publish |
-| GitHub | https://github.com/tecadrise-ai/TecAdRiseBot/releases/tag/v0.1.4 |
+| Git commit | `01fbf85c9a0700acd0f30cebe154bae43b6ada60` |
+| GitHub | https://github.com/tecadrise-ai/TecAdRiseBot/tree/01fbf85c9a0700acd0f30cebe154bae43b6ada60 |
 | latest.json | https://tecadrise.ai/downloads/tecadrisebot/latest.json |
 | Setup (public) | https://tecadrise.ai/downloads/tecadrisebot/TecAdRiseBot-Setup-0.1.4.exe |
-| SHA-256 | see `latest.json` `sha256` |
+| SHA-256 | `991d6357fb4bece235d54dad8c8642b39317ec1b7628b1eceabbc2de4cebc255` |
 | Product page | https://tecadrise.ai/products/tecadrisebot |
 | Local Setup | `C:\TecAdRise\tecadrise-bot-release\TecAdRiseBot Setup 0.1.4.exe` |
 | Local zip | `C:\TecAdRise\tecadrise-bot-release\TecAdRiseBot-0.1.4-win-unpacked.zip` |

@@ -14,9 +14,10 @@ import { DEFAULT_MODEL_ID, formatModelLabel, readLastMessages, readToastEnabled,
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
 import { buildHostSystemPrompt } from '../src/lib/promptHost';
-import { pickMcpServers } from '../src/lib/mcpAttach';
+import { needsProductSkill, pickMcpServers } from '../src/lib/mcpAttach';
 import { labelsFromUnknown, mergeUsed } from '../src/lib/usedHoldings';
 import { hostMcpExtras } from './hostMcp';
+import { auditTurn } from './audit';
 import { applyTodoCallToList, parseNumberedTasks, todoCallFromDelta, type TodoCall, type TodoItem } from '../src/lib/todos';
 import { absorbConnectorMcp, connectorMcpServers } from './connectors';
 
@@ -606,6 +607,16 @@ async function mcpServersForAgent(
   return pinned;
 }
 
+function productSkillExtras(userText: string): TurnExtras | null {
+  if (!needsProductSkill(userText)) return null;
+  const dir = path.join(db.ensureSkillsDir(), 'tecadrisebot');
+  const skill = path.join(dir, 'SKILL.md');
+  return {
+    extraDirs: [dir],
+    extraSystem: `How this host works is in ${skill}. Read that file before answering. Do not decrypt secrets.bin.`,
+  };
+}
+
 function localAgentOpts(cwd: string, extraDirs: string[] = []) {
   return {
     cwd,
@@ -624,7 +635,8 @@ async function getHandle(
   extraMcp?: McpServers,
   pinnedMcp?: McpServers
 ): Promise<CursorAgent> {
-  // Every user message and routine is an independent bounded-context SDK agent.
+  // One SDK agent per turn. Never reuse the conversation: a kept session grew
+  // context without bound. Chat in the UI is our history; Cursor gets a new run.
   const oldAgentId = handles.get(agent.id)?.agentId;
   closeHandle(agent.id);
 
@@ -838,8 +850,11 @@ async function runAgentTurnInner(opts: {
   const extras = opts.extras?.noAugment
     ? opts.extras
     : mergeExtras(
-        hostMcpExtras(baseAgent.id, opts.userText),
-        mergeExtras(turnAugmenter?.(baseAgent, { userText: opts.userText, source: opts.source }), opts.extras)
+        productSkillExtras(opts.userText),
+        mergeExtras(
+          hostMcpExtras(baseAgent.id, opts.userText),
+          mergeExtras(turnAugmenter?.(baseAgent, { userText: opts.userText, source: opts.source }), opts.extras)
+        )
       );
   const agent = withExtras(baseAgent, extras);
   const extraDirs = extras?.extraDirs ?? [];
@@ -1499,10 +1514,17 @@ async function runAgentTurnInner(opts: {
     }
     const finishedAt = Date.now();
     db.patchMessageMeta(assistantMessageId, { finishedAt, used });
-    console.log('[TecAdRiseBot] turn holdings', {
-      agent: agent.name,
-      attached: Object.keys(mcpForTurn || {}),
+    const attached = Object.keys(mcpForTurn || {});
+    console.log('[TecAdRiseBot] turn holdings', { agent: agent.name, attached, used });
+    const billed: TokenUsage | null = usage as TokenUsage | null;
+    auditTurn({
+      agentId: opts.agentId,
+      agentName: agent.name,
+      source: opts.source,
+      attached,
       used,
+      inputTokens: billed?.inputTokens,
+      outputTokens: billed?.outputTokens,
     });
     emit('chat:stream-done', {
       agentId: opts.agentId,

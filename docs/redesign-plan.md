@@ -61,6 +61,7 @@ These stay true in every phase:
 | --- | --- |
 | Electron app, local PC, Cursor SDK turns | Product |
 | One agent, one in-flight turn | Simplicity and safety |
+| **Fresh Cursor SDK agent every turn; never reuse the conversation** | Reused sessions grew context without bound. We already killed that. Chat history in the UI is not an SDK thread |
 | `secrets.bin` + host decrypt; **no OS env** for those names | User constraint |
 | Never write keys to Soul, memory.md, notes, workspace, `~/.ssh`, chat | Leak surface |
 | Cursor SDK key never leaves the host | Billing |
@@ -312,13 +313,14 @@ Exit: an agent asked “how do I store an API key?” opens the skill or tells t
 
 Exit: no agent silently receives 100+ MCP tools. If someone grants Playwright, they accept that cost on **that** agent.
 
-### Phase 8 — Policy, audit, cache (maturity)
+### Phase 8 — Policy, audit, prompt prefix (maturity)
 
 Not required to look professional on “hi”. Required to look professional when agents can spend money or SSH.
 
 - Audit row: agent, initiator (`person` | `routine` | `interbot` | `workflow`), MCP/tool name, allowed/denied, **no secret values**.  
-- Optional allow/deny on MCP tool names per agent (OpenBot CEL is overkill; start with grant = allow).  
-- Prompt cache: keep `stable` byte-identical across turns; put date last (Hermes). Recreate SDK agent when grants or Soul change, not on every “hi” if the SDK allows reuse — today `getHandle` **always** creates a fresh SDK agent; revisit whether that is required.  
+- Optional allow/deny on MCP tool names per agent (OpenBot CEL is overkill; start with message-scoped attach = allow).  
+- Prompt prefix: keep identity + workspace + holdings byte-identical across work turns; put **today UTC last** so a prefix cache can hit. That is **prompt bytes**, not an SDK conversation.  
+- **Do not reuse Cursor SDK sessions.** `getHandle` creates a new SDK agent and deletes the previous one. Chat in the UI is our history; the SDK turn is one bounded run. Revisit this only if Cursor offers a cache that does **not** keep growing tool/history context.  
 - Injection scan on workspace `AGENTS.md` / skill files if we start auto-injecting them (Hermes `_scan_context_content`).
 
 ### Phase 9 — Docs and diagram (after behaviour)
@@ -353,7 +355,8 @@ Do not build a second SSH-key UI. Keys stay in API Keys / secrets.bin. The redes
 - Keep `[App]` as the “professional” awareness layer. It is a catalog pasted into context.  
 - Attach all connectors because they are connected. Connected ≠ granted.  
 - “Search the app repo to learn the product.” Product skill + grants replace that.  
-- One giant PR. Phase 1 is the 18k fix; Phase 3 is the slop fix; Phase 2 is the security fix. Order: **0 → 1 → 2 → 3**, then 4–6, then 7–9.
+- One giant PR. Phase 1 is the 18k fix; Phase 3 is the slop fix; Phase 2 is the security fix. Order: **0 → 1 → 2 → 3**, then 4–6, then 7–9.  
+- Reuse a Cursor SDK conversation across chat turns. That is how context grew without bound; we removed sessions on purpose.
 
 ---
 

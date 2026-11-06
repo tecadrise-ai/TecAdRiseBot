@@ -148,7 +148,7 @@
         <td>6 Product skill</td>
         <td>Bundled <code>tecadrisebot</code> skill, load on demand</td>
         <td class="done">Done</td>
-        <td>Not auto-injected. Agent opens SKILL.md when asked</td>
+        <td>Host points at SKILL.md and opens that folder when the question is about the app, keys, MCP, or connectors</td>
       </tr>
       <tr>
         <td>7 Tool search</td>
@@ -157,10 +157,13 @@
         <td>No search_tools API on Cursor SDK. Fat catalogs (Playwright) attach only when this message needs a browser</td>
       </tr>
       <tr>
-        <td>8 Audit / cache</td>
-        <td>Log sent vs called; stable prompt prefix</td>
-        <td class="partial">Partial</td>
-        <td>Each turn logs attached vs used. Footer shows used. Fresh SDK agent every turn still</td>
+        <td>8 Audit / prefix</td>
+        <td>Log sent vs called; stable host prefix; date last</td>
+        <td class="done">Done</td>
+        <td>
+          Footer + console + <code>turn-audit.jsonl</code> (no user text, no secret values).
+          Work prompt puts today UTC last. <strong>SDK session reuse is dropped</strong> — one new SDK agent per turn, then delete. UI chat is not an SDK thread.
+        </td>
       </tr>
       <tr>
         <td>9 Docs / diagram</td>
@@ -183,7 +186,7 @@
       <tr><td>4</td><td>No prompt tells the model to read secret values; VPS still works</td><td class="done">Done (HTTP values locked; VPS still host-fill)</td></tr>
       <tr><td>5</td><td><code>[App]</code>, ARCHITECTURE.md, <code>[MCP]</code> lists not in the turn prompt</td><td class="done">Done for the host builder</td></tr>
       <tr><td>6</td><td>Interbot and connect-GitHub are tools or UI, not curl</td><td class="done">Done (message_agent + show_connector banner)</td></tr>
-      <tr><td>7</td><td>Product questions load skill, not grep the app folder</td><td class="partial">Partial (skill exists; model still has to open it)</td></tr>
+      <tr><td>7</td><td>Product questions load skill, not grep the app folder</td><td class="done">Done (host names SKILL.md and allows Read there)</td></tr>
       <tr><td>8</td><td>Architecture diagram matches the running host</td><td class="done">Done</td></tr>
     </tbody>
   </table>

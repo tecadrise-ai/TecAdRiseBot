@@ -1,6 +1,6 @@
 # TecAdRiseBot architecture
 
-Local Windows Electron app. Named agents have chat, Soul, routines, workflows, and a workspace. Turns run on this PC through the Cursor SDK. One agent, one in-flight turn.
+Local Windows Electron app. Named agents have chat, Soul, routines, workflows, and a workspace. Turns run on this PC through the Cursor SDK. One agent, one in-flight turn. Each chat or routine turn is a **new** SDK agent; the previous one is deleted. The UI keeps chat history. We do not reuse SDK sessions.
 
 **Host contract:** a capability is a tool already bound for this message. The prompt is identity + Soul + holdings. Secrets stay in `secrets.bin`. The model never decrypts that file.
 

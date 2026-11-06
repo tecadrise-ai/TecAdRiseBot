@@ -22,6 +22,7 @@ describe('buildHostSystemPrompt', () => {
     assert.doesNotMatch(text, /curl /);
     assert.doesNotMatch(text, /\/api\/secrets\//);
     assert.doesNotMatch(text, /ARCHITECTURE/);
+    assert.match(text, /Today UTC: \d{4}-\d{2}-\d{2}\.$/);
   });
 
   it('omits the MCP line when none are bound', () => {
@@ -55,5 +56,6 @@ describe('buildHostSystemPrompt', () => {
     assert.doesNotMatch(text, /seo/);
     assert.doesNotMatch(text, /zoho_mail/);
     assert.doesNotMatch(text, /Workspace/);
+    assert.doesNotMatch(text, /Today UTC/);
   });
 });

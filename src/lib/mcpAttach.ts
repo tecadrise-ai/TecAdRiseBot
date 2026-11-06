@@ -60,3 +60,11 @@ export function needsWorkflowTools(text: string): boolean {
   if (isSmallTalk(text)) return false;
   return /\b(workflow|workflows|step_current|workflow_save|review_verdict)\b/i.test(text);
 }
+
+/** Questions about the product, keys, MCP, or connectors. Host points at skill tecadrisebot. */
+export function needsProductSkill(text: string): boolean {
+  if (isSmallTalk(text)) return false;
+  return /\b(api keys?|secrets\.bin|tecadrisebot|control plane|connectors?|how (does|do) (the |this )?(app|host|bot) work|where (do i|to) (store|put|save).{0,40}(key|token|secret))\b/i.test(
+    text
+  );
+}

@@ -41,6 +41,7 @@ export function buildHostSystemPrompt(input: HostPromptInput): string {
     input.soul ? `Soul:\n${input.soul}` : '',
     input.skillsIndex ? `Skills:\n${input.skillsIndex}` : '',
     input.extraSystem || '',
+    `Today UTC: ${new Date().toISOString().slice(0, 10)}.`,
   ]
     .filter(Boolean)
     .join('\n\n');

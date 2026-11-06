@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isSmallTalk, needsWorkflowTools, pickMcpServers, selectOptionalMcp } from './mcpAttach.ts';
+import { isSmallTalk, needsProductSkill, needsWorkflowTools, pickMcpServers, selectOptionalMcp } from './mcpAttach.ts';
 
 describe('isSmallTalk', () => {
   it('matches bare greetings', () => {
@@ -38,6 +38,15 @@ describe('needsWorkflowTools', () => {
   it('is false for hello and true for workflow work', () => {
     assert.equal(needsWorkflowTools('hello'), false);
     assert.equal(needsWorkflowTools('save a workflow for the daily video'), true);
+  });
+});
+
+describe('needsProductSkill', () => {
+  it('is true for host and API-key questions, false for hello and email', () => {
+    assert.equal(needsProductSkill('hello'), false);
+    assert.equal(needsProductSkill('check my email'), false);
+    assert.equal(needsProductSkill('where do I store an API key'), true);
+    assert.equal(needsProductSkill('how does this app work'), true);
   });
 });
 

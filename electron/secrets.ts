@@ -208,6 +208,39 @@ export function listEnvPublic(): Array<{ name: string; masked: string }> {
     .map((name) => ({ name, masked: MASK }));
 }
 
+/** Names agents may fetch. Not OS env. Host decrypts secrets.bin. */
+export function agentSecretNames(): string[] {
+  return listEnvPublic().map((r) => r.name);
+}
+
+export function revealAgentSecret(name: string): { ok: boolean; error?: string; name?: string; value?: string } {
+  const n = String(name || '').trim();
+  if (!n) return { ok: false, error: 'name is required' };
+  if (n === CURSOR_KEY_NAME) return { ok: false, error: 'CURSOR_SDK_API_KEY is host-only' };
+  if (CONNECTOR_ENV_NAMES.has(n)) return { ok: false, error: 'Use Settings, Connectors for this key' };
+  const v = getEnvMap()[n];
+  if (v == null || v === '') return { ok: false, error: 'Unknown secret name' };
+  return { ok: true, name: n, value: v };
+}
+
+export function formatSecretsBlock(baseUrl: string): string {
+  const names = agentSecretNames();
+  const base = baseUrl.replace(/\/+$/, '');
+  return [
+    '[Secrets]',
+    'Store: secrets.bin in App data (Settings → API Keys). The host decrypts it. You never open or decrypt that file.',
+    'There is no OS environment for these keys. Do not use $env:NAME, %NAME%, or process.env. Do not search ~/.ssh or the disk for keys. Do not write key files.',
+    names.length
+      ? 'Names this install:\n' + names.map((n) => `- ${n}`).join('\n')
+      : 'No extra API Keys saved yet.',
+    `List names: GET ${base}/api/secrets`,
+    `Read one value: GET ${base}/api/secrets/<NAME>`,
+    'Use the value in memory this turn. Never print it. Never store it in Soul, memory.md, notes, workspace, or chat.',
+    'In MCP JSON, ${env:NAME} is a host placeholder filled from secrets.bin. Same store. Still not OS env.',
+    '[/Secrets]',
+  ].join('\n');
+}
+
 export function revealSecret(name: string): string {
   const n = String(name || '').trim();
   if (n === CURSOR_KEY_NAME) return getApiKey() || '';

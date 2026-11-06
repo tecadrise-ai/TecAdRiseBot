@@ -197,6 +197,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return;
     }
 
+    if (method === 'GET' && path === '/api/awareness') {
+      const agentId = url.searchParams.get('agentId') || cp.listAgents()[0]?.id || '';
+      send(res, 200, { text: cp.formatAppAwareness(agentId) });
+      return;
+    }
+
     if (method === 'GET' && path === '/api/agents') {
       send(res, 200, { agents: cp.listAgents() });
       return;
@@ -491,6 +497,24 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
             : undefined,
       });
       return;
+    }
+
+    if (method === 'GET' && path === '/api/secrets') {
+      send(res, 200, cp.listSecrets());
+      return;
+    }
+
+    {
+      const m = match(method, path, 'GET', '/api/secrets/:name');
+      if (m) {
+        const result = cp.getSecret(m.name);
+        if (!result.ok) {
+          send(res, result.error === 'Unknown secret name' ? 404 : 403, { error: result.error });
+          return;
+        }
+        send(res, 200, { name: result.name, value: result.value });
+        return;
+      }
     }
 
     if (method === 'POST' && path === '/api/settings/api-key') {

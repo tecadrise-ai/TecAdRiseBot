@@ -5,6 +5,7 @@ import * as secrets from './secrets';
 import { listModels as sdkListModels, runAgentTurn, isAgentBusy, cancelAgentRun, dropAgentHandle } from './agentRunner';
 import { formatModelLabel, cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 import { startFromRoutine } from './workflows/service';
+import { listConnectors } from './connectors';
 
 export const DEFAULT_API_PORT = 8787;
 export const APP_NAME = 'TecAdRiseBot';
@@ -110,7 +111,22 @@ export function getCatalog() {
       summary: 'Set Cursor API key (local-only; treat as secret)',
       body: '{ apiKey }',
     },
+    {
+      method: 'GET',
+      path: '/api/secrets',
+      summary: 'List API Key names from secrets.bin (no values, no Cursor key)',
+    },
+    {
+      method: 'GET',
+      path: '/api/secrets/:name',
+      summary: 'Read one secrets.bin value. Host decrypts. Never decrypt the file yourself.',
+    },
     { method: 'GET', path: '/api/models', summary: 'List available models' },
+    {
+      method: 'GET',
+      path: '/api/awareness',
+      summary: 'Live TecAdRiseBot capability brief (same [App] block agents get each turn)',
+    },
   ];
 
   return {
@@ -124,9 +140,16 @@ export function getCatalog() {
       'multi-agent-chat',
       'cursor-sdk',
       'routines',
+      'workflows',
       'interbot',
       'http-control-plane',
       'self-reconfigure',
+      'secrets-bin',
+      'connectors',
+      'mcp',
+      'skills',
+      'shared-memory',
+      'soul',
     ],
     howToUse: {
       listAgents: `curl -s ${base}/api/agents`,
@@ -134,6 +157,9 @@ export function getCatalog() {
       sendMessage: `curl -s -X POST ${base}/api/agents/<id>/messages -H "Content-Type: application/json" -d '{"text":"Hello"}'`,
       patchInstructions: `curl -s -X PATCH ${base}/api/agents/<id> -H "Content-Type: application/json" -d '{"instructions":"You are..."}'`,
       catalog: `curl -s ${base}/api`,
+      awareness: `curl -s ${base}/api/awareness`,
+      listSecrets: `curl -s ${base}/api/secrets`,
+      getSecret: `curl -s ${base}/api/secrets/<NAME>`,
     },
     routes,
   };
@@ -361,6 +387,101 @@ export async function listModels() {
   return sdkListModels();
 }
 
+export function listSecrets() {
+  return { store: 'secrets.bin' as const, names: secrets.agentSecretNames() };
+}
+
+export function getSecret(name: string) {
+  return secrets.revealAgentSecret(name);
+}
+
+function mcpConfigNames(raw: unknown): string[] {
+  if (!raw) return [];
+  let v: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      v = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return [];
+  const o = v as Record<string, unknown>;
+  const servers =
+    o.mcpServers && typeof o.mcpServers === 'object' && !Array.isArray(o.mcpServers)
+      ? (o.mcpServers as Record<string, unknown>)
+      : o;
+  return Object.keys(servers).filter((k) => k && k !== 'mcpServers').sort();
+}
+
+export function formatAppAwareness(agentId: string, mcpThisTurn?: string[]): string {
+  const agent = db.getAgent(agentId);
+  const base = getBaseUrl();
+  const settings = getPublicSettings();
+  const secretNames = secrets.agentSecretNames();
+  const connectors = listConnectors();
+  const globalMcp = mcpConfigNames(db.getSetting('mcp_servers_json') || '{}');
+  const agentMcp = mcpConfigNames(agent?.config?.mcpServers);
+  const mcpLive = mcpThisTurn && mcpThisTurn.length ? mcpThisTurn : [...new Set([...globalMcp, ...agentMcp])];
+  const peers = agent ? db.listAgents().filter((a) => a.id !== agentId) : db.listAgents();
+  const routines = agent ? db.listRoutines(agentId) : [];
+  const connLines = connectors.map((c) => `- ${c.name}: ${c.connected ? 'connected' : 'off'}`).join('\n');
+  const secretLine = secretNames.length ? secretNames.map((n) => `- ${n}`).join('\n') : '- (none yet)';
+  const mcpLine = mcpLive.length ? mcpLive.map((n) => `- ${n}`).join('\n') : '- (none this turn)';
+  const ws = agent ? db.agentWorkspacePath(agentId) : '(no agent)';
+  return [
+    '[App]',
+    'You are an agent inside TecAdRiseBot, a local Windows Electron app on this PC. Turns run through the Cursor SDK. You are not Cursor IDE, not a website, not a hosted bot.',
+    'This block is the live capability map. Trust it. Do not rediscover the host. Do not grep the app folder. Do not decrypt secrets.bin. There is no OS env for API keys.',
+    '',
+    'You can:',
+    '- Chat, attachments, Stop, todos (TodoWrite / updateTodos already in this turn)',
+    '- Read/write files only in Workspace. Shell/commands on this PC with that cwd',
+    '- Soul: PATCH /api/agents/<id> { instructions }. Sticky per-agent rules',
+    '- Interbot: POST /api/agents/<id>/interbot { toAgentId, text } (target must be idle)',
+    '- Routines, step workflows (Runner/Owner), Skills, shared Memory wiki',
+    '- MCP tools listed below (Settings MCP + this agent MCP + Connectors + this-turn tools)',
+    '- Secrets: GET /api/secrets  and  GET /api/secrets/<NAME>  (host decrypts secrets.bin)',
+    '- Self snapshot: GET /api/agents/<id>/snapshot   Catalog: GET /api',
+    '- Create/rename/model/enable agents via the same control plane. One agent, one turn at a time',
+    '',
+    'You cannot: decrypt secrets.bin; use $env/process.env for those keys; print Cursor API key; write outside Workspace; POST /messages to yourself this turn.',
+    '',
+    `Live: ${APP_NAME} ${settings.version}  ${settings.platform}  account ${settings.accountName}`,
+    `Control plane: ${base}  (127.0.0.1 only, no auth)`,
+    agent
+      ? `This agent: ${agent.name}  id ${agent.id}  model ${formatModelLabel(agent.model, agent.config)}`
+      : 'This agent: (unknown)',
+    `Workspace: ${ws}`,
+    `Shared memory: ${db.ensureMemoryDir()}  (read index.md first)`,
+    `Skills: ${db.ensureSkillsDir()}  (subfolder + SKILL.md)`,
+    `Peers: ${peers.length}   Routines: ${routines.length}`,
+    '',
+    'Settings (global): General, API Keys=secrets.bin, Connectors, MCP, System prompt=SYSTEM.md, Memory=MEMORY.md, Computer=paths, Architecture.',
+    'Agent gear: name, color, model, Soul, last-N chat, this-agent MCP JSON, routines, workflows.',
+    '',
+    'Secrets.bin names (Settings → API Keys). Read value: GET ' + base + '/api/secrets/<NAME>',
+    'Use in memory this turn. Never print. Never write to Soul, memory.md, notes, disk, ~/.ssh.',
+    secretLine,
+    '',
+    'Connectors (Settings → Connectors). Connected ones are MCP this turn. Off = human must Connect in the UI.',
+    connLines,
+    '',
+    'MCP this turn (use as tools; do not search the repo to see if they exist):',
+    mcpLine,
+    globalMcp.length ? `Global MCP JSON names: ${globalMcp.join(', ')}` : 'Global MCP JSON: empty',
+    agentMcp.length ? `This-agent MCP JSON names: ${agentMcp.join(', ')}` : 'This-agent MCP JSON: empty',
+    '',
+    'Quick:',
+    `curl -s ${base}/api`,
+    `curl -s ${base}/api/awareness`,
+    agent ? `curl -s ${base}/api/agents/${agent.id}/snapshot` : `curl -s ${base}/api/agents`,
+    `curl -s ${base}/api/secrets`,
+    `curl -s ${base}/api/secrets/<NAME>`,
+    '[/App]',
+  ].join('\n');
+}
+
 export type AgentSnapshot = {
   self: {
     id: string;
@@ -393,9 +514,13 @@ export type AgentSnapshot = {
     cron: string;
     prompt: string;
     enabled: number;
+    forceTodos?: number;
     lastRunAt: number | null;
   }>;
   curlExamples: Record<string, string>;
+  secrets: { store: string; names: string[] };
+  connectors: Array<{ id: string; name: string; connected: boolean }>;
+  mcp: { global: string[]; agent: string[] };
 };
 
 export function snapshotForAgent(agentId: string): AgentSnapshot {
@@ -449,6 +574,18 @@ export function snapshotForAgent(agentId: string): AgentSnapshot {
       listPeers: `curl -s ${base}/api/agents`,
       messagePeer: `curl -s -X POST ${base}/api/agents/${agentId}/interbot -H "Content-Type: application/json" -d '{"toAgentId":"<peerId>","text":"..."}'`,
       catalog: `curl -s ${base}/api`,
+      awareness: `curl -s ${base}/api/awareness?agentId=${agentId}`,
+      listSecrets: `curl -s ${base}/api/secrets`,
+      getSecret: `curl -s ${base}/api/secrets/<NAME>`,
+    },
+    secrets: {
+      store: 'secrets.bin',
+      names: secrets.agentSecretNames(),
+    },
+    connectors: listConnectors().map((c) => ({ id: c.id, name: c.name, connected: c.connected })),
+    mcp: {
+      global: mcpConfigNames(db.getSetting('mcp_servers_json') || '{}'),
+      agent: mcpConfigNames(self.config?.mcpServers),
     },
   };
 }
@@ -457,12 +594,13 @@ export function formatRuntimeContext(agentId: string): string {
   const snap = snapshotForAgent(agentId);
   return [
     '[This turn]',
-    `Agent: ${snap.self.name} (id ${snap.self.id})`,
+    `You are ${snap.self.name} inside TecAdRiseBot (id ${snap.self.id}).`,
     `Workspace (write files only here): ${db.agentWorkspacePath(agentId)}`,
     'Do not write into the TecAdRiseBot app/repo folder.',
     'Use the todo tool already in this turn (TodoWrite or updateTodos). TodoWrite statuses: pending / in_progress / completed / cancelled. updateTodos: pending / inProgress / completed / cancelled. Use the spelling for the tool you have. Do not search the repo for it.',
     `Model: ${formatModelLabel(snap.self.model, snap.self.config)}`,
     `Peers: ${snap.peers.length}`,
+    'Full capability map is [App] this turn. Secrets, connectors, MCP, settings, control plane are listed there. Do not rediscover them.',
     '[/This turn]',
   ].join('\n');
 }

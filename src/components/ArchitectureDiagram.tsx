@@ -20,8 +20,8 @@ type Props = {
 export function ArchitectureDiagram({
   svg = architectureSvg,
   width: W = 1200,
-  height: H = 680,
-  label = 'How agents work: what starts a turn, what the agent gets every turn, and where it works',
+  height: H = 640,
+  label = 'How agents work: they wake up inside TecAdRiseBot with [App], secrets, connectors, MCP, then work in workspace and memory',
   onOpenDoc,
 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);

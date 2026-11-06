@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
-import { formatRuntimeContext } from './controlPlane';
+import { formatAppAwareness, formatRuntimeContext } from './controlPlane';
 import { restoreFlattenedMarkdown } from '../src/lib/markdown';
 import { finalizeAssistantBody, packAssistantBody, unpackAssistantBody } from '../src/lib/assistantBody';
 import { addUsage, type TokenUsage } from '../src/lib/usage';
@@ -975,6 +975,7 @@ async function runAgentTurnInner(opts: {
   );
 
   const hostSystemPrompt = [
+      formatAppAwareness(opts.agentId, Object.keys(mcpForTurn || {})),
       systemPrompt,
       extras?.checklistBlock ||
       '[Checklist tool]\n' +

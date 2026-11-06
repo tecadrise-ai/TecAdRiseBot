@@ -20,6 +20,7 @@ Machine-readable catalog: `GET /api`
 | --- | --- | --- |
 | GET | `/api` | Catalog + curl examples |
 | GET | `/api/health` | Liveness |
+| GET | `/api/awareness?agentId=` | Live `[App]` capability brief (secrets, connectors, MCP, paths) |
 | GET | `/api/agents` | List agents |
 | POST | `/api/agents` | Create `{ name, model?, instructions?, config?, enabled? }` |
 | GET | `/api/agents/:id` | Get agent + status |
@@ -38,9 +39,21 @@ Machine-readable catalog: `GET /api`
 | GET | `/api/settings` | Public settings (**no raw API key**) |
 | PATCH | `/api/settings` | Non-secret fields |
 | POST | `/api/settings/api-key` | `{ apiKey }` — local secret write |
+| GET | `/api/secrets` | List API Key names in secrets.bin (no values) |
+| GET | `/api/secrets/:name` | Read one secrets.bin value (host decrypts). Cursor key is blocked. |
 | GET | `/api/models` | Models |
+
+## Secrets
+
+API keys and SSH keys live in `secrets.bin` (Settings → API Keys). The host decrypts. Agents do not decrypt the file and do not get OS env vars for these names.
+
+```
+curl -s http://127.0.0.1:8787/api/secrets
+curl -s http://127.0.0.1:8787/api/secrets/VPS1_KEY1
+```
 
 ## Security
 
 - Never returns the Cursor API key from GET endpoints.
+- Other secrets.bin values are available on localhost `GET /api/secrets/:name` so agents can use them without writing files.
 - Do not port-forward or expose `8787` outside the PC.

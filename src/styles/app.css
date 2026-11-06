@@ -1513,6 +1513,12 @@
   padding: 12px 16px 16px;
   border-top: 1px solid var(--border);
 }
+.grant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
 .agent-settings-tabs {
   display: flex;
   gap: 4px;

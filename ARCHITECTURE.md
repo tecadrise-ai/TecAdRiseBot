@@ -34,7 +34,7 @@ Host **text** is about 4–5k tokens. Cursor also sends **SDK + MCP tool schemas
 | API keys, SSH keys, tokens | `secrets.bin` in App data (Settings → API Keys) | Host decrypts. `GET http://127.0.0.1:8787/api/secrets` lists names. `GET /api/secrets/<NAME>` returns `{ name, value }`. Use the value in memory this turn. |
 | Cursor SDK key | same file, host-only | Not available to agents. Never print it. |
 | Connectors | Settings → Connectors (also in secrets.bin) | MCP servers the host already attached this turn. |
-| MCP extra servers | Settings → MCP | Names in `[MCP]` this turn. In MCP JSON, `${env:NAME}` is a **host placeholder** filled from secrets.bin. It is **not** an OS environment variable. |
+| MCP extra servers | Settings → MCP catalog + Agent settings → MCP ticks | Only **granted** servers attach this turn (plus workflow tools). `${env:NAME}` in MCP JSON is a **host placeholder** from secrets.bin, not OS env. |
 | Soul | agent `instructions` in SQLite | `[Agent soul]` this turn. PATCH `/api/agents/<id>`. |
 | Shared facts | Memory directory | `[Memory directory]` this turn. `index.md` first. |
 | Your notes | workspace `memory.md` | Workspace path this turn. |

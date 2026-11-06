@@ -1,6 +1,6 @@
 # TecAdRiseBot — professional agent-host redesign
 
-Status: plan only. Not an implementation checklist to dump in one PR.  
+Status: in progress. Rollback: `git checkout pre-redesign`. Phase 0–1 started (turn meter + per-agent grants).  
 Sources: CopilotKit OpenBot, Nous Hermes Agent, and our current Electron + Cursor SDK host.
 
 ---

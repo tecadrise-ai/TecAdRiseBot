@@ -60,3 +60,29 @@ export function parseMessageUsage(meta: string | null): TokenUsage | null {
     return null;
   }
 }
+
+export type TurnMeter = {
+  hostChars: number;
+  mcp: string[];
+};
+
+export function parseTurnMeter(meta: string | null): TurnMeter | null {
+  if (!meta) return null;
+  try {
+    const o = JSON.parse(meta) as { hostChars?: unknown; mcp?: unknown };
+    const hostChars = Number(o.hostChars) || 0;
+    const mcp = Array.isArray(o.mcp) ? o.mcp.map((n) => String(n)).filter(Boolean) : [];
+    if (!hostChars && !mcp.length) return null;
+    return { hostChars, mcp };
+  } catch {
+    return null;
+  }
+}
+
+export function fmtTurnMeter(m: TurnMeter | null | undefined): string {
+  if (!m) return '';
+  const bits: string[] = [];
+  if (m.hostChars) bits.push(`host ${fmtTok(m.hostChars)}`);
+  bits.push(m.mcp.length ? `mcp ${m.mcp.join(',')}` : 'mcp none');
+  return bits.join(' · ');
+}

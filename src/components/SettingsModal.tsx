@@ -1570,10 +1570,9 @@ export function SettingsModal({ open, initialTab, onClose, settings, onRefresh }
               <section>
                 <h2>Common MCP</h2>
                 <p className="hint">
-                  Shared servers for every agent. Merged with that agent&apos;s MCP JSON on each turn.
-                  Same name: agent JSON wins. Empty agent {'{}'} still gets these. Register saves and
-                  drops idle sessions so the next message attaches. Does not start MCP for every agent
-                  now. Use an agent&apos;s Register only for extra servers on that agent.
+                  Catalog only. A server here is not attached until that agent ticks it under Agent
+                  settings → MCP. Register saves the JSON. Same name in an agent&apos;s JSON wins as
+                  the definition, still only if granted.
                 </p>
                 <label className="field">
                   <span>mcpServers</span>

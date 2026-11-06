@@ -6,6 +6,7 @@ import { listModels as sdkListModels, runAgentTurn, isAgentBusy, cancelAgentRun,
 import { formatModelLabel, cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 import { startFromRoutine } from './workflows/service';
 import { listConnectors } from './connectors';
+import { connectorMcpName, parseGrants } from '../src/lib/grants';
 
 export const DEFAULT_API_PORT = 8787;
 export const APP_NAME = 'TecAdRiseBot';
@@ -422,7 +423,15 @@ export function formatAppAwareness(agentId: string, mcpThisTurn?: string[]): str
   const connectors = listConnectors();
   const globalMcp = mcpConfigNames(db.getSetting('mcp_servers_json') || '{}');
   const agentMcp = mcpConfigNames(agent?.config?.mcpServers);
-  const mcpLive = mcpThisTurn && mcpThisTurn.length ? mcpThisTurn : [...new Set([...globalMcp, ...agentMcp])];
+  const grants = parseGrants(agent?.config);
+  const grantedCatalog = [...new Set([...globalMcp, ...agentMcp])].filter((n) => grants.mcp.includes(n));
+  const grantedConnectors = listConnectors()
+    .filter((c) => c.connected && grants.connectors.includes(c.id))
+    .map((c) => connectorMcpName(c.id));
+  const mcpLive =
+    mcpThisTurn != null
+      ? mcpThisTurn
+      : [...new Set([...grantedCatalog, ...grantedConnectors])].sort();
   const peers = agent ? db.listAgents().filter((a) => a.id !== agentId) : db.listAgents();
   const routines = agent ? db.listRoutines(agentId) : [];
   const connLines = connectors.map((c) => `- ${c.name}: ${c.connected ? 'connected' : 'off'}`).join('\n');
@@ -440,7 +449,7 @@ export function formatAppAwareness(agentId: string, mcpThisTurn?: string[]): str
     '- Soul: PATCH /api/agents/<id> { instructions }. Sticky per-agent rules',
     '- Interbot: POST /api/agents/<id>/interbot { toAgentId, text } (target must be idle)',
     '- Routines, step workflows (Runner/Owner), Skills, shared Memory wiki',
-    '- MCP tools listed below (Settings MCP + this agent MCP + Connectors + this-turn tools)',
+    '- MCP tools listed below (only servers this agent has ticked, plus this-turn workflow tools)',
     '- Secrets: GET /api/secrets  and  GET /api/secrets/<NAME>  (host decrypts secrets.bin)',
     '- Self snapshot: GET /api/agents/<id>/snapshot   Catalog: GET /api',
     '- Create/rename/model/enable agents via the same control plane. One agent, one turn at a time',

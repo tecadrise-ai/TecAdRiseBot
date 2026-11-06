@@ -77,12 +77,14 @@ export function cheapDefaultConfig(): {
   effort: string;
   lastMessages: number;
   toastEnabled: boolean;
+  grants: { mcp: string[]; connectors: string[] };
 } {
   return {
     modelMode: DEFAULT_MODE,
     effort: DEFAULT_EFFORT,
     lastMessages: DEFAULT_LAST_MESSAGES,
     toastEnabled: true,
+    grants: { mcp: [], connectors: [] },
   };
 }
 

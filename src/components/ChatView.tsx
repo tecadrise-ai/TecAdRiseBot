@@ -2,7 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import type { Agent, ChatMessage, WorkflowRunView } from '../types';
 import { WorkflowCard } from './WorkflowCard';
 import { MarkdownBody } from './MarkdownBody';
-import { fmtTs, fmtUsage, parseMessageUsage } from '../lib/usage';
+import { fmtTs, fmtTurnMeter, fmtUsage, parseMessageUsage, parseTurnMeter } from '../lib/usage';
 import { formatModelLabel } from '../lib/modelOptions';
 import { ownerRoleOverride } from '../lib/workflow/definition';
 import { unpackAssistantBody } from '../lib/assistantBody';
@@ -127,6 +127,8 @@ function assistantMetaLine(m: ChatMessage): string {
   if (ts) bits.push(`${role}: ${fmtTs(ts)}`);
   const u = fmtUsage(parseMessageUsage(m.meta));
   if (u) bits.push(u);
+  const meter = fmtTurnMeter(parseTurnMeter(m.meta));
+  if (meter) bits.push(meter);
   return bits.join(' · ');
 }
 

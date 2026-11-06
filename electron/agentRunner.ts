@@ -14,6 +14,7 @@ import { getApiKey, getEnvMap } from './secrets';
 import { DEFAULT_MODEL_ID, readLastMessages, readToastEnabled, toSdkModel, type CatalogModel } from '../src/lib/modelOptions';
 import { maybeNotifyChatDone } from './notify';
 import { parseMcpJson, mergeMcpServers, mcpJsonFromServers, type McpServers } from '../src/lib/mcpConfig';
+import { parseGrants, pickGrantedServers } from '../src/lib/grants';
 import { applyTodoCallToList, parseNumberedTasks, todoCallFromDelta, type TodoCall, type TodoItem } from '../src/lib/todos';
 import { absorbConnectorMcp, connectorMcpServers } from './connectors';
 
@@ -590,20 +591,16 @@ async function mcpServersForAgent(
   cwd: string,
   extraMcp?: McpServers
 ): Promise<McpServers | undefined> {
-  const merged = mergeMcpServers(
-    mergeMcpServers(
-      mergeMcpServers(loadGlobalMcpServers(), serversFromUnknown(config?.mcpServers ?? {})),
-      await connectorMcpServers()
-    ),
-    extraMcp || {}
-  );
+  const grants = parseGrants(config);
+  const catalog = mergeMcpServers(loadGlobalMcpServers(), serversFromUnknown(config?.mcpServers ?? {}));
+  const merged = pickGrantedServers(catalog, await connectorMcpServers(), extraMcp || {}, grants);
   if (!Object.keys(merged).length) return undefined;
   const pinned: McpServers = {};
   for (const [name, server] of Object.entries(expandEnvRefs(merged))) {
     const stdio = Boolean(server.command) && !server.url && server.type !== 'http' && server.type !== 'sse';
     pinned[name] = stdio ? { ...server, cwd: server.cwd || cwd } : server;
   }
-  console.log('[TecAdRiseBot] mcp this turn:', Object.keys(pinned).join(', '));
+  console.log('[TecAdRiseBot] mcp this turn:', Object.keys(pinned).join(',') || '(none)', 'grants', JSON.stringify(grants));
   return pinned;
 }
 
@@ -1014,6 +1011,11 @@ async function runAgentTurnInner(opts: {
     ]
       .filter(Boolean)
       .join('\n\n');
+
+  db.patchMessageMeta(assistantMessageId, {
+    hostChars: hostSystemPrompt.length,
+    mcp: Object.keys(mcpForTurn || {}),
+  });
 
   let assembled = '';
   let usage: TokenUsage | null = null;

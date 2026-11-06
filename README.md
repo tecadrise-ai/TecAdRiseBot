@@ -140,6 +140,9 @@ curl -X PATCH http://127.0.0.1:8787/api/agents/<AGENT_ID> `
 
 - `npm run dev` : Electron + Vite
 - `npm run build` : typecheck + production build
+- `npm run dist` : Windows NSIS + unpacked dir (default output `release\`; see [docs/RELEASE.md](docs/RELEASE.md))
+
+Windows shipping (version bump, git tag, installer icon, output folder): [docs/RELEASE.md](docs/RELEASE.md). Binaries are written to `C:\TecAdRise\tecadrise-bot-release\`.
 
 ## Security
 

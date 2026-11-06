@@ -44,35 +44,33 @@ const TODO_MARK: Record<TodoStatus, string> = {
 function ThinkingSection({
   text,
   streaming,
-  collapse,
   agentId,
   userDataPath,
 }: {
   text: string;
   streaming: boolean;
-  collapse: boolean;
   agentId?: string;
   userDataPath?: string;
 }) {
   const [open, setOpen] = useState(false);
-  if (streaming) {
-    return <div className="md-thinking md-thinking-raw">{text}</div>;
-  }
-  if (!collapse) {
-    return <MarkdownBody className="md-thinking" text={text} agentId={agentId} userDataPath={userDataPath} />;
-  }
   return (
     <div className="think-fold">
       <button
         type="button"
-        className="think-fold-btn"
+        className={`think-fold-btn${streaming ? ' live' : ''}`}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
         <span className="think-fold-chevron" aria-hidden="true" />
         Thinking
       </button>
-      {open ? <MarkdownBody className="md-thinking" text={text} agentId={agentId} userDataPath={userDataPath} /> : null}
+      {open ? (
+        streaming ? (
+          <div className="md-thinking md-thinking-raw think-fold-body">{text}</div>
+        ) : (
+          <MarkdownBody className="md-thinking think-fold-body" text={text} agentId={agentId} userDataPath={userDataPath} />
+        )
+      ) : null}
     </div>
   );
 }
@@ -660,7 +658,6 @@ export function ChatView({
                       <ThinkingSection
                         text={parts.thinking}
                         streaming={streamingId === m.id}
-                        collapse={streamingId !== m.id && !!parts.answer}
                         agentId={agent.id}
                         userDataPath={userDataPath}
                       />

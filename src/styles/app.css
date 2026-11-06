@@ -600,6 +600,18 @@
 .think-fold-btn:hover {
   color: #6b6b70;
 }
+.think-fold-btn.live {
+  animation: think-live 1.4s ease-in-out infinite;
+}
+@keyframes think-live {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
 .think-fold-chevron {
   display: block;
   width: 0;
@@ -607,9 +619,23 @@
   border-style: solid;
   border-width: 4px 0 4px 6px;
   border-color: transparent transparent transparent currentColor;
+  transition: transform 0.15s ease;
 }
 .think-fold-btn[aria-expanded='true'] .think-fold-chevron {
   transform: rotate(90deg);
+}
+.think-fold-body {
+  animation: think-reveal 0.18s ease-out;
+}
+@keyframes think-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .md-body > *:first-child {
   margin-top: 0;

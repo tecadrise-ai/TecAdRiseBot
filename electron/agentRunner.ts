@@ -20,7 +20,7 @@ import { auditTurn } from './audit';
 import { applyTodoCallToList, parseNumberedTasks, todoCallFromDelta, type TodoCall, type TodoItem } from '../src/lib/todos';
 import { absorbConnectorMcp, connectorMcpServers } from './connectors';
 
-function broadcastUi(channel: string, payload: unknown, preferred?: BrowserWindow | null): void {
+export function broadcastUi(channel: string, payload: unknown, preferred?: BrowserWindow | null): void {
   const seen = new Set<number>();
   const send = (w: BrowserWindow | null | undefined) => {
     if (!w || w.isDestroyed()) return;

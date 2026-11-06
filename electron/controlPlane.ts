@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import { v4 as uuid } from 'uuid';
 import * as db from './db';
 import * as secrets from './secrets';
-import { listModels as sdkListModels, runAgentTurn, isAgentBusy, cancelAgentRun, dropAgentHandle } from './agentRunner';
+import { listModels as sdkListModels, runAgentTurn, isAgentBusy, cancelAgentRun, dropAgentHandle, broadcastUi } from './agentRunner';
 import { unpackAssistantBody } from '../src/lib/assistantBody';
 import { formatModelLabel, cheapDefaultConfig, shouldRecreateSdkAgent } from '../src/lib/modelOptions';
 import { startFromRoutine } from './workflows/service';
@@ -317,22 +317,24 @@ export async function sendInterbot(fromId: string, toId: string, text: string) {
     '',
     text,
   ].join('\n');
-  db.addMessage({
+  const out = db.addMessage({
     id: uuid(),
     agentId: fromId,
     role: 'interbot',
     content: `→ ${to.name}: ${text}`,
     meta: JSON.stringify({ toAgentId: toId, direction: 'out' }),
   });
+  broadcastUi('chat:message', { agentId: fromId, message: out }, win());
   const sent = await sendChat(toId, envelope, { source: 'interbot' });
   const reply = unpackAssistantBody(String(sent.assistant?.content || '')).answer.trim();
-  db.addMessage({
+  const back = db.addMessage({
     id: uuid(),
     agentId: fromId,
     role: 'interbot',
     content: `← ${to.name}: ${reply || '(empty)'}`,
     meta: JSON.stringify({ toAgentId: toId, direction: 'in' }),
   });
+  broadcastUi('chat:message', { agentId: fromId, message: back }, win());
   return { ...sent, ok: true as const, to: to.name, toAgentId: toId, reply };
 }
 

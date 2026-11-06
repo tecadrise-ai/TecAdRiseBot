@@ -6,18 +6,18 @@ The Setup.exe, GitHub `master` + annotated tag, and `https://tecadrise.ai/downlo
 
 | | |
 | --- | --- |
-| Version | **0.1.3** |
-| Git tag | `v0.1.3` |
-| Git commit | `5c144162101177790be49c2752fa6a65a4e9ace4` |
-| GitHub | https://github.com/tecadrise-ai/TecAdRiseBot/tree/5c144162101177790be49c2752fa6a65a4e9ace4 |
+| Version | **0.1.4** |
+| Git tag | `v0.1.4` |
+| Git commit | see `latest.json` `gitCommit` after publish |
+| GitHub | https://github.com/tecadrise-ai/TecAdRiseBot/releases/tag/v0.1.4 |
 | latest.json | https://tecadrise.ai/downloads/tecadrisebot/latest.json |
-| Setup (public) | https://tecadrise.ai/downloads/tecadrisebot/TecAdRiseBot-Setup-0.1.3.exe |
-| SHA-256 | `fe06c7b0a9558e9f43b778793c9dd0ebb26c37f6046b9b824b267d058a7cde88` |
+| Setup (public) | https://tecadrise.ai/downloads/tecadrisebot/TecAdRiseBot-Setup-0.1.4.exe |
+| SHA-256 | see `latest.json` `sha256` |
 | Product page | https://tecadrise.ai/products/tecadrisebot |
-| Local Setup | `C:\TecAdRise\tecadrise-bot-release\TecAdRiseBot Setup 0.1.3.exe` |
-| Local zip | `C:\TecAdRise\tecadrise-bot-release\TecAdRiseBot-0.1.3-win-unpacked.zip` |
+| Local Setup | `C:\TecAdRise\tecadrise-bot-release\TecAdRiseBot Setup 0.1.4.exe` |
+| Local zip | `C:\TecAdRise\tecadrise-bot-release\TecAdRiseBot-0.1.4-win-unpacked.zip` |
 
-Settings → Updates fetches `latest.json` and compares `version` to `package.json` / `app.getVersion()`. Next ship is **0.1.4** (or 0.2.0).
+Settings → Updates fetches `latest.json` and compares `version` to `package.json` / `app.getVersion()`. Next ship is **0.1.5** (or 0.2.0).
 
 | Paths | |
 | --- | --- |
@@ -36,19 +36,19 @@ Dev work stays `npm run dev`. Do not iterate on a packaged exe.
 ## Version control (required before any exe)
 
 1. Working tree **clean**.
-2. Bump `"version"` in `package.json`. If `TecAdRiseBot Setup 0.1.3.exe` already exists, **do not build 0.1.3 again**.
-3. Commit on `master`: `V02: 0.1.4 — …`
+2. Bump `"version"` in `package.json`. If `TecAdRiseBot Setup 0.1.4.exe` already exists, **do not build 0.1.4 again**.
+3. Commit on `master`: `V02: 0.1.5 — …`
 4. Annotated tag **on that commit**:
 
 ```bat
-git tag -a v0.1.4 -m "TecAdRiseBot 0.1.4"
+git tag -a v0.1.5 -m "TecAdRiseBot 0.1.5"
 ```
 
 5. `python scripts/publish-release.py` pushes `master` and the tag, then uploads. If you build by hand, push both **before** the exe leaves this PC:
 
 ```bat
 git push origin master
-git push origin v0.1.4
+git push origin v0.1.5
 ```
 
 `latest.json` fields `version`, `gitTag`, `gitCommit`, `sha256`, `setupUrl` must match the GitHub tag.
@@ -78,7 +78,7 @@ VPS login is **not** in this repo. It uses `TECADRISE_VPS_PASSWORD` or the same 
 Already built:
 
 ```bat
-python scripts/publish-release.py --skip-build --exe "C:\TecAdRise\tecadrise-bot-release\TecAdRiseBot Setup 0.1.4.exe"
+python scripts/publish-release.py --skip-build --exe "C:\TecAdRise\tecadrise-bot-release\TecAdRiseBot Setup 0.1.5.exe"
 ```
 
 ---
@@ -125,7 +125,7 @@ If the **page** (not the exe) changed: commit **only** that JS file in the TecAd
 
 ## Checklist
 
-- [ ] New `package.json` version (not 0.1.3)
+- [ ] New `package.json` version (not 0.1.4)
 - [ ] Commit `V02: <version> — …` on `master`
 - [ ] Tag `v<version>` on **that** commit
 - [ ] `python scripts/publish-release.py`

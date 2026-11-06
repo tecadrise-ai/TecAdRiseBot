@@ -1,7 +1,7 @@
 {
   "name": "tecadrise-bot",
   "productName": "TecAdRiseBot",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "TecAdRiseBot - a free open-source alternative to Grok Bot.",
   "main": "dist-electron/main.js",
   "author": "TecAdRise",

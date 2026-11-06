@@ -1304,7 +1304,7 @@ function UpdatesBody({ localVersion }: { localVersion: string }) {
   return (
     <section>
       <h2>Updates</h2>
-      <p className="lede">This app is {localVersion || 'unknown'}.</p>
+      <p className="lede">TecAdRiseBot {localVersion || 'unknown'}</p>
       <div className={`update-card update-${status}`}>
         <p className="update-headline">{headline}</p>
         {latest ? (
@@ -1312,8 +1312,7 @@ function UpdatesBody({ localVersion }: { localVersion: string }) {
             <p className="hint">
               Published {latest.version}
               {latest.gitTag ? ` (${latest.gitTag})` : ''}
-              {latest.releasedAt ? ` · ${latest.releasedAt.slice(0, 10)}` : ''}. GitHub commit must match this
-              installer.
+              {latest.releasedAt ? ` · ${latest.releasedAt.slice(0, 10)}` : ''}
             </p>
             {latest.sha256 ? <p className="sha-line">SHA-256 {latest.sha256}</p> : null}
           </>

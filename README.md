@@ -1,6 +1,6 @@
 # TecAdRiseBot
 
-Free open-source **Grok Bot alternative** for Windows. Local multi-agent desktop (Electron + React + TypeScript) on the [Cursor TypeScript SDK](https://cursor.com/docs/sdk/typescript). MIT. Not an official Grok or xAI product.
+Free open-source **Grok Bot alternative** for Windows. Local multi-agent desktop (Electron + React + TypeScript) on the [Cursor TypeScript SDK](https://cursor.com/docs/sdk/typescript) or **BYOK** (your OpenAI-compatible key: Hugging Face, OpenRouter, OpenAI, Claude, NVIDIA NIM). Tokens stay in this install’s `secrets.bin`. MIT. Not an official Grok or xAI product.
 
 **[Download for Windows (64-bit)](https://tecadrise.ai/products/tecadrisebot)** · [Product page](https://tecadrise.ai/products/tecadrisebot) · [tecadrise.ai](https://tecadrise.ai)
 
@@ -60,7 +60,8 @@ Demo video will go here when it is ready.
 
 ## Feature list
 
-- Cursor SDK based (`Agent.create` / `Agent.resume`, streaming deltas)
+- Cursor SDK based (`Agent.create` / `Agent.resume`, streaming deltas), or per-agent **BYOK** (OpenAI-compatible chat; keys only in `secrets.bin`)
+- BYOK presets: Hugging Face, OpenRouter, OpenAI, Claude, NVIDIA NIM. HTTP connectors (GitHub, Zoho, AgentMail, …), never npx
 - Fully open source (MIT)
 - Fully controllable and configurable (app, per agent, MCP, skills, prompts)
 - Inter-agent communication (inter-bot messages, both sides stored)
@@ -100,14 +101,14 @@ Playwright needs Node/`npx` on PATH. AgentMail may open a browser login on first
 ## Requirements
 
 - Windows 10 or 11, 64-bit (installer)
-- A Cursor API key ([Dashboard](https://cursor.com/dashboard))
+- A Cursor API key ([Dashboard](https://cursor.com/dashboard)) for Cursor SDK agents, **or** a BYOK provider key (Settings → BYOK) for OpenAI-compatible models
 - From source only: Node.js 22.13+, npm 10+
 
 ## Quick start
 
 1. [Download the Windows installer](https://tecadrise.ai/downloads/tecadrisebot/TecAdRiseBot-Setup-win64.exe) and run it.
-2. Open Local user → General, paste a Cursor API key, Save.
-3. Pick a default model, create an agent, send a message.
+2. Open Settings → API Keys, paste a Cursor API key, Save. Or Settings → BYOK, add a provider and key, then set the agent Runtime to BYOK.
+3. Pick a model, create an agent, send a message.
 
 From source (changing the app itself):
 
